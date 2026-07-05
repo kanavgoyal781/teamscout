@@ -1,0 +1,415 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #1c1b1a;
+  --paper: #faf8f4;
+  --green: #234438;
+  --hair: #ddd6cc;
+  --danger: #8b1e1e;
+  --danger-bg: #fde8e8;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid var(--hair);
+  background: white;
+  padding: 1.5rem 1rem;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 1rem;
+}
+
+.sidebar-link {
+  display: block;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.5rem;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 0.92rem;
+}
+
+.sidebar-link.active {
+  background: #e8f2ec;
+  color: var(--green);
+  font-weight: 600;
+}
+
+.sidebar-link.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.page {
+  max-width: 960px;
+  padding: 2rem 1.25rem 3rem;
+}
+
+.health-banner {
+  background: var(--danger-bg);
+  border: 1px solid #f2b8b8;
+  color: var(--danger);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+  border-radius: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.page-header h1 {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 2rem;
+  line-height: 1.2;
+}
+
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  color: var(--green);
+}
+
+.lede {
+  margin: 0;
+  max-width: 42rem;
+  line-height: 1.6;
+}
+
+.card-grid {
+  display: grid;
+  gap: 1rem;
+  margin-top: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.card {
+  border: 1px solid var(--hair);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  background: white;
+}
+
+.card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.card p {
+  margin: 0;
+  color: #5f5a52;
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.panel {
+  border: 1px solid var(--hair);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  background: white;
+  margin-top: 1.25rem;
+}
+
+.panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.2rem;
+}
+
+.meta {
+  margin: 0 0 1rem;
+  color: #5f5a52;
+  font-size: 0.95rem;
+}
+
+.toast {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.toast-error {
+  background: var(--danger-bg);
+  border: 1px solid #f2b8b8;
+  color: var(--danger);
+}
+
+.toast-info {
+  background: #e8f2ec;
+  border: 1px solid #b8d8c4;
+  color: var(--green);
+}
+
+.upload-form,
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+button,
+.apply-link {
+  border: 1px solid var(--hair);
+  background: white;
+  color: var(--ink);
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button.primary,
+.apply-link {
+  background: var(--green);
+  border-color: var(--green);
+  color: white;
+}
+
+.field-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.field-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.field-grid .full-width {
+  grid-column: 1 / -1;
+}
+
+input,
+textarea {
+  border: 1px solid var(--hair);
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+}
+
+.job-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.job-card {
+  border: 1px solid var(--hair);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.job-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.job-card h3 {
+  margin: 0 0 0.25rem;
+}
+
+.score-pill {
+  min-width: 3rem;
+  text-align: center;
+  background: var(--green);
+  color: white;
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  font-weight: 600;
+}
+
+.job-description,
+.rationale {
+  margin: 0.75rem 0 0;
+  line-height: 1.5;
+  color: #4f4a43;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.chip {
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8rem;
+}
+
+.chip-match {
+  background: #e8f2ec;
+  color: var(--green);
+}
+
+.chip-miss {
+  background: #f6ece8;
+  color: #8a4d32;
+}
+
+.breakdown-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: #5f5a52;
+}
+
+.team-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--hair);
+}
+
+.team-extraction {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px dashed var(--hair);
+  border-radius: 0.5rem;
+  background: #fcfaf7;
+}
+
+.contact-list {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.contact-list h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.contact-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+  border: 1px solid var(--hair);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: #fcfaf7;
+}
+
+.contact-email {
+  margin: 0.35rem 0 0;
+  font-weight: 600;
+  color: var(--green);
+}
+
+.empty-hint {
+  margin-top: 0.75rem;
+}
+
+.library-drive-form {
+  margin-top: 0.75rem;
+}
+
+.drive-input {
+  flex: 1;
+  min-width: 240px;
+}
+
+.library-list {
+  margin: 0.75rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.library-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+select {
+  border: 1px solid var(--hair);
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+  background: white;
+}
+
+.recommendation-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.recommendation-card {
+  border: 1px solid var(--hair);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.coverage-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.coverage-table th,
+.coverage-table td {
+  border: 1px solid var(--hair);
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.coverage-hit {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.coverage-miss {
+  color: #8a4d32;
+  font-weight: 600;
+}
+
+@media (max-width: 800px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--hair);
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}

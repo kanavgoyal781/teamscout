@@ -1,0 +1,27 @@
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+
+from app.db.models import Contact
+from app.db.session import get_db
+from app.errors import NotFoundError, ValidationError
+from app.schemas.team import EmailRevealResponse
+from app.services import email_reveal
+
+router = APIRouter(prefix="/contacts", tags=["contacts"])
+
+
+@router.post("/{contact_id}/reveal-email", response_model=EmailRevealResponse)
+def reveal_email(
+    contact_id: str,
+    confirm: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> EmailRevealResponse:
+    contact = db.query(Contact).filter(Contact.id == contact_id).one_or_none()
+    if contact is None:
+        raise NotFoundError("contact", contact_id)
+    if not contact.sumble_person_id:
+        raise ValidationError("Contact has no Sumble person id — run find-team first")
+
+    if not confirm:
+        return email_reveal.preview_reveal(db, contact)
+    return email_reveal.confirm_reveal(db, contact)

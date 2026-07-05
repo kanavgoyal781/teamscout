@@ -1,0 +1,113 @@
+from datetime import datetime, timezone
+
+from sqlalchemy.orm import Session
+
+from app.db.models import Contact, EmailReveal, JobTeamSearch
+from app.schemas.jobs import Job
+from app.schemas.team import ContactOut, FindTeamResponse, TeamExtraction
+from app.services import sumble
+
+
+def _contact_to_out(contact: Contact, reveal_email: str | None = None) -> ContactOut:
+    return ContactOut(
+        id=contact.id,
+        full_name=contact.full_name,
+        title=contact.title,
+        company=contact.company,
+        team=contact.team,
+        seniority=contact.seniority,
+        sumble_person_id=contact.sumble_person_id,
+        email_revealed=reveal_email is not None,
+        email=reveal_email,
+    )
+
+
+def _record_team_search(
+    job_id: str,
+    extraction_id: str,
+    search_id: str | None,
+    credits_used: int,
+    db: Session,
+) -> None:
+    now = datetime.now(timezone.utc)
+    existing = db.query(JobTeamSearch).filter(JobTeamSearch.job_id == job_id).one_or_none()
+    if existing is None:
+        db.add(
+            JobTeamSearch(
+                job_id=job_id,
+                extraction_id=extraction_id,
+                search_id=search_id,
+                team_searched_at=now,
+                credits_used=credits_used,
+            )
+        )
+        return
+
+    existing.extraction_id = extraction_id
+    existing.search_id = search_id
+    existing.team_searched_at = now
+    existing.credits_used = credits_used
+    db.add(existing)
+
+
+def find_team_for_job(
+    job: Job,
+    extraction: TeamExtraction,
+    extraction_id: str,
+    search_id: str | None,
+    db: Session,
+) -> FindTeamResponse:
+    org = sumble.lookup_organization(job.company)
+    people, credits_used = sumble.search_people(
+        organization_id=org.organization_id,
+        team_name=extraction.team_name,
+        department=extraction.department,
+        likely_hiring_titles=extraction.likely_hiring_titles,
+    )
+
+    contacts: list[ContactOut] = []
+    for person in people:
+        person_key = str(person.person_id)
+        existing = (
+            db.query(Contact)
+            .filter(Contact.sumble_person_id == person_key, Contact.job_id == job.id)
+            .one_or_none()
+        )
+        if existing is None:
+            existing = Contact(
+                full_name=person.name or "Unknown",
+                title=person.title,
+                company=job.company,
+                team=person.team,
+                seniority=person.seniority,
+                job_id=job.id,
+                search_id=search_id,
+                extraction_id=extraction_id,
+                sumble_person_id=person_key,
+            )
+            db.add(existing)
+        else:
+            existing.full_name = person.name or existing.full_name
+            existing.title = person.title
+            existing.team = person.team
+            existing.seniority = person.seniority
+            existing.search_id = search_id or existing.search_id
+            existing.extraction_id = extraction_id
+            db.add(existing)
+
+        db.flush()
+        reveal = (
+            db.query(EmailReveal)
+            .filter(EmailReveal.contact_id == existing.id, EmailReveal.status == "revealed")
+            .one_or_none()
+        )
+        contacts.append(_contact_to_out(existing, reveal.email if reveal else None))
+
+    _record_team_search(job.id, extraction_id, search_id, credits_used, db)
+    db.commit()
+    return FindTeamResponse(
+        job_id=job.id,
+        contacts=contacts,
+        credits_used=credits_used,
+        team_searched=True,
+    )
