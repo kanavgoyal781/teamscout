@@ -78,6 +78,7 @@ def preview_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
 
 def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
     _begin_immediate(db)
+    not_found_err: ValidationError | None = None
     try:
         existing = (
             db.query(EmailReveal)
@@ -135,7 +136,10 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
         db.refresh(existing)
 
         if not email:
-            raise ValidationError(
+            # Set not_found terminal and commit BEFORE raising so the record survives.
+            # Raise AFTER the try/except block below to prevent outer rollback from
+            # destroying the terminal cached state (fixes double-charge on not_found).
+            not_found_err = ValidationError(
                 "Sumble did not return an email for this contact",
                 details={
                     "contact_id": contact.id,
@@ -144,14 +148,20 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
                     "cached": True,
                 },
             )
-
-        return EmailRevealResponse(
-            contact_id=contact.id,
-            cached=False,
-            email=email,
-            cost_credits=existing.cost_credits,
-            status=existing.status,
-        )
+            # fall to post-try raise
+        else:
+            return EmailRevealResponse(
+                contact_id=contact.id,
+                cached=False,
+                email=email,
+                cost_credits=existing.cost_credits,
+                status=existing.status,
+            )
     except Exception:
         db.rollback()
         raise
+
+    if not_found_err is not None:
+        raise not_found_err
+    # Unreachable: revealed path returns inside try; not_found raises above.
+    raise RuntimeError("unexpected reveal state")

@@ -60,8 +60,8 @@ def find_team_for_job(
     search_id: str | None,
     db: Session,
 ) -> FindTeamResponse:
-    org = sumble.lookup_organization(job.company, job.apply_url)
-    people, credits_used, search_path = sumble.find_hiring_team(
+    org, org_credits = sumble.lookup_organization(job.company, job.apply_url)
+    people, search_credits, search_path = sumble.find_hiring_team(
         organization_id=org.organization_id,
         team_name=extraction.team_name,
         department=extraction.department,
@@ -69,6 +69,7 @@ def find_team_for_job(
         jd_title=job.title,
         company=job.company,
     )
+    credits_used = org_credits + search_credits  # aggregate: org lookup + (title-lookup|job-match) + people/related
 
     contacts: list[ContactOut] = []
     for person in people:

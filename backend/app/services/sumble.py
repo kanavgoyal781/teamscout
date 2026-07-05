@@ -103,7 +103,7 @@ def _title_similarity(a: str, b: str) -> float:
 
 def map_llm_extraction_to_sumble(
     department: str, likely_hiring_titles: list[str]
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], int]:
     """Small mapping helper: department + titles -> (job_functions, job_levels).
 
     Per https://docs.sumble.com/api/lookups/job-title-lookup.md the response
@@ -137,15 +137,17 @@ def map_llm_extraction_to_sumble(
 
     titles = [t.strip() for t in (likely_hiring_titles or []) if t and t.strip()]
     if not titles:
-        return ([f for f in funcs if f], levels)
+        return ([f for f in funcs if f], levels, 0)
 
     # Try title-lookup for canonical job_function / job_level
+    title_credits = 0
     try:
         data = _post(
             "/v6/jobs/title-lookup",
             {"titles": titles[:20]},
             credit_costing=True,
         )
+        title_credits = int(data.get("credits_used") or 0)
         results = data.get("results") or []
         seen_f: set[str] = set(funcs)
         seen_l: set[str] = set()
@@ -178,14 +180,14 @@ def map_llm_extraction_to_sumble(
             if t not in funcs:
                 funcs.append(t)
 
-    return ([f for f in funcs if f], levels)
+    return ([f for f in funcs if f], levels, title_credits)
 
 
 def build_people_query(
     *,
     department: str,
     likely_hiring_titles: list[str],
-) -> str | None:
+) -> tuple[str | None, int]:
     """Build documented advanced query string for people filter.query.query .
 
     Uses only supported fields from docs (job_function EQ, job_level EQ).
@@ -193,7 +195,7 @@ def build_people_query(
     Prefers slugs (from title-lookup) for job_function values per DSL examples.
     Validated via scripts/smoke_sumble.py.
     """
-    funcs, levels = map_llm_extraction_to_sumble(department, likely_hiring_titles)
+    funcs, levels, title_credits = map_llm_extraction_to_sumble(department, likely_hiring_titles)
     clauses: list[str] = []
     if funcs:
         if len(funcs) == 1:
@@ -207,9 +209,8 @@ def build_people_query(
         else:
             ors = " OR ".join(f"job_level EQ '{_escape_query_value(l)}'" for l in levels[:3])
             clauses.append(f"({ors})")
-    if not clauses:
-        return None
-    return " AND ".join(clauses)
+    query = " AND ".join(clauses) if clauses else None
+    return query, title_credits
 
 
 def _derive_domain(company_name: str, apply_url: str | None = None) -> str | None:
@@ -245,7 +246,7 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
     return None
 
 
-def lookup_organization(company_name: str, apply_url: str | None = None) -> SumbleOrganization:
+def lookup_organization(company_name: str, apply_url: str | None = None) -> tuple[SumbleOrganization, int]:
     """Resolve org using documented /v6/organizations. Prefer url/domain per docs.
 
     Tries name+url derived, then name. Raises clear error (no fabricated id) on failure.
@@ -279,9 +280,11 @@ def lookup_organization(company_name: str, apply_url: str | None = None) -> Sumb
                     attrs = first.get("attributes") or {}
                     oid = attrs.get("id")
                     if oid is not None:
-                        return SumbleOrganization(
+                        org = SumbleOrganization(
                             organization_id=int(oid), name=attrs.get("name")
                         )
+                        credits = int(data.get("credits_used") or 0)
+                        return org, credits
         except ServiceFailingError:
             # transient or no match for this candidate; try next
             continue
@@ -307,7 +310,7 @@ def search_people(
     lim = getattr(settings, "SUMBLE_SEARCH_LIMIT", DEFAULT_LIMIT)
     titles = likely_hiring_titles or []
     filter_body: dict[str, Any] = {"organization_ids": [organization_id]}
-    query = build_people_query(department=department, likely_hiring_titles=titles)
+    query, title_credits = build_people_query(department=department, likely_hiring_titles=titles)
     if query:
         filter_body["query"] = {"query": query}
 
@@ -344,11 +347,12 @@ def search_people(
             )
         )
 
-    credits_used = int(data.get("credits_used") or 0)
-    return results, credits_used
+    people_credits = int(data.get("credits_used") or 0)
+    total_credits = people_credits + title_credits
+    return results, total_credits
 
 
-def search_org_job_posts(organization_id: int, limit: int | None = None) -> list[dict]:
+def search_org_job_posts(organization_id: int, limit: int | None = None) -> tuple[list[dict], int]:
     """Search org's job posts (filter mode). Used to find matching JD post.
 
     Selects only free attributes (title is free per docs; organization is paid).
@@ -365,22 +369,24 @@ def search_org_job_posts(organization_id: int, limit: int | None = None) -> list
         credit_costing=True,
     )
     jobs = data.get("jobs")
-    return jobs if isinstance(jobs, list) else []
+    credits = int(data.get("credits_used") or 0)
+    return (jobs if isinstance(jobs, list) else [], credits)
 
 
 def find_best_matching_job_post(
     organization_id: int, jd_title: str, company: str
-) -> int | None:
+) -> tuple[int | None, int]:
     """Find Sumble job post for org whose title best matches cached JD (title sim + company).
 
-    Returns Sumble job_id (int) or None. Heuristic quality focused.
+    Returns (Sumble job_id or None, credits_used from org job search).
+    Heuristic quality focused.
     """
     if not jd_title:
-        return None
+        return None, 0
     try:
-        jobs = search_org_job_posts(organization_id)
+        jobs, search_credits = search_org_job_posts(organization_id)
     except (httpx.HTTPError, ServiceFailingError):
-        return None
+        return None, 0
 
     best_id: int | None = None
     best_score = 0.0
@@ -412,8 +418,8 @@ def find_best_matching_job_post(
             best_id = int(jid)
 
     if best_score >= 0.28 and best_id is not None:
-        return best_id
-    return None
+        return best_id, search_credits
+    return None, search_credits
 
 
 def get_related_people_for_job(
@@ -480,15 +486,19 @@ def find_hiring_team(
     Fallback: people filter by function/level.
     Returns (people, credits_used, path_label)
     Path labels exactly: "Matched Sumble job post" or "Filtered by function/level"
+    Credits aggregated for job match / people search + title-lookup inside fallback.
     """
     lim = getattr(settings, "SUMBLE_SEARCH_LIMIT", DEFAULT_LIMIT)
+    total_credits = 0
 
     # Preferred: job post match
     if jd_title:
         try:
-            matched_id = find_best_matching_job_post(organization_id, jd_title, company)
+            matched_id, job_credits = find_best_matching_job_post(organization_id, jd_title, company)
+            total_credits += job_credits
             if matched_id is not None:
-                people, credits = get_related_people_for_job(matched_id, limit=lim)
+                people, related_credits = get_related_people_for_job(matched_id, limit=lim)
+                total_credits += related_credits
                 if people:
                     logger.info(
                         "sumble.team_path",
@@ -496,19 +506,20 @@ def find_hiring_team(
                         sumble_job_id=matched_id,
                         count=len(people),
                     )
-                    return people, credits, "Matched Sumble job post"
+                    return people, total_credits, "Matched Sumble job post"
         except (httpx.HTTPError, ServiceFailingError) as exc:
             logger.info("sumble.job_related_fallback", reason=str(exc)[:200])
 
     # Fallback
-    people, credits = search_people(
+    people, search_credits = search_people(
         organization_id=organization_id,
         team_name=team_name,
         department=department,
         likely_hiring_titles=likely_hiring_titles,
     )
+    total_credits += search_credits
     logger.info("sumble.team_path", path="Filtered by function/level", count=len(people))
-    return people, credits, "Filtered by function/level"
+    return people, total_credits, "Filtered by function/level"
 
 
 def reveal_email(person_id: int) -> tuple[str | None, int]:
