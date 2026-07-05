@@ -121,6 +121,25 @@ def test_lookup_organization(sumble_base: str, monkeypatch: pytest.MonkeyPatch) 
 @respx.mock
 def test_search_people(sumble_base: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
+    # title-lookup is now called by map inside search fallback path (use documented object shape)
+    respx.post(f"{sumble_base}/v6/jobs/title-lookup").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "u",
+                "credits_used": 1,
+                "credits_remaining": 99,
+                "matched_count": 1,
+                "results": [
+                    {
+                        "input": "Engineering Manager",
+                        "job_function": {"id": 1, "slug": "engineering", "name": "Engineering"},
+                        "job_level": {"id": 4, "name": "Manager", "level_rank": 4},
+                    },
+                ],
+            },
+        )
+    )
     # Mirror documented example response shape for /v6/people filter mode
     respx.post(f"{sumble_base}/v6/people").mock(
         return_value=httpx.Response(
@@ -560,7 +579,7 @@ def test_map_llm_extraction_to_sumble(monkeypatch: pytest.MonkeyPatch) -> None:
         "Engineering", ["Engineering Manager", "Staff Software Engineer"]
     )
     assert any("Engineer" in f or "Engineering" in f for f in funcs)
-    # With respx mock for title-lookup, returns canonicals
+    # With respx mock for title-lookup, returns canonicals (use documented object shape)
     import respx as _respx
     import httpx as _httpx
 
@@ -575,15 +594,62 @@ def test_map_llm_extraction_to_sumble(monkeypatch: pytest.MonkeyPatch) -> None:
                     "credits_remaining": 99,
                     "matched_count": 2,
                     "results": [
-                        {"input": "Engineering Manager", "job_function": "Engineering", "job_level": "Manager"},
-                        {"input": "Staff Software Engineer", "job_function": "Engineering", "job_level": "Staff"},
+                        {
+                            "input": "Engineering Manager",
+                            "job_function": {"id": 1, "slug": "engineering", "name": "Engineering"},
+                            "job_level": {"id": 4, "name": "Manager", "level_rank": 4},
+                        },
+                        {
+                            "input": "Staff Software Engineer",
+                            "job_function": {"id": 1, "slug": "engineering", "name": "Engineering"},
+                            "job_level": {"id": 3, "name": "Staff", "level_rank": 3},
+                        },
                     ],
                 },
             )
         )
         funcs2, levels2 = sumble.map_llm_extraction_to_sumble("Platform", ["Engineering Manager"])
-        assert "Engineering" in funcs2
+        # Prefers slug
+        assert "engineering" in funcs2
         assert "Manager" in levels2 or "Staff" in levels2
+
+
+def test_map_llm_extraction_to_sumble_uses_slug_in_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verbatim documented response shape from https://docs.sumble.com/api/lookups/job-title-lookup.md
+    Confirms slug is preferred for job_function in the DSL.
+    """
+    monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
+    import respx as _respx
+    import httpx as _httpx
+
+    base = settings.SUMBLE_BASE_URL.rstrip("/")
+    with _respx.mock:
+        _respx.post(f"{base}/v6/jobs/title-lookup").mock(
+            return_value=_httpx.Response(
+                200,
+                json={
+                    "id": "019980d2-bc85-7571-9d60-7bc1d3084249",
+                    "credits_used": 1,
+                    "credits_remaining": 99,
+                    "matched_count": 1,
+                    "results": [
+                        {
+                            "input": "VP Engineering",
+                            "job_function": {"id": 10, "slug": "engineering", "name": "Engineering"},
+                            "job_level": {"id": 6, "name": "Executive", "level_rank": 6},
+                        },
+                    ],
+                },
+            )
+        )
+        funcs, levels = sumble.map_llm_extraction_to_sumble("", ["VP Engineering"])
+        assert funcs == ["engineering"]
+        assert "Executive" in levels
+
+        # build_people_query should use the slug
+        q = sumble.build_people_query(department="", likely_hiring_titles=["VP Engineering"])
+        assert q is not None
+        assert "job_function EQ 'engineering'" in q
 
 
 @respx.mock
@@ -602,7 +668,7 @@ def test_find_hiring_team_prefers_job_match_path(sumble_base: str, monkeypatch: 
                     "jobs": [
                         {
                             "job_id": 95107725,
-                            "attributes": {"title": "Backend Engineer", "organization": {"name": "Acme"}},
+                            "attributes": {"title": "Backend Engineer"},
                         }
                     ],
                     "total": 1,

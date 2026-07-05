@@ -62,8 +62,10 @@ pgdata/
 logs/
 
 # local runtime (keep on disk, do not commit)
+*.db
 backend/teamscout.db
 backend/uploads/
+backend/.pytest_cache/
 .pytest_cache/
 .ruff_cache/
 reviews/

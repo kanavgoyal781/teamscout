@@ -106,9 +106,15 @@ def map_llm_extraction_to_sumble(
 ) -> tuple[list[str], list[str]]:
     """Small mapping helper: department + titles -> (job_functions, job_levels).
 
-    Prefers canonical values via title-lookup when possible; falls back to
-    lightweight normalization. Used to populate filters for people search fallback.
-    Tests cover the mapping behavior.
+    Per https://docs.sumble.com/api/lookups/job-title-lookup.md the response
+    shapes are objects:
+      job_function: {id, slug, name} | null
+      job_level: {id, name, level_rank} | null
+
+    Prefers slug for job_function (docs DSL examples use slugs e.g. EQ '<slug>'),
+    falls back to name. This is validated by scripts/smoke_sumble.py.
+
+    A parse error must surface (narrow except); broad except is forbidden.
     """
     funcs: list[str] = []
     levels: list[str] = []
@@ -146,15 +152,27 @@ def map_llm_extraction_to_sumble(
         for r in results:
             if not isinstance(r, dict):
                 continue
-            jf = (r.get("job_function") or "").strip()
-            jl = (r.get("job_level") or "").strip()
+            jf_obj = r.get("job_function")
+            jl_obj = r.get("job_level")
+            # Prefer slug for job_function (DSL uses slugs), fallback to name
+            jf = None
+            if isinstance(jf_obj, dict):
+                jf = jf_obj.get("slug") or jf_obj.get("name")
+            elif isinstance(jf_obj, str):
+                jf = jf_obj  # legacy tolerance only
+            jl = None
+            if isinstance(jl_obj, dict):
+                jl = jl_obj.get("name")
+            elif isinstance(jl_obj, str):
+                jl = jl_obj
             if jf and jf not in seen_f:
                 seen_f.add(jf)
                 funcs.append(jf)
             if jl and jl not in seen_l:
                 seen_l.add(jl)
                 levels.append(jl)
-    except Exception:
+    except (httpx.HTTPError, ServiceFailingError):
+        # Only transient/network/config errors; parse defects must not be swallowed
         # Fallback: pass titles through as functions (best effort)
         for t in titles[:5]:
             if t not in funcs:
@@ -172,6 +190,8 @@ def build_people_query(
 
     Uses only supported fields from docs (job_function EQ, job_level EQ).
     Never uses non-existent "team CONTAINS".
+    Prefers slugs (from title-lookup) for job_function values per DSL examples.
+    Validated via scripts/smoke_sumble.py.
     """
     funcs, levels = map_llm_extraction_to_sumble(department, likely_hiring_titles)
     clauses: list[str] = []
@@ -216,7 +236,7 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
                     candidate = ".".join(parts[-2:])
                     if len(candidate) > 3 and not candidate.startswith("com."):
                         return candidate
-        except Exception:
+        except (ValueError, TypeError, AttributeError):
             pass
     # fallback from name
     slug = "".join(c for c in (company_name or "").lower() if c.isalnum())
@@ -328,14 +348,19 @@ def search_people(
     return results, credits_used
 
 
-def search_org_job_posts(organization_id: int, limit: int = 50) -> list[dict]:
-    """Search org's job posts (filter mode). Used to find matching JD post."""
+def search_org_job_posts(organization_id: int, limit: int | None = None) -> list[dict]:
+    """Search org's job posts (filter mode). Used to find matching JD post.
+
+    Selects only free attributes (title is free per docs; organization is paid).
+    Limit defaults to SUMBLE_JOB_MATCH_LIMIT (30) to control credit spend.
+    """
+    lim = limit or getattr(settings, "SUMBLE_JOB_MATCH_LIMIT", 30)
     data = _post(
         "/v6/jobs",
         {
             "filter": {"organization_ids": [organization_id]},
-            "select": {"attributes": ["title", "organization"]},
-            "limit": limit,
+            "select": {"attributes": ["title"]},
+            "limit": lim,
         },
         credit_costing=True,
     )
@@ -353,8 +378,8 @@ def find_best_matching_job_post(
     if not jd_title:
         return None
     try:
-        jobs = search_org_job_posts(organization_id, limit=50)
-    except Exception:
+        jobs = search_org_job_posts(organization_id)
+    except (httpx.HTTPError, ServiceFailingError):
         return None
 
     best_id: int | None = None
@@ -472,7 +497,7 @@ def find_hiring_team(
                         count=len(people),
                     )
                     return people, credits, "Matched Sumble job post"
-        except Exception as exc:
+        except (httpx.HTTPError, ServiceFailingError) as exc:
             logger.info("sumble.job_related_fallback", reason=str(exc)[:200])
 
     # Fallback

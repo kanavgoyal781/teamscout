@@ -51,9 +51,12 @@ export default function TeamDiscoveryPanel({
                 : "—"}
             </li>
           </ul>
-          {/* Credit estimate shown before the Sumble call (limit × per-row per docs) */}
+          {/* Credit estimates shown BEFORE the find-team call and any people-search fallback.
+               Uses limit × per-row costs per the Sumble docs (jobs title free=1 base/row;
+               people 1 base + paid attrs/row; email reveal 10 on first). */}
           <p className="meta">
-            Est. max cost: ~20 credits (limit=10 × ~2 per-row base+attr per docs) before search.
+            Est. max for job-post match: ~30 credits (30 × 1 base, title free) •
+            fallback people search: ~20 credits (10 × ~2) before Sumble spend.
           </p>
           <div className="actions">
             <button
