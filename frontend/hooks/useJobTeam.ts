@@ -21,6 +21,7 @@ export type JobTeamState = {
   contacts: Contact[];
   revealLoading: Record<string, boolean>;
   pendingReveal: Record<string, number | null>;
+  searchPath: string | null;
 };
 
 function emptyTeamState(): JobTeamState {
@@ -34,6 +35,7 @@ function emptyTeamState(): JobTeamState {
     contacts: [],
     revealLoading: {},
     pendingReveal: {},
+    searchPath: null,
   };
 }
 
@@ -64,6 +66,7 @@ export function useJobTeam(searchId: string | null) {
           extractionId: cached.extraction_id,
           extraction: cached.extraction,
           teamSearched: cached.team_searched,
+          searchPath: cached.search_path ?? null,
           hydrating: false,
         });
       } catch (error) {
@@ -113,6 +116,7 @@ export function useJobTeam(searchId: string | null) {
           extractionId: cached.extraction_id ?? state.extractionId,
           extraction: cached.extraction ?? state.extraction,
           teamSearched: cached.team_searched,
+          searchPath: cached.search_path ?? null,
           finding: false,
         });
         onToast(

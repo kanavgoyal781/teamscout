@@ -147,19 +147,23 @@ def _cache_jobs(db: Session, jobs: list[Job]) -> None:
 def fetch_jobs(profile: ResumeProfile, db: Session) -> list[Job]:
     _require_jobs_config()
 
-    query_parts = [profile.title] + profile.skills[:8]
-    query = " ".join(part for part in query_parts if part).strip() or "software engineer"
+    title = profile.title.strip() or "software engineer"
     location = profile.location.strip() or "United States"
+    # Use title + location + at most top 2 distinguishing skills (no 8-skill concat)
+    top_skills = " ".join(s for s in profile.skills[:2] if s.strip())
+    query = f"{title} {top_skills} in {location}".strip()
 
     headers = {
         "X-RapidAPI-Key": settings.JOBS_API_KEY or "",
         "X-RapidAPI-Host": settings.JOBS_API_HOST,
     }
+    # Align recency param with JOBS_RECENCY_DAYS (use month for 14d, week for <=7)
+    date_posted = "month" if settings.JOBS_RECENCY_DAYS > 7 else "week"
     params = {
-        "query": f"{query} in {location}",
+        "query": query,
         "page": "1",
         "num_pages": "5",
-        "date_posted": "week",
+        "date_posted": date_posted,
         "employment_types": "FULLTIME",
     }
 
@@ -201,7 +205,7 @@ def fetch_jobs(profile: ResumeProfile, db: Session) -> list[Job]:
             break
 
     if not jobs:
-        raise ServiceFailingError("Jobs API", "no jobs matched filters in the last 14 days")
+        raise ServiceFailingError("Jobs API", f"no jobs matched filters in the last {settings.JOBS_RECENCY_DAYS} days")
 
     _cache_jobs(db, jobs)
     return jobs
@@ -210,23 +214,20 @@ def fetch_jobs(profile: ResumeProfile, db: Session) -> list[Job]:
 def fetch_jobs_for_intent(intent: IntentProfile, db: Session) -> list[Job]:
     _require_jobs_config()
 
-    query_parts = [intent.role.strip()]
-    if intent.location.strip():
-        query_parts.append(f"in {intent.location.strip()}")
-    if intent.remote_preference == "remote":
-        query_parts.append("remote")
-    query = " ".join(part for part in query_parts if part).strip() or "software engineer"
-    location = intent.location.strip() or "United States"
-
+    role = intent.role.strip() or "software engineer"
+    loc = intent.location.strip() or "United States"
+    # title + loc + <=2 skills style; keep remote handling
+    query = f"{role} in {loc}".strip()
     headers = {
         "X-RapidAPI-Key": settings.JOBS_API_KEY or "",
         "X-RapidAPI-Host": settings.JOBS_API_HOST,
     }
+    date_posted = "month" if settings.JOBS_RECENCY_DAYS > 7 else "week"
     params = {
         "query": query,
         "page": "1",
         "num_pages": "5",
-        "date_posted": "week",
+        "date_posted": date_posted,
         "employment_types": "FULLTIME",
     }
     if intent.remote_preference == "remote":
@@ -271,7 +272,7 @@ def fetch_jobs_for_intent(intent: IntentProfile, db: Session) -> list[Job]:
             break
 
     if not jobs:
-        raise ServiceFailingError("Jobs API", "no jobs matched filters in the last 14 days")
+        raise ServiceFailingError("Jobs API", f"no jobs matched filters in the last {settings.JOBS_RECENCY_DAYS} days")
 
     _cache_jobs(db, jobs)
     return jobs

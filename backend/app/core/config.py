@@ -44,6 +44,7 @@ class Settings(BaseSettings):
 
     SUMBLE_API_KEY: str | None = None
     SUMBLE_BASE_URL: str = "https://api.sumble.com"
+    SUMBLE_SEARCH_LIMIT: int = 10
 
     GOOGLE_DRIVE_API_KEY: str | None = None
     GOOGLE_DRIVE_CLIENT_ID: str | None = None

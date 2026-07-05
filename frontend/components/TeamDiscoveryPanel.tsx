@@ -51,6 +51,10 @@ export default function TeamDiscoveryPanel({
                 : "—"}
             </li>
           </ul>
+          {/* Credit estimate shown before the Sumble call (limit × per-row per docs) */}
+          <p className="meta">
+            Est. max cost: ~20 credits (limit=10 × ~2 per-row base+attr per docs) before search.
+          </p>
           <div className="actions">
             <button
               type="button"
@@ -67,6 +71,9 @@ export default function TeamDiscoveryPanel({
       {teamState.contacts.length > 0 ? (
         <div className="contact-list">
           <h4>People</h4>
+          {teamState.searchPath ? (
+            <p className="meta">Search path: <strong>{teamState.searchPath}</strong></p>
+          ) : null}
           {teamState.contacts.map((contact) => {
             const awaitingConfirm = pendingCost[contact.id] != null;
             const revealing = teamState.revealLoading[contact.id];

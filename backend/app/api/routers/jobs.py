@@ -131,10 +131,16 @@ def list_team(job_id: str, db: Session = Depends(get_db)) -> TeamListResponse:
         reveals = {row.contact_id: row.email for row in reveal_rows if row.email}
 
     extraction_id, extraction = _latest_extraction(job_id, db)
+    ts = (
+        db.query(JobTeamSearch)
+        .filter(JobTeamSearch.job_id == job_id)
+        .one_or_none()
+    )
     return TeamListResponse(
         job_id=job_id,
         contacts=[_contact_to_out(row, reveals.get(row.id)) for row in rows],
         extraction_id=extraction_id,
         extraction=extraction,
         team_searched=_team_searched(job_id, db),
+        search_path=ts.search_path if ts else None,
     )

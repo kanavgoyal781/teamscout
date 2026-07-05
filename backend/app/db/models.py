@@ -102,6 +102,7 @@ class JobTeamSearch(Base):
     search_id: Mapped[str | None] = mapped_column(String(36), index=True)
     team_searched_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     credits_used: Mapped[int] = mapped_column(Integer, default=0)
+    search_path: Mapped[str | None] = mapped_column(String(64))
 
 
 class Contact(Base):

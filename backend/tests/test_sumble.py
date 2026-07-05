@@ -71,7 +71,10 @@ def _seed_contact(
     org = sumble.SumbleOrganization(organization_id=42, name="Acme")
     with patch("app.api.routers.jobs.resolve_job", return_value=job):
         with patch("app.services.team_search.sumble.lookup_organization", return_value=org):
-            with patch("app.services.team_search.sumble.search_people", return_value=([person], 5)):
+            with patch(
+                "app.services.team_search.sumble.find_hiring_team",
+                return_value=([person], 5, "Filtered by function/level"),
+            ):
                 response = client.post(
                     f"/jobs/{job.id}/find-team",
                     json={"extraction_id": extraction_id},
@@ -90,13 +93,20 @@ def test_sumble_hard_fail_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
 @respx.mock
 def test_lookup_organization(sumble_base: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
+    # Verbatim structure from docs example response (organizations + attributes)
     route = respx.post(f"{sumble_base}/v6/organizations").mock(
         return_value=httpx.Response(
             200,
             json={
+                "id": "019d06c6-9d55-75a4-bf7f-2bde9b85b772",
                 "credits_used": 1,
                 "credits_remaining": 99,
-                "organizations": [{"attributes": {"id": 42, "name": "Acme Corp"}}],
+                "organizations": [
+                    {
+                        "input": {"name": "Acme Corp"},
+                        "attributes": {"id": 42, "name": "Acme Corp", "url": "acme.com"},
+                    }
+                ],
                 "total": 1,
             },
         )
@@ -111,15 +121,18 @@ def test_lookup_organization(sumble_base: str, monkeypatch: pytest.MonkeyPatch) 
 @respx.mock
 def test_search_people(sumble_base: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
+    # Mirror documented example response shape for /v6/people filter mode
     respx.post(f"{sumble_base}/v6/people").mock(
         return_value=httpx.Response(
             200,
             json={
+                "id": "019980d2-bc85-7571-9d60-7bc1d3084249",
                 "credits_used": 12,
                 "credits_remaining": 88,
                 "people": [
                     {
                         "person_id": 9001,
+                        "sumble_url": "https://sumble.com/l/person/MBwjfWREd8Pz",
                         "attributes": {
                             "name": "Alex Manager",
                             "job_title": "Engineering Manager",
@@ -148,13 +161,21 @@ def test_search_people(sumble_base: str, monkeypatch: pytest.MonkeyPatch) -> Non
 @respx.mock
 def test_reveal_email(sumble_base: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
+    # Documented list-mode + email attr (email only available in list/people mode)
     respx.post(f"{sumble_base}/v6/people").mock(
         return_value=httpx.Response(
             200,
             json={
+                "id": "019980d2-bc85-7571-9d60-7bc1d3084249",
                 "credits_used": 10,
                 "credits_remaining": 78,
-                "people": [{"person_id": 9001, "attributes": {"email": "alex@acme.com"}}],
+                "people": [
+                    {
+                        "person_id": 9001,
+                        "sumble_url": "https://sumble.com/l/person/xxx",
+                        "attributes": {"email": "alex@acme.com"},
+                    }
+                ],
                 "total": 1,
             },
         )
@@ -295,7 +316,10 @@ def test_same_person_across_two_jobs(
     org = sumble.SumbleOrganization(organization_id=42, name="Acme")
     with patch("app.api.routers.jobs.resolve_job", side_effect=lambda job_id, db: job_a if job_id == "job-a" else job_b):
         with patch("app.services.team_search.sumble.lookup_organization", return_value=org):
-            with patch("app.services.team_search.sumble.search_people", return_value=([sample_person], 5)):
+            with patch(
+                "app.services.team_search.sumble.find_hiring_team",
+                return_value=([sample_person], 5, "Filtered by function/level"),
+            ):
                 found_a = client.post(f"/jobs/{job_a.id}/find-team", json={"extraction_id": extraction_a})
                 found_b = client.post(f"/jobs/{job_b.id}/find-team", json={"extraction_id": extraction_b})
 
@@ -329,7 +353,10 @@ def test_zero_result_find_team_persists_team_searched(
 
     with patch("app.api.routers.jobs.resolve_job", return_value=job):
         with patch("app.services.team_search.sumble.lookup_organization", return_value=org):
-            with patch("app.services.team_search.sumble.search_people", return_value=([], 3)):
+            with patch(
+                "app.services.team_search.sumble.find_hiring_team",
+                return_value=([], 3, "Filtered by function/level"),
+            ):
                 found = client.post(
                     f"/jobs/{job.id}/find-team",
                     json={"extraction_id": extraction_id},
@@ -386,15 +413,15 @@ def test_find_team_ignores_client_supplied_extraction_fields(
     org = sumble.SumbleOrganization(organization_id=42, name="Acme")
     captured: dict[str, str] = {}
 
-    def _capture_search(**kwargs):
+    def _capture_find(**kwargs):
         captured["team_name"] = kwargs["team_name"]
         captured["department"] = kwargs["department"]
-        return [sample_person], 5
+        return [sample_person], 5, "Filtered by function/level"
 
     with patch("app.api.routers.jobs.resolve_job", return_value=sample_job):
         with patch("app.api.routers.jobs._load_confirmed_extraction", return_value=stored_extraction):
             with patch("app.services.team_search.sumble.lookup_organization", return_value=org):
-                with patch("app.services.team_search.sumble.search_people", side_effect=_capture_search):
+                with patch("app.services.team_search.sumble.find_hiring_team", side_effect=_capture_find):
                     response = client.post(
                         f"/jobs/{sample_job.id}/find-team",
                         json={
@@ -523,3 +550,98 @@ def test_integrity_error_race_returns_cached_reveal(
     assert result.cached is True
     assert result.email == "alex@acme.com"
     db.close()
+
+
+def test_map_llm_extraction_to_sumble(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Pure-ish helper; when title-lookup mocked it uses canonicals
+    monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
+    # Without network, it will fallback inside map (since _post would fail without respx)
+    funcs, levels = sumble.map_llm_extraction_to_sumble(
+        "Engineering", ["Engineering Manager", "Staff Software Engineer"]
+    )
+    assert any("Engineer" in f or "Engineering" in f for f in funcs)
+    # With respx mock for title-lookup, returns canonicals
+    import respx as _respx
+    import httpx as _httpx
+
+    base = settings.SUMBLE_BASE_URL.rstrip("/")
+    with _respx.mock:
+        _respx.post(f"{base}/v6/jobs/title-lookup").mock(
+            return_value=_httpx.Response(
+                200,
+                json={
+                    "id": "u",
+                    "credits_used": 1,
+                    "credits_remaining": 99,
+                    "matched_count": 2,
+                    "results": [
+                        {"input": "Engineering Manager", "job_function": "Engineering", "job_level": "Manager"},
+                        {"input": "Staff Software Engineer", "job_function": "Engineering", "job_level": "Staff"},
+                    ],
+                },
+            )
+        )
+        funcs2, levels2 = sumble.map_llm_extraction_to_sumble("Platform", ["Engineering Manager"])
+        assert "Engineering" in funcs2
+        assert "Manager" in levels2 or "Staff" in levels2
+
+
+@respx.mock
+def test_find_hiring_team_prefers_job_match_path(sumble_base: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
+    # Mock org jobs search -> returns a close title match
+    respx.post(f"{sumble_base}/v6/jobs").mock(
+        side_effect=[
+            # first call inside find_best: search org jobs
+            httpx.Response(
+                200,
+                json={
+                    "id": "j1",
+                    "credits_used": 2,
+                    "credits_remaining": 50,
+                    "jobs": [
+                        {
+                            "job_id": 95107725,
+                            "attributes": {"title": "Backend Engineer", "organization": {"name": "Acme"}},
+                        }
+                    ],
+                    "total": 1,
+                },
+            ),
+            # second call: list + related_people
+            httpx.Response(
+                200,
+                json={
+                    "id": "j2",
+                    "credits_used": 3,
+                    "credits_remaining": 47,
+                    "jobs": [
+                        {
+                            "job_id": 95107725,
+                            "related_people": [
+                                {
+                                    "person_id": 9001,
+                                    "sumble_url": "https://sumble.com/l/person/xx",
+                                    "attributes": {"name": "Alex Mgr", "job_title": "Eng Mgr", "job_level": "Manager"},
+                                }
+                            ],
+                        }
+                    ],
+                    "total": 1,
+                },
+            ),
+        ]
+    )
+
+    people, credits, path = sumble.find_hiring_team(
+        organization_id=42,
+        team_name="Platform",
+        department="Engineering",
+        likely_hiring_titles=["Backend Engineer"],
+        jd_title="Backend Engineer",
+        company="Acme",
+    )
+    assert path == "Matched Sumble job post"
+    assert len(people) == 1
+    assert credits == 3
+    assert people[0].person_id == 9001

@@ -64,4 +64,8 @@ logs/
 # local runtime (keep on disk, do not commit)
 backend/teamscout.db
 backend/uploads/
-backend/.pytest_cache/
+.pytest_cache/
+.ruff_cache/
+reviews/
+frontend/CLAUDE.md
+frontend/AGENTS.md

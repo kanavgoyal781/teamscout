@@ -27,6 +27,7 @@ def _record_team_search(
     extraction_id: str,
     search_id: str | None,
     credits_used: int,
+    search_path: str | None,
     db: Session,
 ) -> None:
     now = datetime.now(timezone.utc)
@@ -39,6 +40,7 @@ def _record_team_search(
                 search_id=search_id,
                 team_searched_at=now,
                 credits_used=credits_used,
+                search_path=search_path,
             )
         )
         return
@@ -47,6 +49,7 @@ def _record_team_search(
     existing.search_id = search_id
     existing.team_searched_at = now
     existing.credits_used = credits_used
+    existing.search_path = search_path
     db.add(existing)
 
 
@@ -57,12 +60,14 @@ def find_team_for_job(
     search_id: str | None,
     db: Session,
 ) -> FindTeamResponse:
-    org = sumble.lookup_organization(job.company)
-    people, credits_used = sumble.search_people(
+    org = sumble.lookup_organization(job.company, job.apply_url)
+    people, credits_used, search_path = sumble.find_hiring_team(
         organization_id=org.organization_id,
         team_name=extraction.team_name,
         department=extraction.department,
         likely_hiring_titles=extraction.likely_hiring_titles,
+        jd_title=job.title,
+        company=job.company,
     )
 
     contacts: list[ContactOut] = []
@@ -103,11 +108,12 @@ def find_team_for_job(
         )
         contacts.append(_contact_to_out(existing, reveal.email if reveal else None))
 
-    _record_team_search(job.id, extraction_id, search_id, credits_used, db)
+    _record_team_search(job.id, extraction_id, search_id, credits_used, search_path, db)
     db.commit()
     return FindTeamResponse(
         job_id=job.id,
         contacts=contacts,
         credits_used=credits_used,
         team_searched=True,
+        search_path=search_path,
     )
