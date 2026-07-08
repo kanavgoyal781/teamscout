@@ -11,6 +11,18 @@ from app.schemas.resume import ResumeProfile
 from app.schemas.team import TeamExtraction
 from app.services import sumble
 
+# Sumble credit totals per documented paths (see sumble.py aggregation).
+_CREDITS_ORG_LOOKUP = 1  # lookup_organization: one org resolve call
+_CREDITS_JOB_MATCH_SEARCH = 2  # search_org_job_posts (filter mode)
+_CREDITS_JOB_MATCH_RELATED = 3  # get_related_people_for_job (list + related_people)
+_CREDITS_JOB_MATCH_PATH = _CREDITS_JOB_MATCH_SEARCH + _CREDITS_JOB_MATCH_RELATED  # 5
+_CREDITS_FALLBACK_TITLE_LOOKUP = 1  # title-lookup inside build_people_query
+_CREDITS_FALLBACK_PEOPLE_SEARCH = 12  # people filter credits_used (test_search_people mock)
+_CREDITS_FALLBACK_PATH = _CREDITS_FALLBACK_TITLE_LOOKUP + _CREDITS_FALLBACK_PEOPLE_SEARCH  # 13
+
+_PATH_JOB_MATCH = "Matched Sumble job post"
+_PATH_FALLBACK = "Filtered by function/level"
+
 
 @pytest.fixture
 def sumble_base() -> str:
@@ -70,10 +82,13 @@ def _seed_contact(
 ) -> str:
     org = sumble.SumbleOrganization(organization_id=42, name="Acme")
     with patch("app.api.routers.jobs.resolve_job", return_value=job):
-        with patch("app.services.team_search.sumble.lookup_organization", return_value=org):
+        with patch(
+            "app.services.team_search.sumble.lookup_organization",
+            return_value=(org, _CREDITS_ORG_LOOKUP),
+        ):
             with patch(
                 "app.services.team_search.sumble.find_hiring_team",
-                return_value=([person], 5, "Filtered by function/level"),
+                return_value=([person], _CREDITS_FALLBACK_PATH, _PATH_FALLBACK),
             ):
                 response = client.post(
                     f"/jobs/{job.id}/find-team",
@@ -112,9 +127,10 @@ def test_lookup_organization(sumble_base: str, monkeypatch: pytest.MonkeyPatch) 
         )
     )
 
-    org = sumble.lookup_organization("Acme Corp")
+    org, credits = sumble.lookup_organization("Acme Corp")
     assert org.organization_id == 42
     assert org.name == "Acme Corp"
+    assert credits == _CREDITS_ORG_LOOKUP
     assert route.called
 
 
@@ -174,7 +190,7 @@ def test_search_people(sumble_base: str, monkeypatch: pytest.MonkeyPatch) -> Non
     assert len(people) == 1
     assert people[0].person_id == 9001
     assert people[0].seniority == "Manager"
-    assert credits == 12
+    assert credits == _CREDITS_FALLBACK_PATH
 
 
 @respx.mock
@@ -334,10 +350,13 @@ def test_same_person_across_two_jobs(
 
     org = sumble.SumbleOrganization(organization_id=42, name="Acme")
     with patch("app.api.routers.jobs.resolve_job", side_effect=lambda job_id, db: job_a if job_id == "job-a" else job_b):
-        with patch("app.services.team_search.sumble.lookup_organization", return_value=org):
+        with patch(
+            "app.services.team_search.sumble.lookup_organization",
+            return_value=(org, _CREDITS_ORG_LOOKUP),
+        ):
             with patch(
                 "app.services.team_search.sumble.find_hiring_team",
-                return_value=([sample_person], 5, "Filtered by function/level"),
+                return_value=([sample_person], _CREDITS_FALLBACK_PATH, _PATH_FALLBACK),
             ):
                 found_a = client.post(f"/jobs/{job_a.id}/find-team", json={"extraction_id": extraction_a})
                 found_b = client.post(f"/jobs/{job_b.id}/find-team", json={"extraction_id": extraction_b})
@@ -371,10 +390,13 @@ def test_zero_result_find_team_persists_team_searched(
     org = sumble.SumbleOrganization(organization_id=42, name="Acme")
 
     with patch("app.api.routers.jobs.resolve_job", return_value=job):
-        with patch("app.services.team_search.sumble.lookup_organization", return_value=org):
+        with patch(
+            "app.services.team_search.sumble.lookup_organization",
+            return_value=(org, _CREDITS_ORG_LOOKUP),
+        ):
             with patch(
                 "app.services.team_search.sumble.find_hiring_team",
-                return_value=([], 3, "Filtered by function/level"),
+                return_value=([], _CREDITS_FALLBACK_PATH, _PATH_FALLBACK),
             ):
                 found = client.post(
                     f"/jobs/{job.id}/find-team",
@@ -435,11 +457,14 @@ def test_find_team_ignores_client_supplied_extraction_fields(
     def _capture_find(**kwargs):
         captured["team_name"] = kwargs["team_name"]
         captured["department"] = kwargs["department"]
-        return [sample_person], 5, "Filtered by function/level"
+        return [sample_person], _CREDITS_FALLBACK_PATH, _PATH_FALLBACK
 
     with patch("app.api.routers.jobs.resolve_job", return_value=sample_job):
         with patch("app.api.routers.jobs._load_confirmed_extraction", return_value=stored_extraction):
-            with patch("app.services.team_search.sumble.lookup_organization", return_value=org):
+            with patch(
+                "app.services.team_search.sumble.lookup_organization",
+                return_value=(org, _CREDITS_ORG_LOOKUP),
+            ):
                 with patch("app.services.team_search.sumble.find_hiring_team", side_effect=_capture_find):
                     response = client.post(
                         f"/jobs/{sample_job.id}/find-team",
@@ -574,19 +599,21 @@ def test_integrity_error_race_returns_cached_reveal(
 def test_map_llm_extraction_to_sumble(monkeypatch: pytest.MonkeyPatch) -> None:
     # Pure-ish helper; when title-lookup mocked it uses canonicals
     monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
-    # Without network, it will fallback inside map (since _post would fail without respx)
-    funcs, levels = sumble.map_llm_extraction_to_sumble(
-        "Engineering", ["Engineering Manager", "Staff Software Engineer"]
-    )
-    assert any("Engineer" in f or "Engineering" in f for f in funcs)
-    # With respx mock for title-lookup, returns canonicals (use documented object shape)
-    import respx as _respx
-    import httpx as _httpx
-
     base = settings.SUMBLE_BASE_URL.rstrip("/")
-    with _respx.mock:
-        _respx.post(f"{base}/v6/jobs/title-lookup").mock(
-            return_value=_httpx.Response(
+    # Explicit connection failure → title-lookup skipped; credits stay 0
+    with respx.mock:
+        respx.post(f"{base}/v6/jobs/title-lookup").mock(
+            side_effect=httpx.ConnectError("connection refused")
+        )
+        funcs, levels, credits = sumble.map_llm_extraction_to_sumble(
+            "Engineering", ["Engineering Manager", "Staff Software Engineer"]
+        )
+        assert credits == 0
+        assert any("Engineer" in f or "Engineering" in f for f in funcs)
+    # With respx mock for title-lookup, returns canonicals (use documented object shape)
+    with respx.mock:
+        respx.post(f"{base}/v6/jobs/title-lookup").mock(
+            return_value=httpx.Response(
                 200,
                 json={
                     "id": "u",
@@ -608,10 +635,11 @@ def test_map_llm_extraction_to_sumble(monkeypatch: pytest.MonkeyPatch) -> None:
                 },
             )
         )
-        funcs2, levels2 = sumble.map_llm_extraction_to_sumble("Platform", ["Engineering Manager"])
+        funcs2, levels2, credits2 = sumble.map_llm_extraction_to_sumble("Platform", ["Engineering Manager"])
         # Prefers slug
         assert "engineering" in funcs2
         assert "Manager" in levels2 or "Staff" in levels2
+        assert credits2 == _CREDITS_FALLBACK_TITLE_LOOKUP
 
 
 def test_map_llm_extraction_to_sumble_uses_slug_in_query(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -619,13 +647,11 @@ def test_map_llm_extraction_to_sumble_uses_slug_in_query(monkeypatch: pytest.Mon
     Confirms slug is preferred for job_function in the DSL.
     """
     monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
-    import respx as _respx
-    import httpx as _httpx
 
     base = settings.SUMBLE_BASE_URL.rstrip("/")
-    with _respx.mock:
-        _respx.post(f"{base}/v6/jobs/title-lookup").mock(
-            return_value=_httpx.Response(
+    with respx.mock:
+        respx.post(f"{base}/v6/jobs/title-lookup").mock(
+            return_value=httpx.Response(
                 200,
                 json={
                     "id": "019980d2-bc85-7571-9d60-7bc1d3084249",
@@ -642,14 +668,16 @@ def test_map_llm_extraction_to_sumble_uses_slug_in_query(monkeypatch: pytest.Mon
                 },
             )
         )
-        funcs, levels = sumble.map_llm_extraction_to_sumble("", ["VP Engineering"])
+        funcs, levels, credits = sumble.map_llm_extraction_to_sumble("", ["VP Engineering"])
         assert funcs == ["engineering"]
         assert "Executive" in levels
+        assert credits == _CREDITS_FALLBACK_TITLE_LOOKUP
 
         # build_people_query should use the slug
-        q = sumble.build_people_query(department="", likely_hiring_titles=["VP Engineering"])
+        q, title_credits = sumble.build_people_query(department="", likely_hiring_titles=["VP Engineering"])
         assert q is not None
         assert "job_function EQ 'engineering'" in q
+        assert title_credits == _CREDITS_FALLBACK_TITLE_LOOKUP
 
 
 @respx.mock
@@ -663,7 +691,7 @@ def test_find_hiring_team_prefers_job_match_path(sumble_base: str, monkeypatch: 
                 200,
                 json={
                     "id": "j1",
-                    "credits_used": 2,
+                    "credits_used": _CREDITS_JOB_MATCH_SEARCH,
                     "credits_remaining": 50,
                     "jobs": [
                         {
@@ -679,7 +707,7 @@ def test_find_hiring_team_prefers_job_match_path(sumble_base: str, monkeypatch: 
                 200,
                 json={
                     "id": "j2",
-                    "credits_used": 3,
+                    "credits_used": _CREDITS_JOB_MATCH_RELATED,
                     "credits_remaining": 47,
                     "jobs": [
                         {
@@ -707,7 +735,7 @@ def test_find_hiring_team_prefers_job_match_path(sumble_base: str, monkeypatch: 
         jd_title="Backend Engineer",
         company="Acme",
     )
-    assert path == "Matched Sumble job post"
+    assert path == _PATH_JOB_MATCH
     assert len(people) == 1
-    assert credits == 3
+    assert credits == _CREDITS_JOB_MATCH_PATH
     assert people[0].person_id == 9001

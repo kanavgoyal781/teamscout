@@ -64,7 +64,8 @@ logs/
 # local runtime (keep on disk, do not commit)
 *.db
 backend/teamscout.db
-backend/uploads/
+backend/uploads/*
+!backend/uploads/.gitkeep
 backend/.pytest_cache/
 .pytest_cache/
 .ruff_cache/
