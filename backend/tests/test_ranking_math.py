@@ -1,6 +1,6 @@
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
+import pytest
 from app.errors import ValidationError
 from app.services.ranking_math import (
     fuse_final_score,
@@ -48,8 +48,8 @@ def test_skill_jaccard_overlap() -> None:
 
 
 def test_recency_score_decays_with_age() -> None:
-    recent = recency_score(datetime.now(timezone.utc) - timedelta(days=1), half_life_days=7)
-    older = recency_score(datetime.now(timezone.utc) - timedelta(days=14), half_life_days=7)
+    recent = recency_score(datetime.now(UTC) - timedelta(days=1), half_life_days=7)
+    older = recency_score(datetime.now(UTC) - timedelta(days=14), half_life_days=7)
     assert recent > older
     assert 0 < older < 1
 

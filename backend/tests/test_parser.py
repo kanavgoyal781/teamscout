@@ -2,11 +2,11 @@ import io
 from unittest.mock import patch
 
 import pytest
-from docx import Document
-
 from app.errors import ValidationError
 from app.schemas.resume import ResumeProfile, WorkExperience
 from app.services import parser
+from docx import Document
+
 from tests.conftest import SAMPLE_PDF
 
 
@@ -43,9 +43,7 @@ def test_parse_resume_text_uses_llm_json() -> None:
         years_of_experience=8,
         location="San Francisco, CA",
         skills=["Python", "FastAPI"],
-        work_experience=[
-            WorkExperience(title="Backend Engineer", company="Acme", bullets=["Built APIs"])
-        ],
+        work_experience=[WorkExperience(title="Backend Engineer", company="Acme", bullets=["Built APIs"])],
         summary="Backend specialist",
     )
     with patch("app.services.parser.llm.complete_json", return_value=profile) as mocked:

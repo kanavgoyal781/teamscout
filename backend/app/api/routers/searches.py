@@ -1,9 +1,10 @@
 import json
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import limiter, search_limit
 from app.db.models import Resume, Search
 from app.db.session import get_db
 from app.errors import NotFoundError, ValidationError
@@ -25,7 +26,12 @@ class SearchResponse(BaseModel):
 
 
 @router.post("", response_model=SearchResponse)
-def create_search(payload: SearchRequest, db: Session = Depends(get_db)) -> SearchResponse:
+@limiter.limit(search_limit)
+def create_search(
+    request: Request,
+    payload: SearchRequest,
+    db: Session = Depends(get_db),
+) -> SearchResponse:
     row = db.query(Resume).filter(Resume.id == payload.resume_id).one_or_none()
     if row is None:
         raise NotFoundError("resume", payload.resume_id)

@@ -1,11 +1,10 @@
 from unittest.mock import patch
 
 import pytest
-
 from app.errors import ServiceFailingError
 from app.schemas.jobs import Job
 from app.schemas.resume import ResumeProfile
-from app.services.ranking import _RerankItem, _RerankResponse, _llm_rerank, rank_jobs
+from app.services.ranking import _llm_rerank, _RerankItem, _RerankResponse, rank_jobs
 
 
 def _job(job_id: str) -> Job:
@@ -69,9 +68,7 @@ def test_llm_rerank_rejects_duplicate_job_ids() -> None:
 
 def test_rank_jobs_raises_on_partial_llm_rerank() -> None:
     jobs = [_job("job-1"), _job("job-2")]
-    partial = _RerankResponse(
-        results=[_RerankItem(job_id="job-1", fit_score=90, rationale="fit")]
-    )
+    partial = _RerankResponse(results=[_RerankItem(job_id="job-1", fit_score=90, rationale="fit")])
     with patch("app.services.hybrid_rank.dense_ranking", return_value=["job-1", "job-2"]):
         with patch("app.services.hybrid_rank.lexical_ranking", return_value=["job-2", "job-1"]):
             with patch("app.services.ranking.llm.complete_json", return_value=partial):

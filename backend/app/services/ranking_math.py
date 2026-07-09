@@ -1,6 +1,6 @@
 import math
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.core.config import settings
 from app.errors import ValidationError
@@ -54,9 +54,9 @@ def recency_score(posted_at: datetime | None, *, half_life_days: int | None = No
     if posted_at is None:
         return 0.5
     half_life = half_life_days if half_life_days is not None else settings.RECENCY_HALF_LIFE_DAYS
-    now = datetime.now(timezone.utc)
-    posted = posted_at if posted_at.tzinfo else posted_at.replace(tzinfo=timezone.utc)
-    age_days = max((now - posted.astimezone(timezone.utc)).total_seconds() / 86400.0, 0.0)
+    now = datetime.now(UTC)
+    posted = posted_at if posted_at.tzinfo else posted_at.replace(tzinfo=UTC)
+    age_days = max((now - posted.astimezone(UTC)).total_seconds() / 86400.0, 0.0)
     return 0.5 ** (age_days / half_life)
 
 

@@ -1,8 +1,9 @@
 import hashlib
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import find_team_limit, limiter, llm_limit
 from app.db.models import Contact, EmailReveal, JobTeamSearch, TeamExtractionRecord
 from app.db.session import get_db
 from app.errors import ValidationError
@@ -77,7 +78,12 @@ def _contact_to_out(contact: Contact, reveal_email: str | None = None) -> Contac
 
 
 @router.post("/{job_id}/extract-team", response_model=TeamExtractionResponse)
-def extract_team(job_id: str, db: Session = Depends(get_db)) -> TeamExtractionResponse:
+@limiter.limit(llm_limit)
+def extract_team(
+    request: Request,
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> TeamExtractionResponse:
     job = resolve_job(job_id, db)
     extraction = team_extract.extract_team_from_job(job)
     record = TeamExtractionRecord(
@@ -92,7 +98,9 @@ def extract_team(job_id: str, db: Session = Depends(get_db)) -> TeamExtractionRe
 
 
 @router.post("/{job_id}/find-team", response_model=FindTeamResponse)
+@limiter.limit(find_team_limit)
 def find_team(
+    request: Request,
     job_id: str,
     payload: FindTeamRequest,
     db: Session = Depends(get_db),
@@ -111,12 +119,7 @@ def find_team(
 @router.get("/{job_id}/team", response_model=TeamListResponse)
 def list_team(job_id: str, db: Session = Depends(get_db)) -> TeamListResponse:
     resolve_job(job_id, db)
-    rows = (
-        db.query(Contact)
-        .filter(Contact.job_id == job_id)
-        .order_by(Contact.created_at.desc())
-        .all()
-    )
+    rows = db.query(Contact).filter(Contact.job_id == job_id).order_by(Contact.created_at.desc()).all()
     contact_ids = [row.id for row in rows]
     reveals: dict[str, str] = {}
     if contact_ids:
@@ -131,11 +134,7 @@ def list_team(job_id: str, db: Session = Depends(get_db)) -> TeamListResponse:
         reveals = {row.contact_id: row.email for row in reveal_rows if row.email}
 
     extraction_id, extraction = _latest_extraction(job_id, db)
-    ts = (
-        db.query(JobTeamSearch)
-        .filter(JobTeamSearch.job_id == job_id)
-        .one_or_none()
-    )
+    ts = db.query(JobTeamSearch).filter(JobTeamSearch.job_id == job_id).one_or_none()
     return TeamListResponse(
         job_id=job_id,
         contacts=[_contact_to_out(row, reveals.get(row.id)) for row in rows],

@@ -3,13 +3,11 @@ from unittest.mock import patch
 import httpx
 import pytest
 import respx
-from fastapi.testclient import TestClient
-
 from app.core.config import settings
 from app.schemas.jobs import Job
-from app.schemas.resume import ResumeProfile
 from app.schemas.team import TeamExtraction
 from app.services import sumble
+from fastapi.testclient import TestClient
 
 # Sumble credit totals per documented paths (see sumble.py aggregation).
 _CREDITS_ORG_LOOKUP = 1  # lookup_organization: one org resolve call
@@ -298,7 +296,9 @@ def test_not_found_reveal_is_terminal_and_stores_credits(
     with patch("app.services.email_reveal.sumble.reveal_email", side_effect=_fake_reveal):
         first = client.post(f"/contacts/{contact_id}/reveal-email?confirm=true")
         assert first.status_code == 400
-        assert "no email found" in first.json()["message"].lower() or "did not return" in first.json()["message"].lower()
+        assert (
+            "no email found" in first.json()["message"].lower() or "did not return" in first.json()["message"].lower()
+        )
 
         retry = client.post(f"/contacts/{contact_id}/reveal-email?confirm=true")
         assert retry.status_code == 400
@@ -349,7 +349,9 @@ def test_same_person_across_two_jobs(
     extraction_b = _seed_extraction(client, job_b, sample_extraction)
 
     org = sumble.SumbleOrganization(organization_id=42, name="Acme")
-    with patch("app.api.routers.jobs.resolve_job", side_effect=lambda job_id, db: job_a if job_id == "job-a" else job_b):
+    with patch(
+        "app.api.routers.jobs.resolve_job", side_effect=lambda job_id, db: job_a if job_id == "job-a" else job_b
+    ):
         with patch(
             "app.services.team_search.sumble.lookup_organization",
             return_value=(org, _CREDITS_ORG_LOOKUP),
@@ -602,9 +604,7 @@ def test_map_llm_extraction_to_sumble(monkeypatch: pytest.MonkeyPatch) -> None:
     base = settings.SUMBLE_BASE_URL.rstrip("/")
     # Explicit connection failure → title-lookup skipped; credits stay 0
     with respx.mock:
-        respx.post(f"{base}/v6/jobs/title-lookup").mock(
-            side_effect=httpx.ConnectError("connection refused")
-        )
+        respx.post(f"{base}/v6/jobs/title-lookup").mock(side_effect=httpx.ConnectError("connection refused"))
         funcs, levels, credits = sumble.map_llm_extraction_to_sumble(
             "Engineering", ["Engineering Manager", "Staff Software Engineer"]
         )
@@ -739,3 +739,193 @@ def test_find_hiring_team_prefers_job_match_path(sumble_base: str, monkeypatch: 
     assert len(people) == 1
     assert credits == _CREDITS_JOB_MATCH_PATH
     assert people[0].person_id == 9001
+
+
+def test_sumble_client_pure_helpers() -> None:
+    from app.services import sumble_client
+
+    assert sumble_client.escape_query_value("O'Brien") == "O\\'Brien"
+    assert sumble_client.title_similarity("", "x") == 0.0
+    assert sumble_client.title_similarity("Engineer", "engineer") == 1.0
+    assert (
+        sumble_client.redact_url("https://api.sumble.com/v6/people?token=secret") == "https://api.sumble.com/v6/people"
+    )
+
+
+def test_sumble_client_require_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings
+    from app.errors import ServiceNotConfiguredError
+    from app.services import sumble_client
+
+    monkeypatch.setattr(settings, "SUMBLE_API_KEY", None)
+    with pytest.raises(ServiceNotConfiguredError):
+        sumble_client.require_sumble_config()
+
+
+@respx.mock
+def test_sumble_client_post_http_errors(sumble_base: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings
+    from app.errors import ServiceFailingError
+    from app.services import sumble_client
+
+    monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
+    respx.post(f"{sumble_base}/v6/people").mock(return_value=httpx.Response(500, text="boom"))
+    with pytest.raises(ServiceFailingError, match="HTTP 500"):
+        sumble_client.post("/v6/people", {"filter": {}})
+
+    respx.post(f"{sumble_base}/v6/people").mock(return_value=httpx.Response(200, json=["not", "a", "dict"]))
+    with pytest.raises(ServiceFailingError, match="unexpected response format"):
+        sumble_client.post("/v6/people", {"filter": {}})
+
+
+def test_sumble_jobs_no_title_short_circuit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import sumble_jobs
+
+    jid, credits = sumble_jobs.find_best_matching_job_post(1, "", "Acme")
+    assert jid is None and credits == 0
+
+
+@respx.mock
+def test_sumble_jobs_match_and_related(sumble_base: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings
+    from app.services import sumble_jobs
+
+    monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
+    respx.post(f"{sumble_base}/v6/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jobs": [
+                    {"job_id": 11, "attributes": {"title": "Backend Engineer"}},
+                    {"job_id": 12, "attributes": {"title": "Sales Rep"}},
+                ],
+                "credits_used": 2,
+            },
+        )
+    )
+    jid, credits = sumble_jobs.find_best_matching_job_post(42, "Backend Engineer", "Acme")
+    assert jid == 11
+    assert credits == 2
+
+    respx.post(f"{sumble_base}/v6/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jobs": [
+                    {
+                        "job_id": 11,
+                        "related_people": [
+                            {
+                                "person_id": 7,
+                                "attributes": {
+                                    "name": "Pat",
+                                    "job_title": "EM",
+                                    "job_function": "Engineering",
+                                    "job_level": "Manager",
+                                },
+                            }
+                        ],
+                    }
+                ],
+                "credits_used": 3,
+            },
+        )
+    )
+    people, c2 = sumble_jobs.get_related_people_for_job(11)
+    assert len(people) == 1
+    assert people[0].person_id == 7
+    assert c2 == 3
+
+
+def test_team_extract_empty_description_raises() -> None:
+    from app.errors import ValidationError
+    from app.schemas.jobs import Job
+    from app.services import team_extract
+
+    job = Job(
+        id="j1",
+        source="t",
+        source_job_id="s1",
+        title="X",
+        company="Y",
+        location="Z",
+        description="   ",
+        apply_url="",
+        posted_at=None,
+        skills=[],
+    )
+    with pytest.raises(ValidationError):
+        team_extract.extract_team_from_job(job)
+
+
+def test_team_extract_calls_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.schemas.jobs import Job
+    from app.schemas.team import TeamExtraction
+    from app.services import team_extract
+
+    job = Job(
+        id="j1",
+        source="t",
+        source_job_id="s1",
+        title="Backend Engineer",
+        company="Acme",
+        location="SF",
+        description="Build APIs on the Platform team.",
+        apply_url="https://example.com/apply",
+        posted_at=None,
+        skills=["Python"],
+    )
+    expected = TeamExtraction(
+        team_name="Platform",
+        department="Engineering",
+        likely_hiring_titles=["Engineering Manager"],
+    )
+
+    def _fake_complete_json(prompt, model, **kwargs):
+        assert model is TeamExtraction
+        assert "Backend Engineer" in prompt
+        return expected
+
+    monkeypatch.setattr("app.services.team_extract.llm.complete_json", _fake_complete_json)
+    assert team_extract.extract_team_from_job(job) == expected
+
+
+@respx.mock
+def test_sumble_lookup_org_domain_and_name(sumble_base: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings
+    from app.services import sumble
+
+    monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
+    # first call (with domain) fails, second (name) succeeds
+    calls = {"n": 0}
+
+    def _side(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(404, text="nope")
+        return httpx.Response(
+            200,
+            json={
+                "organizations": [{"attributes": {"id": 99, "name": "Acme"}}],
+                "credits_used": 1,
+            },
+        )
+
+    respx.post(f"{sumble_base}/v6/organizations").mock(side_effect=_side)
+    org, credits = sumble.lookup_organization("Acme", apply_url="https://jobs.acme.com/careers/1")
+    assert org.organization_id == 99
+    assert credits == 1
+
+
+def test_build_people_query_multi(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import sumble
+
+    def _fake_map(department, titles):
+        return (["Engineering", "Product"], ["Manager", "Director"], 0)
+
+    monkeypatch.setattr(sumble, "map_llm_extraction_to_sumble", _fake_map)
+    q, credits = sumble.build_people_query(department="Engineering", likely_hiring_titles=["EM", "Dir"])
+    assert q is not None
+    assert "job_function EQ" in q
+    assert "OR" in q
+    assert credits == 0

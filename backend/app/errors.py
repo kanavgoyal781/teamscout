@@ -55,3 +55,20 @@ class NotFoundError(TeamScoutError):
             error_code="not_found",
             details={"resource": resource, "id": resource_id},
         )
+
+
+class CostCeilingExceededError(TeamScoutError):
+    """Daily LLM cost or Sumble credit ceiling hit — fail closed (HTTP 429)."""
+
+    def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:
+        super().__init__(
+            message,
+            status_code=429,
+            error_code="cost_ceiling_exceeded",
+            details=details,
+        )
+
+
+class OpsAuthError(TeamScoutError):
+    def __init__(self, message: str = "Ops access denied") -> None:
+        super().__init__(message, status_code=401, error_code="ops_unauthorized")

@@ -1,12 +1,13 @@
 import io
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from app.db.models import DriveSyncState, DriveSyncedFile, Resume
+from app.core.upload_limit import enforce_upload_size
+from app.db.models import DriveSyncedFile, DriveSyncState, Resume
 from app.errors import NotFoundError, ValidationError
 from app.schemas.library import LibraryResumeOut, ResumeCandidate
 from app.schemas.resume import ResumeProfile
@@ -36,12 +37,7 @@ def _resume_out_by_hash(content_hash: str, db: Session) -> LibraryResumeOut:
 
 
 def load_candidates(db: Session) -> list[ResumeCandidate]:
-    rows = (
-        db.query(Resume)
-        .filter(Resume.in_library.is_(True))
-        .order_by(Resume.created_at.desc())
-        .all()
-    )
+    rows = db.query(Resume).filter(Resume.in_library.is_(True)).order_by(Resume.created_at.desc()).all()
     return [
         ResumeCandidate(
             resume_id=row.id,
@@ -53,12 +49,7 @@ def load_candidates(db: Session) -> list[ResumeCandidate]:
 
 
 def list_library_resumes(db: Session) -> list[LibraryResumeOut]:
-    rows = (
-        db.query(Resume)
-        .filter(Resume.in_library.is_(True))
-        .order_by(Resume.created_at.desc())
-        .all()
-    )
+    rows = db.query(Resume).filter(Resume.in_library.is_(True)).order_by(Resume.created_at.desc()).all()
     return [_resume_to_out(row) for row in rows]
 
 
@@ -71,6 +62,7 @@ def ingest_resume_bytes(
 ) -> tuple[LibraryResumeOut, bool]:
     if not data:
         raise ValidationError(f"File is empty: {filename}")
+    enforce_upload_size(data)
 
     file_hash, profile = parser.parse_resume_file(filename, data)
     existing = db.query(Resume).filter(Resume.content_hash == file_hash).one_or_none()
@@ -131,7 +123,7 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
         else:
             skipped += 1
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if synced is None:
             db.add(
                 DriveSyncedFile(
@@ -151,7 +143,7 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
             db.add(synced)
 
     state = db.query(DriveSyncState).filter(DriveSyncState.folder_id == folder_id).one_or_none()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if state is None:
         state = DriveSyncState(folder_id=folder_id, folder_url=folder_url, last_synced_at=now)
         db.add(state)
@@ -182,6 +174,7 @@ async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str,
         if not upload.filename:
             continue
         data = await upload.read()
+        enforce_upload_size(data)
         received += 1
         suffix = Path(upload.filename).suffix.lower()
         if suffix == ".zip":

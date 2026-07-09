@@ -1,0 +1,15 @@
+# Broad-except allowlist for backend/app.
+# Only justified rollback/re-raise or similar must appear here.
+#
+# Preferred format (stable across line shifts):
+#   path/to/file.py:except Exception  # reason
+#   path/to/file.py:except:           # reason (bare)
+#   path/to/file.py:except BaseException  # reason
+#
+# Also accepted: path/to/file.py:LINE  # reason (pins a single line)
+#
+# Kind match is EXACT: `except Exception` never covers bare `except:`.
+# Keep this list tiny. Prefer narrowing the except when possible.
+
+backend/app/services/email_reveal.py:except Exception  # rollback-and-reraise after BEGIN IMMEDIATE so terminal email cache is not left half-applied; error is never swallowed
+backend/app/services/observability.py:except BaseException  # re-record trace on any outbound failure then re-raise; never swallow

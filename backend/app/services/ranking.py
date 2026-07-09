@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.errors import ServiceFailingError
+from app.prompts import load_prompt
 from app.schemas.jobs import Job, RankedJob, ScoreBreakdown
 from app.schemas.resume import ResumeProfile
 from app.services import llm
@@ -29,11 +30,9 @@ def _job_to_rankable(job: Job) -> Rankable:
     )
 
 
-def _build_rerank_prompt(profile: ResumeProfile, jobs: list[Job]) -> str:
+def _build_rerank_prompt(profile: ResumeProfile, jobs: list[Job], instructions: str) -> str:
     lines = [
-        "Score each job for fit against the candidate profile.",
-        "Return JSON: {\"results\": [{\"job_id\": \"...\", \"fit_score\": 0-100, "
-        "\"matched_skills\": [\"...\"], \"missing_skills\": [\"...\"], \"rationale\": \"...\"}]}",
+        instructions.strip(),
         "",
         f"Candidate title: {profile.title}",
         f"Candidate location: {profile.location}",
@@ -56,11 +55,14 @@ def _llm_rerank(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _RerankIte
         return {}
 
     expected_ids = {job.id for job in jobs}
+    tmpl = load_prompt("rerank")
     response = llm.complete_json(
-        _build_rerank_prompt(profile, jobs),
+        _build_rerank_prompt(profile, jobs, tmpl.body),
         _RerankResponse,
-        system="You are a recruiting matcher. Return JSON only.",
-        max_tokens=6000,
+        system=tmpl.system or "You are a recruiting matcher. Return JSON only.",
+        max_tokens=int(tmpl.model_params.get("max_tokens") or settings.max_tokens_for_operation("rerank")),
+        operation="rerank",
+        prompt_meta=tmpl,
     )
 
     if not response.results:

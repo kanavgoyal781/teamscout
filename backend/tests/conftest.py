@@ -7,7 +7,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+# Disable rate limits for unit tests (re-enabled in test_rate_limit.py).
+os.environ["RATE_LIMIT_ENABLED"] = "false"
 
+# Force unconfigured integrations for honesty-layer tests.
+# Empty env vars override repo-root .env (pydantic-settings precedence) so local
+# developer keys do not mark services as "configured" during pytest.
 for key in (
     "LLM_API_KEY",
     "LLM_API_BASE",
@@ -20,8 +25,14 @@ for key in (
     "GOOGLE_DRIVE_CLIENT_ID",
     "GOOGLE_DRIVE_CLIENT_SECRET",
     "GOOGLE_DRIVE_REFRESH_TOKEN",
+    "OPS_TOKEN",
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
 ):
-    os.environ.pop(key, None)
+    os.environ[key] = ""
+
+# High ceilings by default so instrumented call tests are not blocked.
+os.environ.setdefault("LLM_DAILY_COST_CEILING_USD", "1000")
+os.environ.setdefault("SUMBLE_DAILY_CREDIT_CEILING", "100000")
 
 from app.main import app  # noqa: E402
 
@@ -49,6 +60,13 @@ def _ensure_sample_pdf() -> None:
     page.insert_text((72, 72), SAMPLE_RESUME_TEXT)
     doc.save(SAMPLE_PDF)
     doc.close()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _init_db() -> None:
+    from app.db.session import init_db
+
+    init_db()
 
 
 @pytest.fixture

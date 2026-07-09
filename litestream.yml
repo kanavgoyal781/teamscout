@@ -1,0 +1,31 @@
+# Litestream SQLite replica template (optional, env-gated).
+#
+# Runtime: scripts/docker-entrypoint.sh generates /tmp/litestream.runtime.yml from
+# this shape, omitting empty optional fields (endpoint). Credentials are NEVER
+# written as empty strings into the config — they use the AWS SDK default chain:
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+# or (preferred on Fly) map from:
+#   LITESTREAM_ACCESS_KEY_ID / LITESTREAM_SECRET_ACCESS_KEY
+# via the entrypoint when those are set.
+#
+# Required when enabled:
+#   LITESTREAM_S3_BUCKET
+# Credentials (one of):
+#   LITESTREAM_ACCESS_KEY_ID + LITESTREAM_SECRET_ACCESS_KEY
+#   OR AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+# Optional:
+#   LITESTREAM_S3_REGION   (e.g. us-east-1)
+#   LITESTREAM_S3_ENDPOINT (R2/MinIO only — omit entirely for AWS S3)
+#
+# Do NOT set LITESTREAM_S3_ENDPOINT='' — omit the secret for AWS.
+# Secrets are never committed — set via `fly secrets set`.
+
+dbs:
+  - path: /data/teamscout.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_S3_BUCKET}
+        path: teamscout
+        region: ${LITESTREAM_S3_REGION}
+        # endpoint: only emitted by entrypoint when LITESTREAM_S3_ENDPOINT is non-empty
+        # access-key-id / secret-access-key: omitted — use AWS_* env chain

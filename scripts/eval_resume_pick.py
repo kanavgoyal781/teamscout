@@ -16,6 +16,43 @@ from app.services.resume_ranking import rank_resumes_for_job
 from scripts.fixtures.resume_pick_fixtures import CASES
 
 
+import json
+import subprocess
+from datetime import UTC, datetime
+
+from app.prompts import prompt_versions
+
+
+def _git_sha() -> str:
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=ROOT,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        return out.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return settings.GIT_SHA or "unknown"
+
+
+def append_eval_history(metrics: dict) -> None:
+    history = ROOT / "evals" / "history.jsonl"
+    history.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "ts": datetime.now(UTC).isoformat(),
+        "suite": "resume_pick",
+        "metrics": metrics,
+        "prompt_versions": prompt_versions(),
+        "model": settings.LLM_MODEL,
+        "embeddings_model": settings.EMBEDDINGS_MODEL,
+        "git_sha": _git_sha(),
+    }
+    with history.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record) + "\n")
+
+
+
 def main() -> int:
     if not is_set(settings.EMBEDDINGS_API_KEY) or not is_set(settings.EMBEDDINGS_API):
         print("SKIP: embeddings not configured — set EMBEDDINGS_API_KEY and EMBEDDINGS_API to run eval")
@@ -47,6 +84,12 @@ def main() -> int:
         )
 
     print(f"RESULT: best resume ranked #1 in {wins}/{len(CASES)} cases")
+    metrics_out = {
+        "wins": wins,
+        "cases": len(CASES),
+        "win_rate": wins / len(CASES) if CASES else 0.0,
+    }
+    append_eval_history(metrics_out)
     if wins < 4:
         print("FAIL: expected best resume #1 in at least 4 of 5 cases")
         return 1

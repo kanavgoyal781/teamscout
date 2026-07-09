@@ -1,8 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
-
 from app.errors import ServiceNotConfiguredError
 from app.schemas.resume import ResumeProfile
 from app.services import jobs
@@ -17,19 +16,19 @@ def test_fetch_jobs_missing_key_raises() -> None:
 
 
 def test_within_recency_excludes_undated_jobs() -> None:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=14)
+    cutoff = datetime.now(UTC) - timedelta(days=14)
     assert jobs._within_recency(None, cutoff) is False
 
 
 def test_within_recency_accepts_recent_jobs() -> None:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=14)
-    recent = datetime.now(timezone.utc) - timedelta(days=3)
+    cutoff = datetime.now(UTC) - timedelta(days=14)
+    recent = datetime.now(UTC) - timedelta(days=3)
     assert jobs._within_recency(recent, cutoff) is True
 
 
 def test_within_recency_rejects_stale_jobs() -> None:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=14)
-    stale = datetime.now(timezone.utc) - timedelta(days=30)
+    cutoff = datetime.now(UTC) - timedelta(days=14)
+    stale = datetime.now(UTC) - timedelta(days=30)
     assert jobs._within_recency(stale, cutoff) is False
 
 

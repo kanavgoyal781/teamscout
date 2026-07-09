@@ -1,16 +1,18 @@
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.env_utils import is_set
+from app.core.http_timeouts import default_timeout
 from app.db.models import JobCache
 from app.errors import ServiceFailingError, ServiceNotConfiguredError
 from app.schemas.jobs import Job
 from app.schemas.library import IntentProfile
 from app.schemas.resume import ResumeProfile
+
 
 def _require_jobs_config() -> None:
     if not is_set(settings.JOBS_API_KEY):
@@ -28,8 +30,8 @@ def _parse_posted_at(value: str | None) -> datetime | None:
     except ValueError:
         return None
     if posted.tzinfo is None:
-        posted = posted.replace(tzinfo=timezone.utc)
-    return posted.astimezone(timezone.utc)
+        posted = posted.replace(tzinfo=UTC)
+    return posted.astimezone(UTC)
 
 
 def _location_from_item(item: dict) -> str:
@@ -167,48 +169,55 @@ def fetch_jobs(profile: ResumeProfile, db: Session) -> list[Job]:
         "employment_types": "FULLTIME",
     }
 
-    try:
-        with httpx.Client(timeout=60.0) as client:
-            response = client.get(
-                f"{settings.JOBS_API_BASE.rstrip('/')}/search",
-                headers=headers,
-                params=params,
+    from app.services import observability
+
+    with observability.traced_call("jsearch.search", model="jsearch") as trace:
+        try:
+            with httpx.Client(timeout=default_timeout()) as client:
+                response = client.get(
+                    f"{(settings.JOBS_API_BASE or '').rstrip('/')}/search",
+                    headers=headers,
+                    params=params,
+                )
+                response.raise_for_status()
+                payload = response.json()
+        except httpx.HTTPError as exc:
+            raise ServiceFailingError("Jobs API", str(exc)) from exc
+
+        if not isinstance(payload, dict):
+            raise ServiceFailingError("Jobs API", "unexpected response format")
+
+        raw_items = payload.get("data")
+        if not isinstance(raw_items, list):
+            raise ServiceFailingError("Jobs API", "missing data array")
+
+        cutoff = datetime.now(UTC) - timedelta(days=settings.JOBS_RECENCY_DAYS)
+        jobs: list[Job] = []
+        seen: set[str] = set()
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            source_job_id = str(item.get("job_id") or item.get("job_google_link") or "")
+            cached_id = _cached_job_id(db, "jsearch", source_job_id) if source_job_id else None
+            job = _normalize_job(item, profile, job_id=cached_id)
+            if job is None or job.source_job_id in seen:
+                continue
+            if not _within_recency(job.posted_at, cutoff):
+                continue
+            seen.add(job.source_job_id)
+            jobs.append(job)
+            if len(jobs) >= settings.JOBS_FETCH_TARGET:
+                break
+
+        if not jobs:
+            raise ServiceFailingError(
+                "Jobs API", f"no jobs matched filters in the last {settings.JOBS_RECENCY_DAYS} days"
             )
-            response.raise_for_status()
-            payload = response.json()
-    except httpx.HTTPError as exc:
-        raise ServiceFailingError("Jobs API", str(exc)) from exc
 
-    if not isinstance(payload, dict):
-        raise ServiceFailingError("Jobs API", "unexpected response format")
-
-    raw_items = payload.get("data")
-    if not isinstance(raw_items, list):
-        raise ServiceFailingError("Jobs API", "missing data array")
-
-    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.JOBS_RECENCY_DAYS)
-    jobs: list[Job] = []
-    seen: set[str] = set()
-    for item in raw_items:
-        if not isinstance(item, dict):
-            continue
-        source_job_id = str(item.get("job_id") or item.get("job_google_link") or "")
-        cached_id = _cached_job_id(db, "jsearch", source_job_id) if source_job_id else None
-        job = _normalize_job(item, profile, job_id=cached_id)
-        if job is None or job.source_job_id in seen:
-            continue
-        if not _within_recency(job.posted_at, cutoff):
-            continue
-        seen.add(job.source_job_id)
-        jobs.append(job)
-        if len(jobs) >= settings.JOBS_FETCH_TARGET:
-            break
-
-    if not jobs:
-        raise ServiceFailingError("Jobs API", f"no jobs matched filters in the last {settings.JOBS_RECENCY_DAYS} days")
-
-    _cache_jobs(db, jobs)
-    return jobs
+        trace.input_tokens = len(raw_items)
+        trace.output_tokens = len(jobs)
+        _cache_jobs(db, jobs)
+        return jobs
 
 
 def fetch_jobs_for_intent(intent: IntentProfile, db: Session) -> list[Job]:
@@ -233,46 +242,53 @@ def fetch_jobs_for_intent(intent: IntentProfile, db: Session) -> list[Job]:
     if intent.remote_preference == "remote":
         params["remote_jobs_only"] = "true"
 
-    try:
-        with httpx.Client(timeout=60.0) as client:
-            response = client.get(
-                f"{settings.JOBS_API_BASE.rstrip('/')}/search",
-                headers=headers,
-                params=params,
+    from app.services import observability
+
+    with observability.traced_call("jsearch.search", model="jsearch") as trace:
+        try:
+            with httpx.Client(timeout=default_timeout()) as client:
+                response = client.get(
+                    f"{(settings.JOBS_API_BASE or '').rstrip('/')}/search",
+                    headers=headers,
+                    params=params,
+                )
+                response.raise_for_status()
+                payload = response.json()
+        except httpx.HTTPError as exc:
+            raise ServiceFailingError("Jobs API", str(exc)) from exc
+
+        if not isinstance(payload, dict):
+            raise ServiceFailingError("Jobs API", "unexpected response format")
+
+        raw_items = payload.get("data")
+        if not isinstance(raw_items, list):
+            raise ServiceFailingError("Jobs API", "missing data array")
+
+        profile = intent.as_query_profile()
+        cutoff = datetime.now(UTC) - timedelta(days=settings.JOBS_RECENCY_DAYS)
+        jobs: list[Job] = []
+        seen: set[str] = set()
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            source_job_id = str(item.get("job_id") or item.get("job_google_link") or "")
+            cached_id = _cached_job_id(db, "jsearch", source_job_id) if source_job_id else None
+            job = _normalize_job(item, profile, job_id=cached_id)
+            if job is None or job.source_job_id in seen:
+                continue
+            if not _within_recency(job.posted_at, cutoff):
+                continue
+            seen.add(job.source_job_id)
+            jobs.append(job)
+            if len(jobs) >= settings.JOBS_FETCH_TARGET:
+                break
+
+        if not jobs:
+            raise ServiceFailingError(
+                "Jobs API", f"no jobs matched filters in the last {settings.JOBS_RECENCY_DAYS} days"
             )
-            response.raise_for_status()
-            payload = response.json()
-    except httpx.HTTPError as exc:
-        raise ServiceFailingError("Jobs API", str(exc)) from exc
 
-    if not isinstance(payload, dict):
-        raise ServiceFailingError("Jobs API", "unexpected response format")
-
-    raw_items = payload.get("data")
-    if not isinstance(raw_items, list):
-        raise ServiceFailingError("Jobs API", "missing data array")
-
-    profile = intent.as_query_profile()
-    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.JOBS_RECENCY_DAYS)
-    jobs: list[Job] = []
-    seen: set[str] = set()
-    for item in raw_items:
-        if not isinstance(item, dict):
-            continue
-        source_job_id = str(item.get("job_id") or item.get("job_google_link") or "")
-        cached_id = _cached_job_id(db, "jsearch", source_job_id) if source_job_id else None
-        job = _normalize_job(item, profile, job_id=cached_id)
-        if job is None or job.source_job_id in seen:
-            continue
-        if not _within_recency(job.posted_at, cutoff):
-            continue
-        seen.add(job.source_job_id)
-        jobs.append(job)
-        if len(jobs) >= settings.JOBS_FETCH_TARGET:
-            break
-
-    if not jobs:
-        raise ServiceFailingError("Jobs API", f"no jobs matched filters in the last {settings.JOBS_RECENCY_DAYS} days")
-
-    _cache_jobs(db, jobs)
-    return jobs
+        trace.input_tokens = len(raw_items)
+        trace.output_tokens = len(jobs)
+        _cache_jobs(db, jobs)
+        return jobs

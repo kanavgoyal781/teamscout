@@ -7,33 +7,13 @@ import fitz
 from docx import Document
 from docx.opc.exceptions import PackageNotFoundError
 
+from app.core.config import settings
 from app.errors import ValidationError
+from app.prompts import load_prompt
 from app.schemas.resume import ResumeProfile
 from app.services import llm
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx"}
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-
-_RESUME_SCHEMA_PROMPT = """Extract a structured resume profile from the raw text below.
-
-Return JSON with this shape:
-{
-  "name": "string",
-  "title": "string",
-  "years_of_experience": number,
-  "location": "string",
-  "skills": ["skill1", "skill2"],
-  "work_experience": [{"title": "string", "company": "string", "bullets": ["string"]}],
-  "summary": "string"
-}
-
-Rules:
-- skills should be concise technology and domain keywords
-- years_of_experience should be a reasonable numeric estimate
-- work_experience bullets should be short achievement statements
-
-Resume text:
-"""
 
 
 def content_hash(data: bytes) -> str:
@@ -47,8 +27,12 @@ def extract_text(filename: str, data: bytes) -> str:
             "Unsupported file type — upload PDF or DOCX",
             details={"allowed": sorted(ALLOWED_EXTENSIONS)},
         )
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise ValidationError("File too large — max 10MB")
+    max_bytes = settings.MAX_UPLOAD_BYTES
+    if len(data) > max_bytes:
+        raise ValidationError(
+            f"File too large — max {max_bytes} bytes",
+            details={"max_bytes": max_bytes, "size": len(data)},
+        )
 
     if suffix == ".pdf":
         return _extract_pdf(data)
@@ -82,10 +66,14 @@ def _extract_docx(data: bytes) -> str:
 def parse_resume_text(text: str) -> ResumeProfile:
     if not text.strip():
         raise ValidationError("Resume text is empty")
+    tmpl = load_prompt("resume_schema")
     return llm.complete_json(
-        _RESUME_SCHEMA_PROMPT + text,
+        tmpl.body + text,
         ResumeProfile,
-        system="You extract structured resume data. Return JSON only.",
+        system=tmpl.system or "You extract structured resume data. Return JSON only.",
+        operation="parse_resume",
+        prompt_meta=tmpl,
+        max_tokens=int(tmpl.model_params.get("max_tokens") or settings.max_tokens_for_operation("parse_resume")),
     )
 
 

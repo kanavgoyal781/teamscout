@@ -7,8 +7,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.db.base import Base
 from app.db import models as _models  # noqa: F401
+from app.db.base import Base
 from app.schemas.jobs import Job
 
 connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}

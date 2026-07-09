@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -132,4 +132,40 @@ class EmailReveal(Base):
     cost_credits: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(32), default="pending")
     revealed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Trace(Base):
+    """Outbound call trace for LLM, embeddings, Sumble, and JSearch."""
+
+    __tablename__ = "traces"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    request_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    operation: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    model: Mapped[str | None] = mapped_column(String(128))
+    prompt_name: Mapped[str | None] = mapped_column(String(128))
+    prompt_version: Mapped[str | None] = mapped_column(String(64))
+    prompt_hash: Mapped[str | None] = mapped_column(String(64))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    latency_ms: Mapped[float | None] = mapped_column(Float)
+    cost_usd: Mapped[float | None] = mapped_column(Float)
+    credits_used: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="ok")
+    error_type: Mapped[str | None] = mapped_column(String(128))
+    cache_hit: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+
+class EmbeddingCache(Base):
+    """Content-hash keyed embedding vectors (model + text)."""
+
+    __tablename__ = "embedding_cache"
+    __table_args__ = (UniqueConstraint("content_hash", name="uq_embedding_content_hash"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    embedding_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

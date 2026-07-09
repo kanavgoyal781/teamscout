@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.errors import ServiceFailingError
+from app.prompts import load_prompt
 from app.schemas.jobs import Job, ScoreBreakdown
 from app.schemas.library import RankedResumeRecommendation, RequirementCoverage, ResumeCandidate
 from app.schemas.resume import ResumeProfile
@@ -60,17 +61,9 @@ def _experience_score(job: Job, profile: ResumeProfile) -> float:
     return 0.5
 
 
-def _build_rerank_prompt(job: Job, candidates: list[ResumeCandidate]) -> str:
+def _build_rerank_prompt(job: Job, candidates: list[ResumeCandidate], instructions: str) -> str:
     lines = [
-        "Score each resume for fit against the job description.",
-        "Return JSON: {\"results\": [{\"resume_id\": \"...\", \"fit_score\": 0-100, "
-        "\"matched_skills\": [\"...\"], \"missing_skills\": [\"...\"], "
-        "\"rationale\": \"...\", \"coverage\": [{\"requirement\": \"...\", "
-        "\"status\": \"hit\"|\"miss\", \"evidence\": \"...\"}]}]}",
-        "",
-        "Rules:",
-        "- rationale must cite concrete resume content (titles, companies, bullets, skills)",
-        "- coverage lists 4-8 key JD requirements with hit/miss and evidence from resume when hit",
+        instructions.strip(),
         "",
         f"Job title: {job.title}",
         f"Company: {job.company}",
@@ -138,7 +131,8 @@ def _llm_rerank(
         return {}
 
     expected_ids = {candidate.resume_id for candidate in candidates}
-    prompt = _build_rerank_prompt(job, candidates)
+    tmpl = load_prompt("justify")
+    prompt = _build_rerank_prompt(job, candidates, tmpl.body)
     if attempt > 0:
         prompt += (
             "\n\nPrevious rationales were too generic. "
@@ -148,8 +142,10 @@ def _llm_rerank(
     response = llm.complete_json(
         prompt,
         _ResumeRerankResponse,
-        system="You are a recruiting matcher. Return JSON only.",
-        max_tokens=6000,
+        system=tmpl.system or "You are a recruiting matcher. Return JSON only.",
+        max_tokens=int(tmpl.model_params.get("max_tokens") or settings.max_tokens_for_operation("justify")),
+        operation="justify",
+        prompt_meta=tmpl,
     )
 
     if not response.results:

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.db.models import JobCache
 from app.db.session import SessionLocal, init_db
@@ -19,7 +19,7 @@ def test_resolve_job_uses_indexed_job_id() -> None:
             location="Remote",
             description="Python",
             apply_url="https://example.com/apply",
-            posted_at=datetime.now(timezone.utc),
+            posted_at=datetime.now(UTC),
             skills=["Python"],
         )
         db.add(

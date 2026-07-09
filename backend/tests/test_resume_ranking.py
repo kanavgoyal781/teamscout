@@ -1,18 +1,17 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
-
 from app.schemas.jobs import Job
 from app.schemas.library import RequirementCoverage, ResumeCandidate
 from app.schemas.resume import ResumeProfile
+from app.services import resume_ranking
 from app.services.resume_ranking import (
+    _rationale_references_resume,
     _ResumeRerankItem,
     _ResumeRerankResponse,
-    _rationale_references_resume,
     rank_resumes_for_job,
 )
-from app.services import resume_ranking
 
 
 def _candidate(resume_id: str, title: str, skills: list[str], summary: str) -> ResumeCandidate:
@@ -41,7 +40,7 @@ def test_rank_resumes_for_job_orders_best_first() -> None:
         location="Remote",
         description="Python FastAPI PostgreSQL AWS required.",
         apply_url="https://example.com/apply",
-        posted_at=datetime.now(timezone.utc),
+        posted_at=datetime.now(UTC),
         skills=["Python", "FastAPI", "PostgreSQL", "AWS"],
     )
     candidates = [
@@ -103,12 +102,11 @@ def test_rank_resumes_for_job_scores_full_library_beyond_rerank_top_n() -> None:
         location="Remote",
         description="Python FastAPI PostgreSQL AWS required.",
         apply_url="https://example.com/apply",
-        posted_at=datetime.now(timezone.utc),
+        posted_at=datetime.now(UTC),
         skills=["Python", "FastAPI", "PostgreSQL", "AWS"],
     )
     candidates = [
-        _candidate(f"resume-{index}", f"Engineer {index}", ["Java"], f"Summary {index}")
-        for index in range(1, 36)
+        _candidate(f"resume-{index}", f"Engineer {index}", ["Java"], f"Summary {index}") for index in range(1, 36)
     ]
     candidates.append(
         _candidate(
@@ -159,10 +157,13 @@ def test_rationale_references_resume_rejects_generic_praise() -> None:
         summary="Built Python APIs at Acme",
     )
     assert _rationale_references_resume("Great candidate with strong overall fit.", profile) is False
-    assert _rationale_references_resume(
-        "Built Python APIs at Acme with FastAPI on AWS.",
-        profile,
-    ) is True
+    assert (
+        _rationale_references_resume(
+            "Built Python APIs at Acme with FastAPI on AWS.",
+            profile,
+        )
+        is True
+    )
 
 
 def test_llm_rerank_retries_then_rejects_generic_rationale() -> None:
@@ -175,7 +176,7 @@ def test_llm_rerank_retries_then_rejects_generic_rationale() -> None:
         location="Remote",
         description="Python FastAPI required.",
         apply_url="https://example.com/apply",
-        posted_at=datetime.now(timezone.utc),
+        posted_at=datetime.now(UTC),
         skills=["Python", "FastAPI"],
     )
     candidate = _candidate(
@@ -226,7 +227,7 @@ def test_llm_rerank_raises_after_generic_retry_exhausted() -> None:
         location="Remote",
         description="Python FastAPI required.",
         apply_url="https://example.com/apply",
-        posted_at=datetime.now(timezone.utc),
+        posted_at=datetime.now(UTC),
         skills=["Python"],
     )
     candidate = _candidate("best", "Senior Python Engineer", ["Python"], "Python at Acme")

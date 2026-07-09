@@ -17,6 +17,43 @@ from app.services import ranking
 from scripts.fixtures.ranking_fixtures import PERSONAS, PersonaFixture
 
 
+import json
+import subprocess
+from datetime import UTC, datetime
+
+from app.prompts import prompt_versions
+
+
+def _git_sha() -> str:
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=ROOT,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        return out.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return settings.GIT_SHA or "unknown"
+
+
+def append_eval_history(metrics: dict) -> None:
+    history = ROOT / "evals" / "history.jsonl"
+    history.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "ts": datetime.now(UTC).isoformat(),
+        "suite": "ranking",
+        "metrics": metrics,
+        "prompt_versions": prompt_versions(),
+        "model": settings.LLM_MODEL,
+        "embeddings_model": settings.EMBEDDINGS_MODEL,
+        "git_sha": _git_sha(),
+    }
+    with history.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record) + "\n")
+
+
+
 def dcg(relevances: list[float]) -> float:
     score = relevances[0] if relevances else 0.0
     for index, rel in enumerate(relevances[1:], start=2):
@@ -102,6 +139,14 @@ def main() -> int:
         failures.append(f"hybrid MRR {avg_hybrid_mrr:.4f} < 0.8")
     if avg_hybrid_ndcg <= avg_dense_ndcg:
         failures.append(f"hybrid NDCG@10 {avg_hybrid_ndcg:.4f} did not beat dense {avg_dense_ndcg:.4f}")
+
+    metrics_out = {
+        "hybrid_ndcg10": avg_hybrid_ndcg,
+        "hybrid_mrr": avg_hybrid_mrr,
+        "dense_ndcg10": avg_dense_ndcg,
+        "dense_mrr": avg_dense_mrr,
+    }
+    append_eval_history(metrics_out)
 
     if failures:
         print("FAIL:")

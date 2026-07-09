@@ -1,13 +1,11 @@
 import io
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import httpx
 import pytest
 import respx
-from fastapi.testclient import TestClient
-
 from app.core.config import settings
 from app.db.models import DriveSyncedFile, JobCache, Resume
 from app.db.session import SessionLocal, init_db
@@ -15,6 +13,7 @@ from app.schemas.jobs import Job, RankedJob, ScoreBreakdown
 from app.schemas.library import LibraryResumeOut, RankedResumeRecommendation, RequirementCoverage
 from app.schemas.resume import ResumeProfile
 from app.services import drive
+from fastapi.testclient import TestClient
 
 
 def _profile(name: str, title: str, skills: list[str], summary: str) -> ResumeProfile:
@@ -161,7 +160,12 @@ def test_drive_sync_ingests_files(client: TestClient, monkeypatch: pytest.Monkey
                         "mimeType": "application/pdf",
                         "modifiedTime": "2026-01-01T00:00:00.000Z",
                     },
-                    {"id": "img-1", "name": "photo.png", "mimeType": "image/png", "modifiedTime": "2026-01-01T00:00:00.000Z"},
+                    {
+                        "id": "img-1",
+                        "name": "photo.png",
+                        "mimeType": "image/png",
+                        "modifiedTime": "2026-01-01T00:00:00.000Z",
+                    },
                 ]
             },
         )
@@ -268,7 +272,7 @@ def test_intent_search_stores_results(client: TestClient) -> None:
         location="Remote",
         description="Python FastAPI",
         apply_url="https://example.com/apply",
-        posted_at=datetime.now(timezone.utc),
+        posted_at=datetime.now(UTC),
         skills=["Python"],
     )
     ranked = RankedJob(
@@ -317,7 +321,7 @@ def test_recommend_resumes_ranking(client: TestClient) -> None:
             location="Remote",
             description="Need Python, FastAPI, PostgreSQL, and AWS experience.",
             apply_url="https://example.com/apply",
-            posted_at=datetime.now(timezone.utc),
+            posted_at=datetime.now(UTC),
             skills=["Python", "FastAPI", "PostgreSQL", "AWS"],
         )
         db.add(

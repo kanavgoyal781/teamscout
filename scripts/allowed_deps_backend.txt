@@ -1,0 +1,25 @@
+# Backend dependency allowlist — one package per line.
+# Format: package-name  # why this package is needed in TeamScout
+# Names are normalized: strip extras (e.g. uvicorn[standard] → uvicorn), versions, comments.
+
+fastapi          # HTTP API framework for the backend
+uvicorn          # ASGI server (uvicorn[standard] for reload/httptools extras)
+pydantic         # Request/response models and validation (v2)
+pydantic-settings # Settings loaded from repo-root .env
+python-dotenv    # .env file loading support used by settings stack
+structlog        # Structured logging (Sumble credit calls, request logs)
+sqlalchemy       # SQLite ORM and session management
+httpx            # Outbound HTTP for LLM, embeddings, JSearch, Sumble
+pytest           # Test runner
+pytest-asyncio   # Async test support for FastAPI/httpx paths
+pytest-cov       # Coverage reporting; CI fail-under gate
+python-multipart # Multipart upload parsing for resume/file endpoints
+pymupdf          # PDF text extraction for resume parsing
+python-docx      # DOCX text extraction for resume parsing
+rank-bm25        # In-process BM25 lexical ranking
+numpy            # Vector math for dense ranking / embeddings helpers
+respx            # HTTP mocking for Sumble/jobs client tests only (test dep)
+slowapi          # Per-endpoint rate limiting on expensive API routes
+limits           # Token-bucket backend used by slowapi (declared transitively but pinned)
+ruff             # Lint + format gate in CI (not imported by app runtime)
+mypy             # Static typecheck gate in CI (not imported by app runtime)

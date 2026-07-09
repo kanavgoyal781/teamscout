@@ -1,10 +1,11 @@
-import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import limiter, upload_limit
+from app.core.upload_limit import enforce_upload_size
 from app.db.models import Resume
 from app.db.session import get_db
 from app.errors import NotFoundError, ValidationError
@@ -37,7 +38,9 @@ class ResumeConfirmResponse(BaseModel):
 
 
 @router.post("/upload", response_model=ResumeUploadResponse)
+@limiter.limit(upload_limit)
 async def upload_resume(
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> ResumeUploadResponse:
@@ -47,6 +50,7 @@ async def upload_resume(
     data = await file.read()
     if not data:
         raise ValidationError("Uploaded file is empty")
+    enforce_upload_size(data)
 
     file_hash, profile = parser.parse_resume_file(file.filename, data)
 

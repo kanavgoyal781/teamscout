@@ -1,10 +1,8 @@
-import json
 from unittest.mock import patch
-
-from fastapi.testclient import TestClient
 
 from app.schemas.jobs import Job, RankedJob, ScoreBreakdown
 from app.schemas.resume import ResumeProfile
+from fastapi.testclient import TestClient
 
 
 def test_upload_and_confirm_resume(client: TestClient) -> None:

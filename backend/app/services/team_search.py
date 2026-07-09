@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -30,7 +30,7 @@ def _record_team_search(
     search_path: str | None,
     db: Session,
 ) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     existing = db.query(JobTeamSearch).filter(JobTeamSearch.job_id == job_id).one_or_none()
     if existing is None:
         db.add(
@@ -75,9 +75,7 @@ def find_team_for_job(
     for person in people:
         person_key = str(person.person_id)
         existing = (
-            db.query(Contact)
-            .filter(Contact.sumble_person_id == person_key, Contact.job_id == job.id)
-            .one_or_none()
+            db.query(Contact).filter(Contact.sumble_person_id == person_key, Contact.job_id == job.id).one_or_none()
         )
         if existing is None:
             existing = Contact(

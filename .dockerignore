@@ -1,0 +1,68 @@
+# Build context hygiene for Dockerfile.backend / Dockerfile.frontend / fly deploy.
+# Docker/Fly do NOT honor .gitignore — without this, a local `fly deploy` can
+# upload repo-root `.env` (secrets) and large junk (node_modules, .git, DBs).
+# See DEPLOYMENT.md.
+
+# Secrets — never send to builders
+.env
+.env.*
+!.env.example
+
+# VCS / IDE
+.git
+.gitignore
+.gitattributes
+.github
+.idea
+.vscode
+*.swp
+.DS_Store
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.coverage
+**/htmlcov
+**/.venv
+**/venv
+**/*.egg-info
+backend/teamscout.db
+**/*.db
+**/*.db-journal
+**/*.db-wal
+**/*.db-shm
+
+# Local runtime artifacts
+backend/uploads
+**/uploads/**
+!backend/app/**/uploads
+
+# Frontend bulk (backend image does not need these; frontend image COPYs selectively)
+frontend/node_modules
+frontend/.next
+frontend/out
+**/node_modules
+**/.pnpm-store
+
+# Tests / evals / samples not needed in runtime images
+backend/tests
+evals
+samples
+**/coverage
+**/.turbo
+
+# Docs and local tooling (not COPY'd into images)
+*.md
+!DEPLOYMENT.md
+Makefile
+docker-compose.yml
+Dockerfile.frontend
+vercel.json
+.fly
+
+# Nested env files
+**/.env
+**/.env.*

@@ -1,6 +1,10 @@
 # TeamScout
 
-Recruiting intelligence platform — Milestone 4 adds **resume library ingestion**, **intent-based job search**, and **best-resume pick** on the M3 resume + jobs + ranking + Sumble stack.
+[![CI](https://github.com/OWNER/teamscout/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/teamscout/actions/workflows/ci.yml)
+
+Recruiting intelligence — resume→jobs→team and library→best-resume, with production hardening (containers, CI, rate limits, request IDs). See [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+> Replace `OWNER/teamscout` in the badge URL with your GitHub org/repo.
 
 ## 3-minute demo (JobRight / Sumble)
 
@@ -51,6 +55,32 @@ Public shared-folder approach (recommended):
 
 Without `GOOGLE_DRIVE_API_KEY` (or OAuth client credentials), Drive sync hard-fails with a clear 503 error.
 
+
+## Docker (production-style local)
+
+```bash
+cp .env.example .env
+# Fill LLM_*, EMBEDDINGS_*, JOBS_*, SUMBLE_* (and optional Drive keys)
+docker compose up --build
+```
+
+- API: http://localhost:8000  (`GET /health` includes `version`; `GET /livez` is process liveness)
+- UI: http://localhost:3000
+- SQLite + uploads persist in named volumes `teamscout-data` / `teamscout-uploads`
+- Set `NEXT_PUBLIC_API_BASE=http://localhost:8000` (browser → host-mapped backend)
+- Required env vars are documented in `.env.example` (compose uses `env_file: .env`)
+
+## Public deploy (Fly.io + Vercel)
+
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for zero→live commands (`fly.toml`, secrets, Vercel `NEXT_PUBLIC_API_BASE`, Litestream/volume backups, CI deploy job, cost notes).
+
+```bash
+# After the API is live and secrets are set on the server:
+DEMO_API_BASE=https://YOUR-APP.fly.dev make demo-check
+```
+
+Config-only PRs do not imply a public URL is already live — the runbook is the operator path.
+
 ## Development
 
 ```bash
@@ -89,6 +119,10 @@ python scripts/smoke_sumble.py
 5. Final score: `0.5·LLM + 0.3·RRF + 0.1·skills + 0.1·recency`
 
 Resume pick inverts the pipeline: job description is the query, library resumes are candidates.
+
+## Architecture
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the ranking funnel, credit-safety, and deploy surface.
 
 ## Stack
 

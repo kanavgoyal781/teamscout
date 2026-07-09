@@ -3,13 +3,11 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from starlette.requests import Request
-
-from pydantic import BaseModel
-
 from app.errors import ServiceFailingError, ServiceNotConfiguredError
 from app.main import teamscout_error_handler
 from app.services import embeddings, llm
+from pydantic import BaseModel
+from starlette.requests import Request
 
 
 class _SampleModel(BaseModel):

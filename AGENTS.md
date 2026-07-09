@@ -1,7 +1,12 @@
 # AGENTS.md — TeamScout
 
 ## What this is
-Recruiting intelligence platform. Milestone 3 adds Feature 1 end-to-end: LLM team extraction, Sumble people search, and gated email reveal on the M1–M2 honesty layer.
+Recruiting intelligence platform. Two product features only (resume→jobs→team; library→best-resume) plus disabled Beta stubs. See `CONSTRAINTS.md` for the binding anti-bloat contract; `scripts/check_scope.py` / `make check-scope` must stay green.
+
+## Anti-bloat (binding)
+- **Not a platform.** No Kubernetes, Terraform, feature stores, model registries, Kafka/queues, microservices, service meshes, or A/B frameworks.
+- **Production-grade** means: reproducible builds, CI that blocks bad code, observable LLM/credit calls, eval regression gates, secure defaults, one live deployment — not infra sprawl.
+- Every addition must earn its place. Prefer deleting complexity.
 
 ## Architecture
 - Backend: FastAPI (Python 3.12), Pydantic v2

@@ -78,3 +78,38 @@ def test_health_treats_whitespace_keys_as_missing(monkeypatch: pytest.MonkeyPatc
 
     response = client.get("/health")
     assert response.json()["checks"]["llm"] == "missing"
+
+
+def test_livez_always_200(client: TestClient) -> None:
+    response = client.get("/livez")
+    assert response.status_code == 200
+    assert response.json().get("status") == "alive"
+
+
+def test_cors_prod_requires_allowed_origins(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings
+    from app.main import _cors_origins
+
+    monkeypatch.setattr(settings, "ENV", "prod")
+    monkeypatch.setattr(settings, "ALLOWED_ORIGINS", None)
+    with pytest.raises(RuntimeError, match="ALLOWED_ORIGINS must be set explicitly"):
+        _cors_origins()
+
+
+def test_cors_prod_rejects_wildcard(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings
+    from app.main import _cors_origins
+
+    monkeypatch.setattr(settings, "ENV", "prod")
+    monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://app.example.com,*")
+    with pytest.raises(RuntimeError, match="wildcard"):
+        _cors_origins()
+
+
+def test_cors_prod_accepts_explicit_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings
+    from app.main import _cors_origins
+
+    monkeypatch.setattr(settings, "ENV", "prod")
+    monkeypatch.setattr(settings, "ALLOWED_ORIGINS", "https://app.example.com")
+    assert _cors_origins() == ["https://app.example.com"]

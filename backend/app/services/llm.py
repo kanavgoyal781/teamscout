@@ -3,11 +3,15 @@ import re
 from typing import Any, TypeVar
 
 import httpx
-from pydantic import BaseModel, ValidationError as PydanticValidationError
+from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
 
 from app.core.config import settings
 from app.core.env_utils import is_set
+from app.core.http_timeouts import default_timeout
 from app.errors import ServiceFailingError, ServiceNotConfiguredError
+from app.prompts import PromptTemplate
+from app.services import observability
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -25,6 +29,8 @@ def complete(
     system: str | None = None,
     temperature: float = 0.0,
     max_tokens: int = 2048,
+    operation: str = "llm",
+    prompt_meta: PromptTemplate | None = None,
 ) -> str:
     _require_llm_config()
 
@@ -44,22 +50,50 @@ def complete(
         "max_tokens": max_tokens,
     }
 
-    try:
-        with httpx.Client(timeout=60.0) as client:
-            response = client.post(
-                f"{settings.LLM_API_BASE.rstrip('/')}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-    except httpx.HTTPError as exc:
-        raise ServiceFailingError("LLM", str(exc)) from exc
+    est_in = observability.approx_token_count((system or "") + prompt)
+    with observability.traced_call(
+        operation,
+        model=settings.LLM_MODEL,
+        prompt_name=prompt_meta.name if prompt_meta else None,
+        prompt_version=prompt_meta.version if prompt_meta else None,
+        prompt_hash=prompt_meta.content_hash if prompt_meta else None,
+        check_llm_ceiling=True,
+        # Fail-closed preflight: charge worst-case output = full max_tokens budget
+        # (not max_tokens//4) so remaining budget cannot be overshot by ~4×.
+        estimated_cost_usd=observability.estimate_llm_cost_usd(
+            model=settings.LLM_MODEL, input_tokens=est_in, output_tokens=max_tokens
+        ),
+    ) as trace:
+        try:
+            with httpx.Client(timeout=default_timeout()) as client:
+                response = client.post(
+                    f"{(settings.LLM_API_BASE or '').rstrip('/')}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPError as exc:
+            raise ServiceFailingError("LLM", str(exc)) from exc
 
-    try:
-        return data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise ServiceFailingError("LLM", "unexpected response format") from exc
+        try:
+            content = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ServiceFailingError("LLM", "unexpected response format") from exc
+
+        usage = data.get("usage") if isinstance(data, dict) else None
+        if isinstance(usage, dict):
+            trace.input_tokens = int(usage.get("prompt_tokens") or est_in)
+            trace.output_tokens = int(usage.get("completion_tokens") or observability.approx_token_count(content))
+        else:
+            trace.input_tokens = est_in
+            trace.output_tokens = observability.approx_token_count(content)
+        trace.cost_usd = observability.estimate_llm_cost_usd(
+            model=settings.LLM_MODEL,
+            input_tokens=trace.input_tokens,
+            output_tokens=trace.output_tokens,
+        )
+        return content
 
 
 def _extract_json(raw: str) -> str:
@@ -84,10 +118,13 @@ def complete_json(
     *,
     system: str | None = None,
     temperature: float = 0.0,
-    max_tokens: int = 4096,
+    max_tokens: int | None = None,
     max_retries: int = 1,
+    operation: str = "llm",
+    prompt_meta: PromptTemplate | None = None,
 ) -> T:
     base_system = system or "Return valid JSON only. No markdown or commentary."
+    budget = max_tokens if max_tokens is not None else settings.max_tokens_for_operation(operation)
     current_prompt = prompt
     last_error = "invalid JSON"
 
@@ -96,7 +133,9 @@ def complete_json(
             current_prompt,
             system=base_system,
             temperature=temperature,
-            max_tokens=max_tokens,
+            max_tokens=budget,
+            operation=operation,
+            prompt_meta=prompt_meta,
         )
         try:
             payload = json.loads(_extract_json(raw))

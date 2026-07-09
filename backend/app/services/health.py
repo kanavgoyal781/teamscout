@@ -59,6 +59,7 @@ def run_health_checks() -> dict[str, object]:
     ok = db_ok and all(checks[name] == "configured" for name in REQUIRED_CHECKS)
     return {
         "ok": ok,
+        "version": settings.app_version,
         "checks": checks,
         "required_checks": list(REQUIRED_CHECKS),
         "optional_checks": list(OPTIONAL_CHECKS),

@@ -1,0 +1,53 @@
+# TeamScout local production-style stack.
+# Fresh clone: cp .env.example .env  # fill keys
+#              docker compose up --build
+#
+# Frontend browsers call the host-mapped backend via NEXT_PUBLIC_API_BASE
+# (default http://localhost:8000), not the compose service DNS name.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: sqlite:////data/teamscout.db
+      ENV: ${ENV:-prod}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Host-facing origins for browser CORS
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      APP_VERSION: ${GIT_SHA:-dev}
+    volumes:
+      - teamscout-data:/data
+      - teamscout-uploads:/app/uploads
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.livez_probe"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
+    environment:
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  teamscout-data:
+  teamscout-uploads:

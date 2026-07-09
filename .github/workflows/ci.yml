@@ -1,0 +1,218 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  scope:
+    name: scope
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Scope enforcement
+        run: python3 scripts/check_scope.py
+
+  lint:
+    name: lint
+    needs: scope
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python3 -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Ruff check
+        run: python3 -m ruff check app tests
+      - name: Ruff format
+        run: python3 -m ruff format --check app tests
+
+  typecheck:
+    name: typecheck
+    needs: scope
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python3 -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Mypy
+        run: python3 -m mypy app
+
+  test:
+    name: test
+    needs: scope
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python3 -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Pytest with coverage
+        # Gate: --cov=app satisfies check_scope; fail-under 80 is real.
+        # services/ is included under app.services within this package tree.
+        run: python3 -m pytest -q --cov=app --cov-report=term-missing --cov-fail-under=80
+
+  frontend:
+    name: frontend
+    needs: scope
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+
+  eval:
+    name: eval
+    needs: scope
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend deps
+        run: python3 -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - name: Detect eval secrets
+        id: secrets
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_BASE: ${{ secrets.LLM_API_BASE }}
+          EMBEDDINGS_API_KEY: ${{ secrets.EMBEDDINGS_API_KEY }}
+          EMBEDDINGS_API: ${{ secrets.EMBEDDINGS_API }}
+        run: |
+          if [ -z "${LLM_API_KEY}" ] || [ -z "${EMBEDDINGS_API_KEY}" ] || [ -z "${EMBEDDINGS_API}" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Eval secrets missing (LLM_API_KEY / EMBEDDINGS_*) — skipping ranking + resume-pick evals. Configure repo secrets to enable the gate (forks without secrets skip intentionally)."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Ranking eval
+        if: steps.secrets.outputs.available == 'true'
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_BASE: ${{ secrets.LLM_API_BASE }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          EMBEDDINGS_API_KEY: ${{ secrets.EMBEDDINGS_API_KEY }}
+          EMBEDDINGS_API: ${{ secrets.EMBEDDINGS_API }}
+          EMBEDDINGS_MODEL: ${{ secrets.EMBEDDINGS_MODEL }}
+        run: python3 scripts/eval_ranking.py
+      - name: Resume-pick eval
+        if: steps.secrets.outputs.available == 'true'
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_BASE: ${{ secrets.LLM_API_BASE }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          EMBEDDINGS_API_KEY: ${{ secrets.EMBEDDINGS_API_KEY }}
+          EMBEDDINGS_API: ${{ secrets.EMBEDDINGS_API }}
+          EMBEDDINGS_MODEL: ${{ secrets.EMBEDDINGS_MODEL }}
+        run: python3 scripts/eval_resume_pick.py
+      - name: Eval trend report
+        if: steps.secrets.outputs.available == 'true'
+        run: python3 scripts/eval_report.py
+      - name: Upload eval history
+        if: always() && steps.secrets.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-history
+          path: evals/history.jsonl
+          if-no-files-found: ignore
+
+  # Deploy only after all quality gates. Requires GitHub Environment "production"
+  # (optional reviewers) and repo secrets — see DEPLOYMENT.md.
+  # Never echo secrets; tokens only via env from ${{ secrets.* }}.
+  deploy:
+    name: deploy
+    needs: [scope, lint, typecheck, test, frontend, eval]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deploy secrets present
+        id: deploy_secrets
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          # Preflight ALL deploy secrets before either side deploys (avoid partial prod).
+          # Values are never printed — only secret *names* in the warning.
+          missing=""
+          if [ -z "${FLY_API_TOKEN}" ]; then missing="${missing} FLY_API_TOKEN"; fi
+          if [ -z "${VERCEL_TOKEN}" ]; then missing="${missing} VERCEL_TOKEN"; fi
+          if [ -z "${VERCEL_ORG_ID}" ]; then missing="${missing} VERCEL_ORG_ID"; fi
+          if [ -z "${VERCEL_PROJECT_ID}" ]; then missing="${missing} VERCEL_PROJECT_ID"; fi
+          if [ -n "${missing}" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Deploy secrets missing (${missing} ) — skipping deploy. Configure production environment secrets (DEPLOYMENT.md)."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup flyctl
+        if: steps.deploy_secrets.outputs.available == 'true'
+        uses: superfly/flyctl-actions/setup-flyctl@1.5
+
+      - name: Deploy backend (Fly.io)
+        if: steps.deploy_secrets.outputs.available == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only --config fly.toml --build-arg "GIT_SHA=${GITHUB_SHA}"
+
+      - name: Setup Node for Vercel CLI
+        if: steps.deploy_secrets.outputs.available == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Deploy frontend (Vercel)
+        if: steps.deploy_secrets.outputs.available == 'true'
+        env:
+          # Vercel CLI reads VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID from env
+          # (prefer env over --token argv to reduce process-list exposure).
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npm install --global vercel@39
+          # Project root is the monorepo; vercel.json points install/build at frontend/
+          vercel pull --yes --environment=production
+          vercel build --prod
+          vercel deploy --prebuilt --prod

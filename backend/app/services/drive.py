@@ -5,6 +5,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.env_utils import is_set
+from app.core.http_timeouts import default_timeout, drive_download_timeout
 from app.errors import ServiceFailingError, ServiceNotConfiguredError, ValidationError
 
 _DRIVE_FOLDER_RE = re.compile(r"/folders/([a-zA-Z0-9_-]+)")
@@ -77,7 +78,7 @@ def _oauth_access_token() -> str:
         "grant_type": "refresh_token",
     }
     try:
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=default_timeout()) as client:
             response = client.post("https://oauth2.googleapis.com/token", data=payload)
             response.raise_for_status()
             data = response.json()
@@ -110,7 +111,7 @@ def list_folder_files(folder_id: str) -> FolderListResult:
     page_token: str | None = None
 
     try:
-        with httpx.Client(timeout=60.0) as client:
+        with httpx.Client(timeout=default_timeout()) as client:
             while True:
                 params = {
                     "q": query,
@@ -165,7 +166,7 @@ def download_file(file_id: str) -> bytes:
     _require_drive_config()
     params = {"alt": "media", **_auth_params()}
     try:
-        with httpx.Client(timeout=120.0) as client:
+        with httpx.Client(timeout=drive_download_timeout()) as client:
             response = client.get(
                 f"{_DRIVE_API}/files/{file_id}",
                 params=params,

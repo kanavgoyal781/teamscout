@@ -1,0 +1,6 @@
+{
+  "ndcg_at_10": 0.85,
+  "mrr": 0.8,
+  "resume_pick_correct": 4,
+  "resume_pick_total": 5
+}

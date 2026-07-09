@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Smoke test Sumble REST client against the live API.
 
-Exercises per Milestone 5:
-org resolve (domain/name) → job match search → find-related-people (primary)
-→ people/find fallback → gated email enrich.
-Prints credits_used / credits_remaining (logged + returned) at each step.
+Exercises M5/M6 paths:
+  org resolve (domain/name) → job-post match → related_people (primary)
+  → people filter fallback → optional gated email enrich.
+
+All credit-costing helpers return (result, credits_used) tuples (M6).
+Prints credits at each step. Exit 0 with SKIP when SUMBLE_API_KEY is missing.
 """
 
 from __future__ import annotations
@@ -32,40 +34,54 @@ def main() -> int:
 
     company = os.environ.get("SMOKE_SUMBLE_COMPANY", "Stripe")
     jd_title = os.environ.get("SMOKE_SUMBLE_JD_TITLE", "Software Engineer")
+    apply_url = os.environ.get("SMOKE_SUMBLE_APPLY_URL", "https://jobs.lever.co/stripe/xxxx")
     print(f"Sumble smoke: org lookup for {company!r} (apply_url heuristic if present)")
 
-    # Use a plausible apply_url to exercise domain derivation
-    apply_url = os.environ.get("SMOKE_SUMBLE_APPLY_URL", "https://jobs.lever.co/stripe/xxxx")
-    org = sumble.lookup_organization(company, apply_url)
-    print(f"  organization_id={org.organization_id} name={org.name!r}")
+    org, org_credits = sumble.lookup_organization(company, apply_url)
+    print(
+        f"  organization_id={org.organization_id} name={org.name!r} "
+        f"credits_used={org_credits}"
+    )
 
     # 1. Preferred: search org job posts then find-related-people
     print("  step: search org job posts for match (title sim + company)")
-    matched = sumble.find_best_matching_job_post(org.organization_id, jd_title, company)
+    matched_id, job_credits = sumble.find_best_matching_job_post(
+        org.organization_id, jd_title, company
+    )
     path_used = "Matched Sumble job post"
     people: list[sumble.SumblePerson] = []
-    credits = 0
-    if matched is not None:
-        print(f"  matched sumble job_id={matched}")
-        people, credits = sumble.get_related_people_for_job(matched)
-        print(f"  find-related-people people_found={len(people)} credits_used={credits}")
+    path_credits = job_credits
+    if matched_id is not None:
+        print(f"  matched sumble job_id={matched_id} job_search_credits={job_credits}")
+        people, related_credits = sumble.get_related_people_for_job(matched_id)
+        path_credits = job_credits + related_credits
+        print(
+            f"  find-related-people people_found={len(people)} "
+            f"related_credits={related_credits} path_credits={path_credits}"
+        )
+        if not people:
+            path_used = "Filtered by function/level"
+            print("  matched job but empty related_people — will fallback")
     else:
         path_used = "Filtered by function/level"
-        print("  no strong job post match — will fallback")
+        print(f"  no strong job post match (job_search_credits={job_credits}) — will fallback")
 
-    # 2. Fallback demo (always exercise the people/find path too for smoke)
+    # 2. Fallback people/find (always exercise when primary yielded no people)
     if not people:
         print("  step: fallback people/find with function/level")
-        people, credits = sumble.search_people(
+        people, search_credits = sumble.search_people(
             organization_id=org.organization_id,
             team_name="Engineering",
             department="Engineering",
             likely_hiring_titles=["Engineering Manager", "Software Engineer"],
         )
-        print(f"  people_found={len(people)} credits_used={credits} path={path_used}")
+        path_credits = job_credits + search_credits
+        print(
+            f"  people_found={len(people)} search_credits={search_credits} "
+            f"path_credits={path_credits} path={path_used}"
+        )
     else:
-        print(f"  primary path used: {path_used} (credits={credits})")
-        # also exercise fallback explicitly for completeness
+        print(f"  primary path used: {path_used} (path_credits={path_credits})")
         fb_people, fb_c = sumble.search_people(
             organization_id=org.organization_id,
             team_name="",
@@ -79,6 +95,9 @@ def main() -> int:
             f"    - {person.name} | {person.title} | "
             f"{person.seniority} | func={person.job_function}"
         )
+
+    total = org_credits + path_credits
+    print(f"  aggregate (org + path) credits_used≈{total}")
 
     # 3. Gated enrich
     if os.environ.get("SMOKE_SUMBLE_REVEAL", "").lower() in {"1", "true", "yes"}:

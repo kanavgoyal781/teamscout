@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -60,11 +60,7 @@ def _cached_not_found_error(contact_id: str, reveal: EmailReveal) -> ValidationE
 
 
 def preview_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
-    existing = (
-        db.query(EmailReveal)
-        .filter(EmailReveal.contact_id == contact.id)
-        .one_or_none()
-    )
+    existing = db.query(EmailReveal).filter(EmailReveal.contact_id == contact.id).one_or_none()
     if existing is not None and is_terminal(existing):
         return _terminal_response(contact.id, existing)
 
@@ -80,11 +76,7 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
     _begin_immediate(db)
     not_found_err: ValidationError | None = None
     try:
-        existing = (
-            db.query(EmailReveal)
-            .filter(EmailReveal.contact_id == contact.id)
-            .one_or_none()
-        )
+        existing = db.query(EmailReveal).filter(EmailReveal.contact_id == contact.id).one_or_none()
         if existing is not None and is_terminal(existing):
             db.rollback()
             if existing.status == "not_found":
@@ -110,11 +102,7 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
             except IntegrityError:
                 db.rollback()
                 _begin_immediate(db)
-                existing = (
-                    db.query(EmailReveal)
-                    .filter(EmailReveal.contact_id == contact.id)
-                    .one()
-                )
+                existing = db.query(EmailReveal).filter(EmailReveal.contact_id == contact.id).one()
                 if is_terminal(existing):
                     if existing.status == "not_found":
                         raise _cached_not_found_error(contact.id, existing)
@@ -125,7 +113,7 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
                 )
 
         email, credits_used = sumble.reveal_email(int(contact.sumble_person_id))
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         existing.email = email
         existing.cost_credits = credits_used
         existing.status = "revealed" if email else "not_found"

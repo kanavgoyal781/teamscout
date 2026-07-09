@@ -1,0 +1,19 @@
+# Frontend dependency allowlist — one package per line (name as in package.json).
+# Format: package-name  # why
+
+next                     # Next.js app framework
+react                    # UI library
+react-dom                # React DOM renderer
+@tailwindcss/postcss     # Tailwind v4 PostCSS integration
+@testing-library/jest-dom # DOM matchers for component tests
+@testing-library/react   # React component test utilities
+@types/node              # TypeScript types for Node
+@types/react             # TypeScript types for React
+@types/react-dom         # TypeScript types for React DOM
+@vitejs/plugin-react     # Vite React plugin used by Vitest
+eslint                   # JS/TS lint
+eslint-config-next       # Next.js ESLint config
+jsdom                    # DOM environment for Vitest
+tailwindcss              # Utility CSS (single styling system)
+typescript               # TypeScript compiler
+vitest                   # Frontend unit test runner

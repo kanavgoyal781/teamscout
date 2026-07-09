@@ -1,8 +1,9 @@
 import json
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import limiter, llm_limit, search_limit, upload_limit
 from app.db.models import IntentSearch
 from app.db.session import get_db
 from app.errors import ValidationError
@@ -29,7 +30,9 @@ def list_resumes(db: Session = Depends(get_db)) -> LibraryResumeListResponse:
 
 
 @router.post("/upload", response_model=LibraryUploadResponse)
+@limiter.limit(upload_limit)
 async def upload_library(
+    request: Request,
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ) -> LibraryUploadResponse:
@@ -48,7 +51,9 @@ def sync_drive(
 
 
 @router.post("/intent/search", response_model=IntentSearchResponse)
+@limiter.limit(search_limit)
 def intent_search(
+    request: Request,
     payload: IntentSearchRequest,
     db: Session = Depends(get_db),
 ) -> IntentSearchResponse:
@@ -81,7 +86,12 @@ def intent_search(
 
 
 @router.post("/jobs/{job_id}/recommend-resumes", response_model=RecommendResumesResponse)
-def recommend_resumes(job_id: str, db: Session = Depends(get_db)) -> RecommendResumesResponse:
+@limiter.limit(llm_limit)
+def recommend_resumes(
+    request: Request,
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> RecommendResumesResponse:
     job = resolve_job(job_id, db)
     candidates = library_store.load_candidates(db)
     if not candidates:
