@@ -73,6 +73,14 @@ backend/uploads/*
 backend/.pytest_cache/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+backend/.mypy_cache/
+**/__pycache__/
+.turbo/
+frontend/.next/
+frontend/node_modules/
+# pnpm / npm install cruft
+frontend/node_modules/.ignored/
 reviews/
 frontend/CLAUDE.md
 frontend/AGENTS.md
