@@ -119,11 +119,49 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function fetchHealth(): Promise<HealthResponse> {
-  const response = await fetch(`${API_BASE}/health`, { cache: "no-store" });
-  if (!response.ok) {
-    throw await parseError(response);
+  // Backend returns HTTP 503 when ok=false (missing keys). That is degraded
+  // config with a valid JSON body — not "backend unreachable".
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/health`, { cache: "no-store" });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Network error";
+    throw new ApiClientError(msg, { status: 0, errorCode: "network_error" });
   }
-  return response.json() as Promise<HealthResponse>;
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new ApiClientError(response.statusText || "Invalid health response", {
+      status: response.status,
+      requestId: response.headers.get("X-Request-ID"),
+    });
+  }
+
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "ok" in payload &&
+    "checks" in payload &&
+    typeof (payload as HealthResponse).checks === "object"
+  ) {
+    return payload as HealthResponse;
+  }
+
+  if (!response.ok) {
+    throw await parseError(
+      new Response(JSON.stringify(payload), {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      }),
+    );
+  }
+
+  throw new ApiClientError("Unexpected health response shape", {
+    status: response.status,
+  });
 }
 
 export async function uploadResume(file: File): Promise<ResumeUploadResponse> {

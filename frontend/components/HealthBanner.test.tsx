@@ -61,6 +61,42 @@ describe("HealthBanner", () => {
     expect(screen.getByText(/LLM_API_KEY/i)).toBeInTheDocument();
   });
 
+  it("parses degraded health on HTTP 503 without calling it unreachable", async () => {
+    // Production backend returns 503 when ok=false — still a valid health payload.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        headers: new Headers(),
+        json: async () => ({
+          ok: false,
+          db: true,
+          version: "dev",
+          checks: {
+            llm: "configured",
+            embeddings: "configured",
+            jobs_api: "missing",
+            sumble: "configured",
+            google_drive: "missing",
+          },
+          optional_checks: ["google_drive"],
+        }),
+      }),
+    );
+
+    renderBanner();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("health-banner")).toBeInTheDocument();
+    });
+    const banner = screen.getByTestId("health-banner");
+    expect(within(banner).getByText(/jobs api missing/i)).toBeInTheDocument();
+    expect(within(banner).getByText(/JOBS_API_KEY/i)).toBeInTheDocument();
+    expect(within(banner).queryByText(/backend unreachable/i)).not.toBeInTheDocument();
+  });
+
   it("renders a red banner when the database is failing", async () => {
     vi.stubGlobal(
       "fetch",
