@@ -10,8 +10,17 @@ import { queryKeys } from "../lib/query";
 
 const OPTIONAL_SERVICES = new Set(["google_drive"]);
 
+/** Product labels — never surface vendor names (e.g. Sumble) to operators. */
+const SERVICE_LABELS: Record<string, string> = {
+  llm: "LLM",
+  embeddings: "embeddings",
+  jobs_api: "jobs API",
+  sumble: "hiring team lookup",
+  google_drive: "Google Drive",
+};
+
 function formatService(name: string): string {
-  return name.replace(/_/g, " ");
+  return SERVICE_LABELS[name] ?? name.replace(/_/g, " ");
 }
 
 function envHint(service: string, status: string): string {

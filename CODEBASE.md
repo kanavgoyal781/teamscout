@@ -14,7 +14,7 @@
 **TeamScout** is a recruiting intelligence platform. As implemented on disk:
 
 1. **Feature 1 (M2–M3 + M5/M6 Sumble):** Upload a resume → confirm profile → search and rank live jobs → extract hiring-team signals from a JD → find people via Sumble → gated email reveal.
-2. **Feature 2 (M4):** Ingest a resume library (upload / ZIP / Google Drive) → intent-based job search → pick the best resume for a job with transparent scoring, JD coverage, and LLM justification.
+2. **Feature 2 (M4):** Ingest a resume library (upload / ZIP / Google Drive) → paste a job description → best-resume pick (top 3 + coverage + LLM justification). Backend also retains intent-search APIs for smoke/tests; they are not the active UI path.
 
 ### Milestone reality (what code actually has)
 
@@ -23,7 +23,7 @@
 | **M1** | Present | FastAPI shell, honesty errors, structured logging, health skeleton |
 | **M2** | Present | Resume parse/confirm, JSearch jobs + SQLite cache, hybrid ranking |
 | **M3** | Present | Team extract, Sumble people search, contacts + email reveal, Feature 1 UI |
-| **M4** | Present | Library ingest, Drive sync, intent search, best-resume pick, shared `hybrid_rank` |
+| **M4** | Present | Library ingest, Drive sync, paste-JD best-resume pick (primary UI), retained intent-search APIs, shared `hybrid_rank` |
 | **M5** | Present (git: *Milestone 5: Fix Sumble to real API + cleanup*) | Sumble OpenAPI v6 rewrite; org domain heuristic; job-post match → related_people primary path; people filter fallback; `search_path` persisted/returned; jobs query uses ≤2 skills; frontend credit estimates + path label |
 | **M6** | Present (git: *Milestone 6* + review follow-up + test signature fix) | `SUMBLE_JOB_MATCH_LIMIT`; title-lookup slug preference; credit aggregation (org + path); email-reveal `not_found` commit-before-raise; expanded `test_sumble.py` |
 
@@ -37,7 +37,7 @@
 | JSearch jobs fetch + SQLite cache | Queues / DLQ |
 | Hybrid ranking: dense + BM25 + RRF + LLM rerank | Outreach, applications tracker, auto-submit |
 | Team extraction + Sumble people search + email reveal | Live `/health` probes (`"failing"` never emitted by health checks today) |
-| Resume library, Drive sync, intent search, best-resume pick | Working Beta sidebar tabs (UI shows disabled placeholders only) |
+| Resume library, Drive sync, paste-JD → best-resume pick (intent-search APIs retained for smoke/tests) | Working Beta sidebar tabs (UI shows disabled placeholders only) |
 | Honesty layer: hard-fail unconfigured services | Mock data importable from `backend/app/` |
 | Sumble v6 paths, credits aggregation, redacted credit logs | Alembic migrations (empty `backend/alembic/versions/`; schema via `create_all` + SQLite `ALTER`) |
 
@@ -49,7 +49,7 @@ From `AGENTS.md`, `SPEC.md`, and `backend/app/errors.py` — verified against co
 - **No silent fallbacks for missing keys / failed HTTP** on LLM, embeddings, jobs API, Sumble, or Drive: raise `ServiceNotConfiguredError` or `ServiceFailingError` → HTTP **503** JSON.
 - **Within-Sumble strategy fallbacks are intentional** (not honesty violations): title-lookup HTTP failure falls back to raw titles; org resolve tries domain then name; hiring-team prefers job-post match then people filter. Keys still hard-fail; exhausted org resolve still hard-fails.
 - `/health` is **config-presence only** for integrations: each `check_*()` returns only `"configured"` or `"missing"`. The `CheckStatus` type and frontend banner also understand `"failing"` for forward compatibility, but **backend health never emits `"failing"` today**. Runtime API failures surface as 503 on the **individual request**, not via health check values.
-- Credit-costing Sumble calls log `sumble.credit_call` / `sumble.credit_result` at INFO with redacted URLs (`backend/app/services/sumble.py:_redact_url` strips query/fragment).
+- Credit-costing Sumble calls log `sumble.credit_call` / `sumble.credit_result` at INFO with redacted URLs (`backend/app/services/sumble_client.py:redact_url` strips query/fragment).
 - Frontend shows a **red degraded banner** when health is not fully green; banner hidden while loading (`frontend/components/HealthBanner.tsx`).
 
 ---
@@ -186,11 +186,11 @@ flowchart TB
 | Searches | `api/routers/searches.py` | `/searches` | Resume-driven job search + rank |
 | Jobs | `api/routers/jobs.py` | `/jobs` | Team extract, find-team, list team (+ `search_path`) |
 | Contacts | `api/routers/contacts.py` | `/contacts` | Email reveal preview/confirm |
-| Library | `api/routers/library.py` | `/library` | Library ingest, intent search, resume pick |
+| Library | `api/routers/library.py` | `/library` | Library ingest, paste-JD recommend, intent search API, resume pick |
 
 **Thin router pattern:** Routers validate input, load DB rows, delegate to services. Team search orchestration lives in `services/team_search.py`. Re-searching a job **updates** the existing `job_team_searches` row (`job_id` unique) and upserts `contacts` — it does not create duplicate team-search records.
 
-**Note:** `_contact_to_out` exists in both `jobs.py` and `team_search.py` (same shape). M6 follow-up commit message claimed dedup; both helpers remain.
+**Note:** Contact DTO mapping is shared as `team_search.contact_to_out` (used by find-team + `GET /jobs/{id}/team`).
 
 ### 4.3 Services
 
@@ -303,7 +303,7 @@ Default ranking weights: LLM 0.5, RRF 0.3, skills 0.1, recency 0.1.
 |---|---|
 | `app/layout.tsx` | Root layout, global CSS, metadata |
 | `app/page.tsx` | **Feature 1:** Resume wizard + job results + team discovery |
-| `app/library/page.tsx` | **Feature 2:** Library ingest + intent search + resume recommendations |
+| `app/library/page.tsx` | **Feature 2:** Library ingest + paste JD → best-resume recommendations |
 | `app/globals.css` | App styles (Tailwind v4 pipeline via postcss) |
 | `components/AppShell.tsx` | Sidebar + HealthBanner + title/lede + toast slot |
 | `components/Sidebar.tsx` | Nav: Feature 1, Library; disabled Beta placeholders (`title="Coming soon"` tooltip only — labels read “Outreach (Beta)” / “Applications Tracker (Beta)”) |
@@ -318,8 +318,9 @@ Stack: Next.js **16.2.9**, React **19**, pnpm **9.15**, vitest for unit tests.
 | `JobResultsList` | `components/JobResultsList.tsx` | Feature 1 — ranked jobs, score breakdown, hosts team panel |
 | `TeamDiscoveryPanel` | `components/TeamDiscoveryPanel.tsx` | Feature 1 — extract, Sumble search, path label, credit estimate copy, email reveal |
 | `LibraryIngestPanel` | `components/LibraryIngestPanel.tsx` | Feature 2 — local/ZIP upload, Drive sync |
-| `IntentSearchPanel` | `components/IntentSearchPanel.tsx` | Feature 2 — intent form → job search |
-| `ResumeRecommendations` | `components/ResumeRecommendations.tsx` | Feature 2 — pick job, top 3 resumes + coverage |
+| `PasteJdPanel` | `components/PasteJdPanel.tsx` | Feature 2 — paste job description form |
+| `ResumeRecommendations` | `components/ResumeRecommendations.tsx` | Feature 2 — top 3 resumes + coverage for pasted JD |
+| `JobPasteTeamPanel` | `components/JobPasteTeamPanel.tsx` | Feature 1 alt — paste JD → team extract/find without resume search |
 | `HealthBanner` | `components/HealthBanner.tsx` | Shared — degraded-state alert |
 | `AppShell` | `components/AppShell.tsx` | Shared chrome |
 | `Sidebar` | `components/Sidebar.tsx` | Shared nav |
@@ -328,8 +329,9 @@ Stack: Next.js **16.2.9**, React **19**, pnpm **9.15**, vitest for unit tests.
 
 - Base URL: `NEXT_PUBLIC_API_BASE` (default `http://localhost:8000`).
 - Typed TypeScript interfaces mirror backend Pydantic schemas (including `search_path`, `experience_fit`, library types).
-- Internal `parseError()` extracts `message` from backend JSON; exported functions throw `Error`.
-- Functions: `uploadResume`, `confirmResume`, `createSearch`, `extractTeam`, `findTeam`, `getJobTeam`, `revealEmail`, `listLibraryResumes`, `uploadLibrary`, `syncDrive`, `intentSearch`, `recommendResumes`.
+- Internal `parseError()` builds `ApiClientError` from backend JSON + `X-Request-ID`.
+- UI-used functions: `uploadResume`, `confirmResume`, `createSearch`, `extractTeam`, `findTeam`, `getJobTeam`, `revealEmail`, `listLibraryResumes`, `uploadLibrary`, `syncDrive`, `recommendFromJd`, `ingestJobFromText`, `fetchHealth`.
+- Backend still exposes `POST /library/intent/search` and `POST /library/jobs/{job_id}/recommend-resumes` (smoke/tests); the Feature 2 UI path is paste-JD → `recommendFromJd` only.
 
 ### 5.4 Hooks
 
@@ -342,7 +344,7 @@ Stack: Next.js **16.2.9**, React **19**, pnpm **9.15**, vitest for unit tests.
 
 **`hooks/useLibraryPage.ts`** — library page orchestration:
 
-- Loads library on mount; handles upload, Drive sync, intent search, resume pick.
+- Loads library on mount; handles upload, Drive sync, paste-JD best-resume match.
 
 ### 5.5 User flows
 
@@ -361,9 +363,10 @@ Stack: Next.js **16.2.9**, React **19**, pnpm **9.15**, vitest for unit tests.
 #### Feature 2: Library (`app/library/page.tsx`)
 
 1. **Ingest** PDF/DOCX/ZIP or Drive sync → `POST /library/upload` or `POST /library/drive/sync`
-2. **Intent search** → `POST /library/intent/search` (JSearch → cache → hybrid rank; `remote_preference=remote` sets `remote_jobs_only=true`)
-3. **Pick best resume** per job → `POST /library/jobs/{job_id}/recommend-resumes` — `job_id` must exist in `jobs_cache` (`resolve_job`); unknown → 404
-4. View score breakdown, coverage table, LLM rationale
+2. **Paste JD** → `POST /library/recommend-from-jd` (caches job, ranks **all** library resumes, returns top 3 + coverage)
+3. View score breakdown, coverage table, LLM rationale
+
+Backend also retains intent-search + recommend-by-job-id routes for API/smoke coverage; they are not the active Feature 2 UI path.
 
 ### 5.6 Health banner / degraded UX (`frontend/components/HealthBanner.tsx`)
 
@@ -380,7 +383,7 @@ Stack: Next.js **16.2.9**, React **19**, pnpm **9.15**, vitest for unit tests.
 
 ### 5.7 Shared utilities
 
-- `lib/format.ts` — `formatPostedAt()` for job cards.
+- `lib/format.ts` — `formatPostedAgo()` and score display helpers for job cards.
 
 ---
 
@@ -651,7 +654,7 @@ make test     # pytest + pnpm test
 18. **User clicks Reveal email — preview** → `POST /contacts/{id}/reveal-email` → `cost_credits=10`, `status=preview`.
 19. **User confirms** → `POST ...?confirm=true` → billing lock → `sumble.reveal_email` → persist terminal status → show email or not_found error.
 
-**Library journey (abbreviated):** ingest → intent search (jobs cached) → recommend-resumes → hybrid rank with `score_pool=all` + coverage.
+**Library journey (abbreviated):** ingest → paste JD (`recommend-from-jd`) → hybrid rank with `score_pool=all` + coverage (top 3).
 
 ---
 

@@ -131,3 +131,29 @@ async def test_teamscout_error_handler_returns_clean_json() -> None:
     assert payload["error"] == "service_not_configured"
     assert payload["message"] == "LLM API not configured — set LLM_API_KEY"
     assert payload["details"]["env_var"] == "LLM_API_KEY"
+
+
+def test_loads_llm_json_repairs_trailing_comma() -> None:
+    raw = '{"results": [{"job_id": "a", "fit_score": 80, "matched_skills": [], "missing_skills": [], "rationale": "ok"},]}'
+    payload = llm._loads_llm_json(raw)
+    assert payload["results"][0]["job_id"] == "a"
+
+
+def test_loads_llm_json_salvages_truncated_results() -> None:
+    # Truncated mid-second object (classic max_tokens cut)
+    raw = (
+        '{"results": ['
+        '{"job_id": "j1", "fit_score": 90, "matched_skills": ["Python"], '
+        '"missing_skills": [], "rationale": "good fit"}, '
+        '{"job_id": "j2", "fit_score": 40, "matched_skills": ["Go"], '
+        '"missing_skills": ["Rust"], "rationale": "partial'
+    )
+    payload = llm._loads_llm_json(raw)
+    assert len(payload["results"]) == 1
+    assert payload["results"][0]["job_id"] == "j1"
+
+
+def test_loads_llm_json_reads_fenced_block() -> None:
+    raw = 'Here you go:\n```json\n{"name": "x", "score": 1}\n```\n'
+    payload = llm._loads_llm_json(raw)
+    assert payload == {"name": "x", "score": 1}

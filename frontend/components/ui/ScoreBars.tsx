@@ -9,8 +9,8 @@ import { easeOut } from "../../lib/motion";
 type ScoreBarsProps = {
   breakdown: ScoreBreakdown;
   /**
-   * jobs (default): llm_fit / rrf / skill / recency
-   * resumes: llm_fit / rrf / skill / experience_fit (backend sets recency=0 for F2)
+   * jobs (default): llm / rrf / skill / experience / requirements / recency
+   * resumes: llm / rrf / skill / experience / requirements (recency=0 for F2)
    */
   variant?: "jobs" | "resumes";
 };
@@ -21,6 +21,8 @@ const JOB_ROWS: Row[] = [
   { key: "llm_fit", label: "LLM fit", isPercent: true },
   { key: "rrf_normalized", label: "RRF", isPercent: false },
   { key: "skill_jaccard", label: "Skill", isPercent: false },
+  { key: "experience_fit", label: "Experience", isPercent: false },
+  { key: "requirements_met", label: "Requirements", isPercent: false },
   { key: "recency", label: "Recency", isPercent: false },
 ];
 
@@ -29,6 +31,7 @@ const RESUME_ROWS: Row[] = [
   { key: "rrf_normalized", label: "RRF", isPercent: false },
   { key: "skill_jaccard", label: "Skill", isPercent: false },
   { key: "experience_fit", label: "Experience", isPercent: false },
+  { key: "requirements_met", label: "Requirements", isPercent: false },
 ];
 
 function resolveRows(breakdown: ScoreBreakdown, variant?: "jobs" | "resumes"): Row[] {

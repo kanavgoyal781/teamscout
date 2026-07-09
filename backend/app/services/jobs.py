@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -7,11 +8,14 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.http_timeouts import default_timeout
+from app.core.logging import get_logger
 from app.db.models import JobCache
 from app.errors import ServiceFailingError, ServiceNotConfiguredError
 from app.schemas.jobs import Job
 from app.schemas.library import IntentProfile
 from app.schemas.resume import ResumeProfile
+
+logger = get_logger(__name__)
 
 
 def _require_jobs_config() -> None:
@@ -43,11 +47,12 @@ def _location_from_item(item: dict) -> str:
     return ", ".join(str(part).strip() for part in parts if part)
 
 
-def _extract_skills(description: str, profile_skills: list[str]) -> list[str]:
+def extract_skills_from_description(description: str, profile_skills: list[str]) -> list[str]:
+    """Return profile skills that appear as substrings in the job description."""
     if not description:
         return []
     lowered = description.lower()
-    found = []
+    found: list[str] = []
     for skill in profile_skills:
         token = skill.strip()
         if token and token.lower() in lowered and token not in found:
@@ -91,7 +96,7 @@ def _normalize_job(item: dict, profile: ResumeProfile, *, job_id: str | None = N
         skills = []
     skills = [str(skill).strip() for skill in skills if str(skill).strip()]
     if not skills:
-        skills = _extract_skills(description, profile.skills)
+        skills = extract_skills_from_description(description, profile.skills)
 
     return Job(
         id=job_id or str(uuid.uuid4()),
@@ -108,9 +113,16 @@ def _normalize_job(item: dict, profile: ResumeProfile, *, job_id: str | None = N
 
 
 def _within_recency(posted_at: datetime | None, cutoff: datetime) -> bool:
+    """Keep undated jobs (many free-board/JSearch rows lack dates); ranker penalizes them."""
     if posted_at is None:
-        return False
+        return True
     return posted_at >= cutoff
+
+
+def _content_dedupe_key(job: Job) -> str:
+    title = re.sub(r"\s+", " ", job.title.lower()).strip()
+    company = re.sub(r"\s+", " ", job.company.lower()).strip()
+    return f"{title}|{company}"
 
 
 def _cache_jobs(db: Session, jobs: list[Job]) -> None:
@@ -174,7 +186,6 @@ def _extract_jsearch_items(payload: object) -> list[dict]:
         jobs = data.get("jobs")
         if isinstance(jobs, list):
             return [item for item in jobs if isinstance(item, dict)]
-        # Some variants nest under results / job_results
         for key in ("results", "job_results", "items"):
             nested = data.get(key)
             if isinstance(nested, list):
@@ -197,103 +208,176 @@ def _jsearch_get(params: dict[str, str]) -> list[dict]:
     return _extract_jsearch_items(payload)
 
 
-def fetch_jobs(profile: ResumeProfile, db: Session) -> list[Job]:
-    _require_jobs_config()
+def build_jsearch_queries(title: str, location: str, skills: list[str] | None = None) -> list[str]:
+    """Diverse query set so one narrow string does not starve the candidate pool."""
+    role = (title or "").strip() or "software engineer"
+    loc = (location or "").strip() or "United States"
+    skill_bits = [s.strip() for s in (skills or []) if s and s.strip()][:2]
 
-    title = profile.title.strip() or "software engineer"
-    location = profile.location.strip() or "United States"
-    # Use title + location + at most top 2 distinguishing skills (no 8-skill concat)
-    top_skills = " ".join(s for s in profile.skills[:2] if s.strip())
-    query = f"{title} {top_skills} in {location}".strip()
+    queries: list[str] = []
+    seen: set[str] = set()
 
-    # Align recency param with JOBS_RECENCY_DAYS (use month for 14d, week for <=7)
+    def add(q: str) -> None:
+        cleaned = re.sub(r"\s+", " ", q).strip()
+        key = cleaned.lower()
+        if cleaned and key not in seen:
+            seen.add(key)
+            queries.append(cleaned)
+
+    add(f"{role} in {loc}")
+    if skill_bits:
+        add(f"{role} {' '.join(skill_bits)}")
+    loc_l = loc.lower()
+    if "remote" not in loc_l and "remote" not in role.lower():
+        add(f"{role} remote")
+    if skill_bits:
+        add(f"{' '.join(skill_bits)} {role} jobs")
+    return queries[:4]
+
+
+def _jsearch_base_params() -> dict[str, str]:
     date_posted = "month" if settings.JOBS_RECENCY_DAYS > 7 else "week"
-    params = {
-        "query": query,
+    # Broader than FULLTIME-only: contract/part-time often match tech seekers.
+    return {
         "page": "1",
-        "num_pages": "5",
+        "num_pages": "3",
         "date_posted": date_posted,
-        "employment_types": "FULLTIME",
+        "employment_types": "FULLTIME,CONTRACTOR,PARTTIME",
     }
 
+
+def _fetch_jsearch_raw(queries: list[str], *, remote_only: bool = False) -> list[dict]:
+    """Run multi-query JSearch and union by job_id."""
+    merged: list[dict] = []
+    seen_ids: set[str] = set()
+    base = _jsearch_base_params()
+    if remote_only:
+        base = {**base, "remote_jobs_only": "true"}
+
+    for query in queries:
+        params = {**base, "query": query}
+        try:
+            items = _jsearch_get(params)
+        except ServiceFailingError:
+            # First query failure is fatal; subsequent are best-effort broadeners.
+            if not merged:
+                raise
+            logger.warning("jobs.jsearch_query_failed", query=query)
+            continue
+        logger.info("jobs.jsearch_query", query=query, count=len(items))
+        for item in items:
+            sid = str(item.get("job_id") or item.get("job_google_link") or "")
+            if sid and sid in seen_ids:
+                continue
+            if sid:
+                seen_ids.add(sid)
+            merged.append(item)
+    return merged
+
+
+def _assign_stable_ids(db: Session, jobs: list[Job]) -> list[Job]:
+    assigned: list[Job] = []
+    for job in jobs:
+        cached = _cached_job_id(db, job.source, job.source_job_id)
+        job_id = cached or (job.id if job.id else str(uuid.uuid4()))
+        if not job_id:
+            job_id = str(uuid.uuid4())
+        assigned.append(job.model_copy(update={"id": job_id}))
+    return assigned
+
+
+def _filter_and_cap(jobs: list[Job], *, cutoff: datetime, limit: int) -> list[Job]:
+    out: list[Job] = []
+    seen_source: set[tuple[str, str]] = set()
+    seen_content: set[str] = set()
+    for job in jobs:
+        key = (job.source, job.source_job_id)
+        if key in seen_source:
+            continue
+        content = _content_dedupe_key(job)
+        if content in seen_content:
+            continue
+        if not _within_recency(job.posted_at, cutoff):
+            continue
+        seen_source.add(key)
+        seen_content.add(content)
+        out.append(job)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _merge_fetch(
+    profile: ResumeProfile,
+    db: Session,
+    *,
+    queries: list[str],
+    remote_only: bool = False,
+) -> list[Job]:
+    _require_jobs_config()
     from app.services import observability
+    from app.services.job_boards import fetch_optional_boards
 
     with observability.traced_call("jsearch.search", model="jsearch") as trace:
-        raw_items = _jsearch_get(params)
+        raw_items = _fetch_jsearch_raw(queries, remote_only=remote_only)
 
-        cutoff = datetime.now(UTC) - timedelta(days=settings.JOBS_RECENCY_DAYS)
-        jobs: list[Job] = []
-        seen: set[str] = set()
+        jsearch_jobs: list[Job] = []
         for item in raw_items:
             source_job_id = str(item.get("job_id") or item.get("job_google_link") or "")
             cached_id = _cached_job_id(db, "jsearch", source_job_id) if source_job_id else None
             job = _normalize_job(item, profile, job_id=cached_id)
-            if job is None or job.source_job_id in seen:
-                continue
-            if not _within_recency(job.posted_at, cutoff):
-                continue
-            seen.add(job.source_job_id)
-            jobs.append(job)
-            if len(jobs) >= settings.JOBS_FETCH_TARGET:
-                break
+            if job is not None:
+                jsearch_jobs.append(job)
+
+        board_jobs: list[Job] = []
+        if settings.JOBS_EXTRA_SOURCES_ENABLED:
+            board_jobs = fetch_optional_boards(profile)
+            board_jobs = _assign_stable_ids(db, board_jobs)
+
+        # Prefer JSearch first (richer US coverage), then free boards.
+        combined = jsearch_jobs + board_jobs
+        cutoff = datetime.now(UTC) - timedelta(days=settings.JOBS_RECENCY_DAYS)
+        jobs = _filter_and_cap(combined, cutoff=cutoff, limit=settings.JOBS_FETCH_TARGET)
+
+        by_source: dict[str, int] = {}
+        for job in jobs:
+            by_source[job.source] = by_source.get(job.source, 0) + 1
+        logger.info(
+            "jobs.fetch_merged",
+            jsearch_raw=len(raw_items),
+            jsearch_kept=len(jsearch_jobs),
+            boards=len(board_jobs),
+            final=len(jobs),
+            by_source=by_source,
+        )
 
         if not jobs:
             raise ServiceFailingError(
-                "Jobs API", f"no jobs matched filters in the last {settings.JOBS_RECENCY_DAYS} days"
+                "Jobs API",
+                f"no jobs matched filters in the last {settings.JOBS_RECENCY_DAYS} days",
             )
 
-        trace.input_tokens = len(raw_items)
+        trace.input_tokens = len(raw_items) + len(board_jobs)
         trace.output_tokens = len(jobs)
         _cache_jobs(db, jobs)
         return jobs
+
+
+def fetch_jobs(profile: ResumeProfile, db: Session) -> list[Job]:
+    title = profile.title.strip() or "software engineer"
+    location = profile.location.strip() or "United States"
+    queries = build_jsearch_queries(title, location, profile.skills)
+    return _merge_fetch(profile, db, queries=queries)
 
 
 def fetch_jobs_for_intent(intent: IntentProfile, db: Session) -> list[Job]:
-    _require_jobs_config()
-
     role = intent.role.strip() or "software engineer"
     loc = intent.location.strip() or "United States"
-    # title + loc + <=2 skills style; keep remote handling
-    query = f"{role} in {loc}".strip()
-    date_posted = "month" if settings.JOBS_RECENCY_DAYS > 7 else "week"
-    params = {
-        "query": query,
-        "page": "1",
-        "num_pages": "5",
-        "date_posted": date_posted,
-        "employment_types": "FULLTIME",
-    }
-    if intent.remote_preference == "remote":
-        params["remote_jobs_only"] = "true"
-
-    from app.services import observability
-
-    with observability.traced_call("jsearch.search", model="jsearch") as trace:
-        raw_items = _jsearch_get(params)
-
-        profile = intent.as_query_profile()
-        cutoff = datetime.now(UTC) - timedelta(days=settings.JOBS_RECENCY_DAYS)
-        jobs: list[Job] = []
-        seen: set[str] = set()
-        for item in raw_items:
-            source_job_id = str(item.get("job_id") or item.get("job_google_link") or "")
-            cached_id = _cached_job_id(db, "jsearch", source_job_id) if source_job_id else None
-            job = _normalize_job(item, profile, job_id=cached_id)
-            if job is None or job.source_job_id in seen:
-                continue
-            if not _within_recency(job.posted_at, cutoff):
-                continue
-            seen.add(job.source_job_id)
-            jobs.append(job)
-            if len(jobs) >= settings.JOBS_FETCH_TARGET:
-                break
-
-        if not jobs:
-            raise ServiceFailingError(
-                "Jobs API", f"no jobs matched filters in the last {settings.JOBS_RECENCY_DAYS} days"
-            )
-
-        trace.input_tokens = len(raw_items)
-        trace.output_tokens = len(jobs)
-        _cache_jobs(db, jobs)
-        return jobs
+    queries = build_jsearch_queries(role, loc, skills=None)
+    remote_only = intent.remote_preference == "remote"
+    return _merge_fetch(
+        intent.as_query_profile(),
+        db,
+        queries=queries,
+        remote_only=remote_only,
+    )

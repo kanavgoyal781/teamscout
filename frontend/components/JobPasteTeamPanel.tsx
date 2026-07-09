@@ -63,10 +63,10 @@ export default function JobPasteTeamPanel({
 
   return (
     <section className="panel" data-testid="job-paste-team">
-      <h2>Paste a job → extract team → Sumble</h2>
+      <h2>Paste a job → extract hiring team</h2>
       <p className="meta" style={{ marginTop: 0, marginBottom: "var(--space-4)" }}>
-        Skip resume job-search. Paste a posting, extract hiring-team signals, then search Sumble and
-        reveal emails.
+        Skip resume job-search. Paste a posting, extract who likely owns the hire, then look up the
+        hiring team and reveal emails.
       </p>
 
       <form className="field-grid paste-form" onSubmit={handleSubmit}>
@@ -83,7 +83,7 @@ export default function JobPasteTeamPanel({
         </label>
         <label className="field">
           <span className="field-label">
-            Company <span className="field-optional">optional · helps Sumble</span>
+            Company <span className="field-optional">optional · improves team match</span>
           </span>
           <input
             value={company}
@@ -131,6 +131,7 @@ export default function JobPasteTeamPanel({
           </p>
           <TeamDiscoveryPanel
             teamState={teamState}
+            roleHint={jobMeta.title}
             onExtract={() => onExtract(jobId)}
             onFindTeam={() => onFindTeam(jobId)}
             onRevealEmail={(contact, confirm) => onRevealEmail(jobId, contact, confirm)}

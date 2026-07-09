@@ -4,7 +4,7 @@
 
 ## Product
 
-**TeamScout** is a recruiting intelligence platform. Milestone 4 adds **Feature 2 end-to-end**: resume library ingestion (upload + Google Drive sync), intent-based job search, and best-resume pick with coverage and LLM justification — on top of the M3 Feature 1 stack (team extraction, Sumble people search, email reveal).
+**TeamScout** is a recruiting intelligence platform. Milestone 4 adds **Feature 2 end-to-end**: resume library ingestion (upload + Google Drive sync), paste-JD best-resume pick with coverage and LLM justification — on top of the M3 Feature 1 stack (team extraction, Sumble people search, email reveal). Intent-search and recommend-by-job-id library routes remain on the API for smoke/tests but are not the primary UI path.
 
 ## Architecture (M4)
 
@@ -55,8 +55,9 @@
 | `GET /library/resumes` | List library resumes |
 | `POST /library/upload` | Upload PDF/DOCX/ZIP; hash dedup |
 | `POST /library/drive/sync` | Sync Google Drive folder (paginated, incremental re-sync) |
-| `POST /library/intent/search` | Intent profile → fetch jobs → hybrid rank |
-| `POST /library/jobs/{job_id}/recommend-resumes` | Rank **all** library resumes against job; top 3 with coverage |
+| `POST /library/recommend-from-jd` | **Primary Feature 2 UI path:** paste JD → cache job → rank all library resumes → top 3 + coverage |
+| `POST /library/intent/search` | Retained API / smoke: intent profile → fetch jobs → hybrid rank (not active UI) |
+| `POST /library/jobs/{job_id}/recommend-resumes` | Retained API / smoke: rank all library resumes for an existing `job_id` |
 
 Drive edge cases:
 - Pagination for large folders
@@ -75,9 +76,9 @@ Drive edge cases:
 | Page | Components |
 |---|---|
 | `app/page.tsx` | Feature 1: `ResumeWizard`, `JobResultsList`, `TeamDiscoveryPanel` |
-| `app/library/page.tsx` | Feature 2: `LibraryIngestPanel`, `IntentSearchPanel`, `ResumeRecommendations` |
+| `app/library/page.tsx` | Feature 2: `LibraryIngestPanel`, `PasteJdPanel`, `ResumeRecommendations` |
 
-Shared utilities: `frontend/lib/format.ts` (`formatPostedAt`).
+Shared utilities: `frontend/lib/format.ts` (`formatPostedAgo`, score helpers).
 
 ## Smoke tests
 

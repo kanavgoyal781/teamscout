@@ -31,6 +31,8 @@ class ScoreBreakdown(BaseModel):
     skill_jaccard: float
     recency: float
     experience_fit: float | None = None
+    requirements_met: float | None = None
+    required_years: float | None = None
     final_score: float
     matched_skills: list[str] = Field(default_factory=list)
     missing_skills: list[str] = Field(default_factory=list)

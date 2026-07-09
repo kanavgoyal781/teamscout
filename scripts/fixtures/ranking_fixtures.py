@@ -571,4 +571,170 @@ FRONTEND_ENGINEER = PersonaFixture(
     ],
 )
 
-PERSONAS = [DATA_SCIENTIST, BACKEND_ENGINEER, FRONTEND_ENGINEER]
+# Mid-level persona: must prefer mid/senior-appropriate roles over staff/principal
+# and must prefer jobs whose hard requirements are covered (not keyword-only titles).
+MID_LEVEL_ENGINEER = PersonaFixture(
+    name="mid_level_engineer",
+    profile=ResumeProfile(
+        name="Sam Chen",
+        title="Software Engineer",
+        years_of_experience=3.0,
+        location="Remote",
+        skills=["Python", "SQL", "Django", "PostgreSQL", "Docker", "REST APIs"],
+        work_experience=[
+            WorkExperience(
+                title="Software Engineer",
+                company="StartupCo",
+                bullets=[
+                    "Built Django REST APIs on PostgreSQL",
+                    "Owned Dockerized services and SQL reporting",
+                ],
+            )
+        ],
+        summary="Mid-level software engineer with 3 years building Python web APIs.",
+    ),
+    jobs=[
+        LabeledJob(
+            _job(
+                "mid-1",
+                "Software Engineer",
+                "APIStart",
+                "Remote",
+                ["Python", "Django", "PostgreSQL", "Docker"],
+                "Requirements: 2-4 years of experience with Python and Django. "
+                "Build REST APIs on PostgreSQL. Docker experience preferred.",
+            ),
+            3.0,
+        ),
+        LabeledJob(
+            _job(
+                "mid-2",
+                "Backend Engineer (Mid-level)",
+                "CloudSoft",
+                "Remote",
+                ["Python", "SQL", "REST APIs"],
+                "Minimum 3 years experience. Day-to-day: Python services, SQL, REST APIs.",
+            ),
+            3.0,
+        ),
+        LabeledJob(
+            _job(
+                "mid-3",
+                "Junior Software Engineer",
+                "FreshCode",
+                "Austin, TX",
+                ["Python", "SQL"],
+                "Entry-level friendly. 0-2 years. Mentorship on Python and SQL.",
+            ),
+            1.0,
+        ),
+        LabeledJob(
+            _job(
+                "mid-4",
+                "Staff Software Engineer",
+                "MegaScale",
+                "Remote",
+                ["Python", "distributed systems", "leadership"],
+                "Staff Software Engineer. Minimum 10+ years of experience. "
+                "Lead multi-team architecture and mentor seniors. Python preferred.",
+            ),
+            0.0,
+        ),
+        LabeledJob(
+            _job(
+                "mid-5",
+                "Principal Engineer",
+                "EnterpriseAI",
+                "New York, NY",
+                ["Python", "architecture", "strategy"],
+                "Principal Engineer. 12+ years required. Set technical strategy org-wide.",
+            ),
+            0.0,
+        ),
+        LabeledJob(
+            _job(
+                "mid-6",
+                "Senior Software Engineer",
+                "GrowthLabs",
+                "Remote",
+                ["Python", "Django", "AWS"],
+                "Senior role. Requires 6+ years of professional experience with Python and Django.",
+            ),
+            1.0,
+        ),
+        LabeledJob(
+            _job(
+                "mid-7",
+                "Python Developer",
+                "DataPipe",
+                "Chicago, IL",
+                ["Python", "PostgreSQL", "Docker"],
+                "Requirements: Python, PostgreSQL, Docker. 2+ years of experience. "
+                "Build data-adjacent APIs and ETL helpers.",
+            ),
+            3.0,
+        ),
+        LabeledJob(
+            _job(
+                "mid-8",
+                "Software Engineer",
+                "BuzzwordAI",
+                "Remote",
+                ["Python"],
+                "Software Engineer title only. Looking for Kubernetes operators, Go, "
+                "and 8+ years of distributed systems leadership. Python optional.",
+            ),
+            0.0,
+        ),
+        LabeledJob(
+            _job(
+                "mid-9",
+                "Director of Engineering",
+                "BigCorp",
+                "San Francisco, CA",
+                ["leadership", "hiring", "roadmap"],
+                "Director of Engineering. 15+ years. Own org roadmap and hiring.",
+            ),
+            0.0,
+        ),
+        LabeledJob(
+            _job(
+                "mid-10",
+                "Full Stack Engineer",
+                "WebShop",
+                "Remote",
+                ["Python", "Django", "React"],
+                "Requirements: Django and React. 3 years minimum. Build product features end-to-end.",
+            ),
+            2.0,
+        ),
+        LabeledJob(
+            _job(
+                "mid-11",
+                "ML Engineer",
+                "ModelOps",
+                "Remote",
+                ["PyTorch", "CUDA", "MLOps"],
+                "Must have: PyTorch, CUDA, production MLOps. 5+ years ML systems experience.",
+            ),
+            0.0,
+        ),
+        LabeledJob(
+            _job(
+                "mid-12",
+                "Backend Engineer",
+                "PayAPI",
+                "Remote",
+                ["Python", "PostgreSQL", "REST APIs", "Docker"],
+                "Requirements: Python, PostgreSQL, REST APIs, Docker. "
+                "Around 3 years of backend experience preferred.",
+            ),
+            3.0,
+        ),
+    ],
+)
+
+PERSONAS = [DATA_SCIENTIST, BACKEND_ENGINEER, FRONTEND_ENGINEER, MID_LEVEL_ENGINEER]
+
+# Fit-signal-only corpus (no embeddings required) for seniority + requirements benchmarks.
+FIT_SIGNAL_PERSONAS = [MID_LEVEL_ENGINEER]

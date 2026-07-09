@@ -1,26 +1,49 @@
 "use client";
 
 import { Moon, Sun } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 import { applyThemeClass, resolveInitialTheme, writeThemeCookie, type ThemeMode } from "../../lib/theme";
 
-export default function ThemeToggle() {
-  const [mode, setMode] = useState<ThemeMode>("dark");
-  const [mounted, setMounted] = useState(false);
+/** Minimal external store so theme can hydrate from cookie without setState-in-effect. */
+let themeSnapshot: ThemeMode | null = null;
+const themeListeners = new Set<() => void>();
 
-  useEffect(() => {
-    const initial = resolveInitialTheme();
-    setMode(initial);
-    applyThemeClass(initial);
-    setMounted(true);
-  }, []);
+/** Pure snapshot — no mutation. Cache is filled in subscribe / commit only. */
+function getThemeSnapshot(): ThemeMode {
+  return themeSnapshot ?? resolveInitialTheme();
+}
+
+function getServerThemeSnapshot(): ThemeMode {
+  return "dark";
+}
+
+function ensureThemeStore(): void {
+  if (themeSnapshot == null) {
+    themeSnapshot = resolveInitialTheme();
+  }
+}
+
+function subscribeTheme(onStoreChange: () => void): () => void {
+  ensureThemeStore();
+  themeListeners.add(onStoreChange);
+  return () => {
+    themeListeners.delete(onStoreChange);
+  };
+}
+
+function commitTheme(next: ThemeMode): void {
+  themeSnapshot = next;
+  applyThemeClass(next);
+  writeThemeCookie(next);
+  themeListeners.forEach((listener) => listener());
+}
+
+export default function ThemeToggle() {
+  const mode = useSyncExternalStore(subscribeTheme, getThemeSnapshot, getServerThemeSnapshot);
 
   function toggle() {
-    const next: ThemeMode = mode === "dark" ? "light" : "dark";
-    setMode(next);
-    applyThemeClass(next);
-    writeThemeCookie(next);
+    commitTheme(mode === "dark" ? "light" : "dark");
   }
 
   return (
@@ -30,8 +53,9 @@ export default function ThemeToggle() {
       onClick={toggle}
       aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
       title={mode === "dark" ? "Light mode" : "Dark mode"}
+      suppressHydrationWarning
     >
-      {mounted && mode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+      {mode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
     </button>
   );
 }

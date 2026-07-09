@@ -31,6 +31,8 @@ export type ScoreBreakdown = {
   skill_jaccard: number;
   recency: number;
   experience_fit?: number | null;
+  requirements_met?: number | null;
+  required_years?: number | null;
   final_score: number;
   matched_skills: string[];
   missing_skills: string[];

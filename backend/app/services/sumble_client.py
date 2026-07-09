@@ -42,7 +42,8 @@ class SumblePerson:
 
 def require_sumble_config() -> None:
     if not is_set(settings.SUMBLE_API_KEY):
-        raise ServiceNotConfiguredError("Sumble", "SUMBLE_API_KEY")
+        # User-facing name omits vendor; env key remains SUMBLE_API_KEY.
+        raise ServiceNotConfiguredError("Hiring team lookup", "SUMBLE_API_KEY")
 
 
 def redact_url(url: str) -> str:
@@ -84,12 +85,14 @@ def post(
                 data = response.json()
         except httpx.HTTPStatusError as exc:
             detail = exc.response.text[:500] if exc.response is not None else str(exc)
-            raise ServiceFailingError("Sumble", f"HTTP {exc.response.status_code}: {detail}") from exc
+            raise ServiceFailingError(
+                "Hiring team lookup", f"HTTP {exc.response.status_code}: {detail}"
+            ) from exc
         except httpx.HTTPError as exc:
-            raise ServiceFailingError("Sumble", str(exc)) from exc
+            raise ServiceFailingError("Hiring team lookup", str(exc)) from exc
 
         if not isinstance(data, dict):
-            raise ServiceFailingError("Sumble", "unexpected response format")
+            raise ServiceFailingError("Hiring team lookup", "unexpected response format")
 
         credits = data.get("credits_used")
         if credits is not None:

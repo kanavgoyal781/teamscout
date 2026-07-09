@@ -148,6 +148,92 @@ def _extract_json(raw: str) -> str:
     return text
 
 
+def _strip_trailing_commas(text: str) -> str:
+    return re.sub(r",\s*([}\]])", r"\1", text)
+
+
+def _scan_balanced_objects(blob: str) -> list[str]:
+    """Extract complete top-level {...} objects from a blob (handles strings)."""
+    objects: list[str] = []
+    i = 0
+    n = len(blob)
+    while i < n:
+        if blob[i] != "{":
+            i += 1
+            continue
+        depth = 0
+        in_str = False
+        esc = False
+        j = i
+        while j < n:
+            ch = blob[j]
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+            else:
+                if ch == '"':
+                    in_str = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        objects.append(blob[i : j + 1])
+                        i = j + 1
+                        break
+            j += 1
+        else:
+            break  # truncated object — stop
+    return objects
+
+
+def _salvage_results_json(raw: str) -> str | None:
+    """Rebuild {\"results\":[...]} from a truncated or messy LLM payload."""
+    text = _extract_json(raw)
+    marker = re.search(r'"results"\s*:\s*\[', text)
+    if not marker:
+        # Whole payload might be a bare array of result objects
+        objects = _scan_balanced_objects(text)
+        if not objects:
+            return None
+        return '{"results": [' + ",".join(objects) + "]}"
+    objects = _scan_balanced_objects(text[marker.end() :])
+    if not objects:
+        return None
+    return '{"results": [' + ",".join(objects) + "]}"
+
+
+def _loads_llm_json(raw: str) -> object:
+    """Parse LLM JSON with repair for trailing commas and truncated results arrays."""
+    candidates: list[str] = []
+    extracted = _extract_json(raw)
+    candidates.append(extracted)
+    candidates.append(_strip_trailing_commas(extracted))
+    salvaged = _salvage_results_json(raw)
+    if salvaged:
+        candidates.append(salvaged)
+        candidates.append(_strip_trailing_commas(salvaged))
+
+    last_exc: Exception | None = None
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            last_exc = exc
+            continue
+    if last_exc is not None:
+        raise last_exc
+    raise json.JSONDecodeError("empty LLM JSON", raw, 0)
+
+
 def complete_json(
     prompt: str,
     model: type[T],
@@ -165,16 +251,18 @@ def complete_json(
     last_error = "invalid JSON"
 
     for attempt in range(max_retries + 1):
+        # On retry after truncation, allow a bit more room for complete objects.
+        attempt_budget = budget if attempt == 0 else min(budget + 1500, max(budget, 8000))
         raw = complete(
             current_prompt,
             system=base_system,
             temperature=temperature,
-            max_tokens=budget,
+            max_tokens=attempt_budget,
             operation=operation,
             prompt_meta=prompt_meta,
         )
         try:
-            payload = json.loads(_extract_json(raw))
+            payload = _loads_llm_json(raw)
             return model.model_validate(payload)
         except (json.JSONDecodeError, PydanticValidationError) as exc:
             last_error = str(exc)
@@ -182,7 +270,8 @@ def complete_json(
                 break
             current_prompt = (
                 f"{prompt}\n\nPrevious response was invalid ({last_error}). "
-                "Return JSON that matches the schema exactly."
+                "Return COMPLETE valid JSON only — compact fields, short strings, "
+                "no trailing commas, no markdown. Finish every object and array."
             )
 
     raise ServiceFailingError("LLM", f"invalid JSON schema: {last_error}")

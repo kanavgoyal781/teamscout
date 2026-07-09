@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import type { Contact } from "../lib/types";
 import type { JobTeamState } from "../hooks/useJobTeam";
+import BulkEmailComposer from "./BulkEmailComposer";
 import EmptyState from "./ui/EmptyState";
 import { ContactSkeleton } from "./ui/Skeleton";
 
@@ -14,6 +15,8 @@ type TeamDiscoveryPanelProps = {
   onExtract: () => void;
   onFindTeam: () => void;
   onRevealEmail: (contact: Contact, confirm: boolean) => void;
+  /** Optional role title for bulk email {{role}} token */
+  roleHint?: string;
 };
 
 export default function TeamDiscoveryPanel({
@@ -21,6 +24,7 @@ export default function TeamDiscoveryPanel({
   onExtract,
   onFindTeam,
   onRevealEmail,
+  roleHint = "",
 }: TeamDiscoveryPanelProps) {
   const pendingCost = teamState.pendingReveal;
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -61,7 +65,7 @@ export default function TeamDiscoveryPanel({
 
       {teamState.extraction ? (
         <div className="team-extraction" data-testid="extraction-card">
-          <p className="meta">LLM-extracted team signals — confirm before Sumble spend.</p>
+          <p className="meta">Hiring-team signals from the job description — confirm before we look up people.</p>
           <ul className="breakdown-list" style={{ margin: "8px 0", paddingLeft: "1.1rem", color: "var(--text-secondary)" }}>
             <li>
               <strong>Team:</strong> {teamState.extraction.team_name || "—"}
@@ -77,8 +81,8 @@ export default function TeamDiscoveryPanel({
             </li>
           </ul>
           <p className="meta font-num">
-            Est. max for job-post match: ~30 credits (30 × 1 base, title free) · fallback people
-            search: ~20 credits (10 × ~2) before Sumble spend.
+            Est. max for role match: ~30 credits · fallback people search: ~20 credits before
+            lookup spend.
           </p>
           <div className="actions">
             <button
@@ -88,7 +92,7 @@ export default function TeamDiscoveryPanel({
               disabled={teamState.finding || !teamState.extractionId}
               data-testid="confirm-find-team"
             >
-              {teamState.finding ? "Searching Sumble…" : "Confirm & search Sumble"}
+              {teamState.finding ? "Finding hiring team…" : "Confirm & find hiring team"}
             </button>
           </div>
         </div>
@@ -103,12 +107,15 @@ export default function TeamDiscoveryPanel({
 
       {teamState.contacts.length > 0 ? (
         <div className="contact-list" data-testid="contact-list">
-          <h4>People</h4>
-          {teamState.searchPath ? (
-            <span className="path-badge" data-testid="search-path">
-              {teamState.searchPath}
-            </span>
-          ) : null}
+          <div className="contact-list-head">
+            <h4>People</h4>
+            {teamState.searchPath ? (
+              <span className="path-badge" data-testid="search-path">
+                {teamState.searchPath}
+              </span>
+            ) : null}
+          </div>
+          <BulkEmailComposer contacts={teamState.contacts} roleHint={roleHint} />
           {teamState.contacts.map((contact) => {
             const awaitingConfirm = pendingCost[contact.id] != null;
             const revealing = teamState.revealLoading[contact.id];
@@ -177,7 +184,7 @@ export default function TeamDiscoveryPanel({
         </div>
       ) : teamState.extraction && !teamState.finding ? (
         <p className="meta empty-hint" style={{ marginTop: 12 }}>
-          No contacts yet. Confirm the extraction above to search Sumble for hiring managers.
+          No contacts yet. Confirm the extraction above to find hiring managers for this role.
         </p>
       ) : null}
     </div>

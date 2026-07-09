@@ -196,7 +196,7 @@ def lookup_organization(company_name: str, apply_url: str | None = None) -> tupl
     """
     company_name = (company_name or "").strip()
     if not company_name:
-        raise ServiceFailingError("Sumble", "company name is required for organization lookup")
+        raise ServiceFailingError("Hiring team lookup", "company name is required for organization lookup")
 
     orgs_inputs: list[dict[str, str]] = []
     dom = _derive_domain(company_name, apply_url)
@@ -267,7 +267,7 @@ def search_people(
 
     people_rows = data.get("people")
     if not isinstance(people_rows, list):
-        raise ServiceFailingError("Sumble", "missing people array")
+        raise ServiceFailingError("Hiring team lookup", "missing people array")
 
     results: list[SumblePerson] = []
     for row in people_rows:
@@ -306,8 +306,9 @@ def find_hiring_team(
 
     Fallback: people filter by function/level.
     Returns (people, credits_used, path_label)
-    Path labels exactly: "Matched Sumble job post" or "Filtered by function/level"
-    Credits aggregated for job match / people search + title-lookup inside fallback.
+    Path labels are product-facing (no vendor names): "Matched posted role" or
+    "Matched by role filters". Credits aggregated for job match / people search
+    + title-lookup inside fallback.
     """
     lim = getattr(settings, "SUMBLE_SEARCH_LIMIT", sumble_client.DEFAULT_LIMIT)
     total_credits = 0
@@ -321,13 +322,14 @@ def find_hiring_team(
                 people, related_credits = sumble_jobs.get_related_people_for_job(matched_id, limit=lim)
                 total_credits += related_credits
                 if people:
+                    path_label = "Matched posted role"
                     logger.info(
                         "sumble.team_path",
-                        path="Matched Sumble job post",
+                        path=path_label,
                         sumble_job_id=matched_id,
                         count=len(people),
                     )
-                    return people, total_credits, "Matched Sumble job post"
+                    return people, total_credits, path_label
         except (httpx.HTTPError, ServiceFailingError) as exc:
             logger.info("sumble.job_related_fallback", reason=str(exc)[:200])
 
@@ -339,8 +341,9 @@ def find_hiring_team(
         likely_hiring_titles=likely_hiring_titles,
     )
     total_credits += search_credits
-    logger.info("sumble.team_path", path="Filtered by function/level", count=len(people))
-    return people, total_credits, "Filtered by function/level"
+    path_label = "Matched by role filters"
+    logger.info("sumble.team_path", path=path_label, count=len(people))
+    return people, total_credits, path_label
 
 
 def reveal_email(person_id: int) -> tuple[str | None, int]:

@@ -128,7 +128,7 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
             # Raise AFTER the try/except block below to prevent outer rollback from
             # destroying the terminal cached state (fixes double-charge on not_found).
             not_found_err = ValidationError(
-                "Sumble did not return an email for this contact",
+                "No email found for this contact",
                 details={
                     "contact_id": contact.id,
                     "status": existing.status,

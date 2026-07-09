@@ -23,7 +23,7 @@ def reveal_email(
     if contact is None:
         raise NotFoundError("contact", contact_id)
     if not contact.sumble_person_id:
-        raise ValidationError("Contact has no Sumble person id — run find-team first")
+        raise ValidationError("Contact is missing a person id — find the hiring team first")
 
     if not confirm:
         return email_reveal.preview_reveal(db, contact)

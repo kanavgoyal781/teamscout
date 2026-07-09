@@ -47,11 +47,16 @@ class Settings(BaseSettings):
     JOBS_API_KEY: str | None = None
     JOBS_API_BASE: str | None = "https://jsearch.p.rapidapi.com"
     JOBS_API_HOST: str = "jsearch.p.rapidapi.com"
+    # Free boards (Remotive, Arbeitnow) as optional enrichment; no keys required.
+    JOBS_EXTRA_SOURCES_ENABLED: bool = True
 
-    RANKING_WEIGHT_LLM: float = 0.5
-    RANKING_WEIGHT_RRF: float = 0.3
-    RANKING_WEIGHT_SKILLS: float = 0.1
-    RANKING_WEIGHT_RECENCY: float = 0.1
+    # Must sum to 1.0 (validated). Experience + requirements curb pure keyword/seniority drift.
+    RANKING_WEIGHT_LLM: float = 0.38
+    RANKING_WEIGHT_RRF: float = 0.20
+    RANKING_WEIGHT_SKILLS: float = 0.12
+    RANKING_WEIGHT_RECENCY: float = 0.08
+    RANKING_WEIGHT_EXPERIENCE: float = 0.12
+    RANKING_WEIGHT_REQUIREMENTS: float = 0.10
     RRF_K: int = 60
     JOBS_FETCH_TARGET: int = 150
     JOBS_RECENCY_DAYS: int = 14
@@ -121,7 +126,7 @@ class Settings(BaseSettings):
         }
         return mapping.get(operation, self.LLM_MAX_TOKENS_DEFAULT)
 
-    @field_validator("RATE_LIMIT_ENABLED", mode="before")
+    @field_validator("RATE_LIMIT_ENABLED", "JOBS_EXTRA_SOURCES_ENABLED", mode="before")
     @classmethod
     def _parse_bool(cls, value: object) -> object:
         if isinstance(value, str):

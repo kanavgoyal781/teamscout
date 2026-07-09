@@ -18,8 +18,8 @@ _CREDITS_FALLBACK_TITLE_LOOKUP = 1  # title-lookup inside build_people_query
 _CREDITS_FALLBACK_PEOPLE_SEARCH = 12  # people filter credits_used (test_search_people mock)
 _CREDITS_FALLBACK_PATH = _CREDITS_FALLBACK_TITLE_LOOKUP + _CREDITS_FALLBACK_PEOPLE_SEARCH  # 13
 
-_PATH_JOB_MATCH = "Matched Sumble job post"
-_PATH_FALLBACK = "Filtered by function/level"
+_PATH_JOB_MATCH = "Matched posted role"
+_PATH_FALLBACK = "Matched by role filters"
 
 
 @pytest.fixture

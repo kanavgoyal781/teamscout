@@ -8,7 +8,11 @@ from app.schemas.library import RankedResumeRecommendation, RequirementCoverage,
 from app.schemas.resume import ResumeProfile
 from app.services import llm
 from app.services.hybrid_rank import Rankable, RerankResult, hybrid_rank
-from app.services.ranking_math import skill_jaccard
+from app.services.ranking_math import (
+    experience_fit_score,
+    requirements_met_score,
+    skill_jaccard,
+)
 
 
 class _ResumeRerankItem(BaseModel):
@@ -47,18 +51,20 @@ def _candidate_to_rankable(candidate: ResumeCandidate) -> Rankable:
 
 
 def _experience_score(job: Job, profile: ResumeProfile) -> float:
-    text = job.description.lower()
-    yoe = profile.years_of_experience
-    if yoe <= 0:
-        return 0.5
-    for marker in (f"{int(yoe)} years", f"{int(yoe)}+ years", f"{yoe} years"):
-        if marker in text:
-            return 1.0
-    if yoe >= 8 and "senior" in text:
-        return 0.85
-    if yoe >= 5 and "mid" in text:
-        return 0.75
-    return 0.5
+    return experience_fit_score(
+        profile.years_of_experience,
+        title=job.title,
+        description=job.description,
+    )
+
+
+def _requirements_score(job: Job, profile: ResumeProfile) -> float:
+    return requirements_met_score(
+        profile_skills=profile.skills,
+        profile_text=profile.search_text(),
+        job_skills=job.skills,
+        job_description=job.description,
+    )
 
 
 def _build_rerank_prompt(job: Job, candidates: list[ResumeCandidate], instructions: str) -> str:
@@ -213,7 +219,9 @@ def rank_resumes_for_job(
         rankables,
         rerank_fn=rerank_fn if use_llm else None,
         skill_overlap_fn=lambda rankable: skill_jaccard(by_id[rankable.id].profile.skills, job.skills),
-        recency_fn=lambda rankable: _experience_score(job, by_id[rankable.id].profile),
+        recency_fn=lambda _rankable: 0.0,
+        experience_fn=lambda rankable: _experience_score(job, by_id[rankable.id].profile),
+        requirements_fn=lambda rankable: _requirements_score(job, by_id[rankable.id].profile),
         use_llm=use_llm,
         score_pool="all",
         top_n=settings.RESUME_RECOMMEND_TOP_N,
@@ -232,7 +240,8 @@ def rank_resumes_for_job(
                     rrf_normalized=item.rrf_normalized,
                     skill_jaccard=item.skill_overlap,
                     recency=0.0,
-                    experience_fit=item.recency,
+                    experience_fit=item.experience_fit,
+                    requirements_met=item.requirements_met,
                     final_score=item.final_score,
                     matched_skills=item.matched_skills,
                     missing_skills=item.missing_skills,

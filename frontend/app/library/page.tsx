@@ -40,14 +40,9 @@ export default function LibraryPage() {
         onSubmit={state.handleMatchJd}
       />
       <ResumeRecommendations
-        jobResults={[]}
-        searching={state.matching}
         searched={state.matched}
-        selectedJobId={state.matchedJobId}
         recommending={state.matching}
         recommendations={state.recommendations}
-        onPickJob={() => {}}
-        jdMode
         jdTitle={state.matchedJobTitle}
         jdCompany={state.matchedJobCompany}
       />

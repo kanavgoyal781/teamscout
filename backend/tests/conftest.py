@@ -6,7 +6,10 @@ import fitz
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+# Force in-memory SQLite for unit tests. Must override (not setdefault): pipeline_check
+# and developer shells load repo-root .env with DATABASE_URL=sqlite:///./teamscout.db,
+# which would otherwise make pytest mutate the live dev DB and flake on unique constraints.
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 # Disable rate limits for unit tests (re-enabled in test_rate_limit.py).
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 

@@ -124,6 +124,11 @@ jobs:
           python-version: "3.12"
       - name: Install backend deps
         run: python3 -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      # Offline fit-signal suite always runs (no LLM/embeddings secrets).
+      - name: Fit-signal eval (offline)
+        run: python3 scripts/eval_fit_signals.py
+      # Embeddings required; LLM optional (eval scripts note and continue without LLM).
+      # Endpoint: EMBEDDINGS_API full URL, or LLM_API_BASE (OpenAI-compatible base) — same as embeddings_endpoint().
       - name: Detect eval secrets
         id: secrets
         env:
@@ -132,15 +137,16 @@ jobs:
           EMBEDDINGS_API_KEY: ${{ secrets.EMBEDDINGS_API_KEY }}
           EMBEDDINGS_API: ${{ secrets.EMBEDDINGS_API }}
         run: |
-          if [ -z "${LLM_API_KEY}" ] || [ -z "${EMBEDDINGS_API_KEY}" ] || [ -z "${EMBEDDINGS_API}" ]; then
+          if [ -z "${EMBEDDINGS_API_KEY}" ] || { [ -z "${EMBEDDINGS_API}" ] && [ -z "${LLM_API_BASE}" ]; }; then
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Eval secrets missing (LLM_API_KEY / EMBEDDINGS_*) — skipping ranking + resume-pick evals. Configure repo secrets to enable the gate (forks without secrets skip intentionally)."
+            echo "::warning::Embeddings secrets missing (EMBEDDINGS_API_KEY and EMBEDDINGS_API or LLM_API_BASE) — skipping ranking + resume-pick evals. LLM is optional. Configure repo secrets to enable the gate (forks without secrets skip intentionally)."
           else
             echo "available=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Ranking eval
         if: steps.secrets.outputs.available == 'true'
         env:
+          # LLM_* optional: scripts run hybrid with use_llm=False when unset
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_API_BASE: ${{ secrets.LLM_API_BASE }}
           LLM_MODEL: ${{ secrets.LLM_MODEL }}
@@ -159,16 +165,15 @@ jobs:
           EMBEDDINGS_MODEL: ${{ secrets.EMBEDDINGS_MODEL }}
         run: python3 scripts/eval_resume_pick.py
       - name: Eval trend report
-        if: steps.secrets.outputs.available == 'true'
+        if: always()
         run: python3 scripts/eval_report.py
       - name: Upload eval history
-        if: always() && steps.secrets.outputs.available == 'true'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: eval-history
           path: evals/history.jsonl
           if-no-files-found: ignore
-
   # Deploy only after all quality gates. Requires GitHub Environment "production"
   # (optional reviewers) and repo secrets — see DEPLOYMENT.md.
   # Never echo secrets; tokens only via env from ${{ secrets.* }}.

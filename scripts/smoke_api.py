@@ -13,7 +13,9 @@ BACKEND = ROOT / "backend"
 sys.path.insert(0, str(BACKEND))
 sys.path.insert(0, str(ROOT))
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+# Force in-memory SQLite so polluted process env / repo .env cannot open the live
+# teamscout.db (same isolation rule as backend/tests/conftest.py).
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 for key in (
     "LLM_API_KEY",
     "LLM_API_BASE",

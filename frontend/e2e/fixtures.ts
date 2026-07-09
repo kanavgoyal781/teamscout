@@ -86,7 +86,6 @@ export async function mockApi(
     libraryEmpty?: boolean;
     searchError?: boolean;
     searchEmpty?: boolean;
-    intentEmpty?: boolean;
     recommendEmpty?: boolean;
   } = {},
 ) {
@@ -183,7 +182,7 @@ export async function mockApi(
         ],
         credits_used: 12,
         team_searched: true,
-        search_path: "Matched Sumble job post",
+        search_path: "Matched posted role",
       });
     }
 
@@ -210,7 +209,7 @@ export async function mockApi(
           likely_hiring_titles: ["Engineering Manager"],
         },
         team_searched: true,
-        search_path: "Matched Sumble job post",
+        search_path: "Matched posted role",
       });
     }
 
@@ -266,13 +265,6 @@ export async function mockApi(
         ],
         total: 3,
       });
-    }
-
-    if (path === "/library/intent/search" && method === "POST") {
-      if (options.intentEmpty) {
-        return json({ search_id: "is-1", results: [] });
-      }
-      return json({ search_id: "is-1", results: [rankedJob] });
     }
 
     const recPayload = {
@@ -339,13 +331,6 @@ export async function mockApi(
         return json({ job_id: "job-paste-1", job_title: "x", job_company: "y", recommendations: [] });
       }
       return json(recPayload);
-    }
-
-    if (path === "/library/jobs/job-1/recommend-resumes" && method === "POST") {
-      if (options.recommendEmpty) {
-        return json({ job_id: "job-1", recommendations: [] });
-      }
-      return json({ job_id: "job-1", recommendations: recPayload.recommendations });
     }
 
     if (path === "/jobs/from-text" && method === "POST") {

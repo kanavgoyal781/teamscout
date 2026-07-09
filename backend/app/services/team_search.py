@@ -8,7 +8,8 @@ from app.schemas.team import ContactOut, FindTeamResponse, TeamExtraction
 from app.services import sumble
 
 
-def _contact_to_out(contact: Contact, reveal_email: str | None = None) -> ContactOut:
+def contact_to_out(contact: Contact, reveal_email: str | None = None) -> ContactOut:
+    """Map a Contact ORM row (+ optional revealed email) to the public DTO."""
     return ContactOut(
         id=contact.id,
         full_name=contact.full_name,
@@ -105,7 +106,7 @@ def find_team_for_job(
             .filter(EmailReveal.contact_id == existing.id, EmailReveal.status == "revealed")
             .one_or_none()
         )
-        contacts.append(_contact_to_out(existing, reveal.email if reveal else None))
+        contacts.append(contact_to_out(existing, reveal.email if reveal else None))
 
     _record_team_search(job.id, extraction_id, search_id, credits_used, search_path, db)
     db.commit()

@@ -118,7 +118,7 @@ export function useJobTeam(searchId: string | null) {
           extraction: response.extraction,
           extracting: false,
         });
-        toast.success("Team extracted. Review and confirm before Sumble lookup.");
+        toast.success("Hiring team extracted. Review and confirm before looking up people.");
       } catch (error) {
         updateJobTeam(jobId, { extracting: false });
         toast.error(formatApiError(error));

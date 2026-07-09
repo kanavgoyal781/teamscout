@@ -156,13 +156,14 @@ export default function JobResultsList({
                   </span>
                 </button>
                 <span className="meta font-num" style={{ margin: 0 }}>
-                  Est. ~20–30 credits before Sumble spend
+                  Est. ~20–30 credits before team lookup
                 </span>
               </div>
 
               {teamOpen ? (
                 <TeamDiscoveryPanel
                   teamState={teamState}
+                  roleHint={item.job.title}
                   onExtract={() => onExtract(item.job.id)}
                   onFindTeam={() => onFindTeam(item.job.id)}
                   onRevealEmail={(contact, confirm) =>

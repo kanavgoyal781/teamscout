@@ -31,10 +31,6 @@ export const cardHover = {
   transition: easeOut,
 };
 
-export function motionSafe(reduced: boolean | null): boolean {
-  return Boolean(reduced);
-}
-
 /** True when animation entrance should be skipped (a11y or automated browsers). */
 export function shouldSkipEntrance(reduced: boolean | null): boolean {
   if (reduced) return true;

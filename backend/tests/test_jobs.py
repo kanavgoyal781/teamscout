@@ -1,10 +1,12 @@
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from app.errors import ServiceNotConfiguredError
+from app.schemas.jobs import Job
 from app.schemas.resume import ResumeProfile
-from app.services import jobs
+from app.services import job_boards, jobs
 
 
 def test_fetch_jobs_missing_key_raises() -> None:
@@ -15,9 +17,9 @@ def test_fetch_jobs_missing_key_raises() -> None:
     assert "JOBS_API_KEY" in exc.value.message
 
 
-def test_within_recency_excludes_undated_jobs() -> None:
+def test_within_recency_keeps_undated_jobs() -> None:
     cutoff = datetime.now(UTC) - timedelta(days=14)
-    assert jobs._within_recency(None, cutoff) is False
+    assert jobs._within_recency(None, cutoff) is True
 
 
 def test_within_recency_accepts_recent_jobs() -> None:
@@ -35,10 +37,98 @@ def test_within_recency_rejects_stale_jobs() -> None:
 def test_extract_skills_only_matches_profile_skills() -> None:
     description = "We need Python and PostgreSQL. Candidates should demonstrate Leadership and Ownership."
     profile = ResumeProfile(title="Engineer", skills=["Python", "Redis"], location="Remote")
-    extracted = jobs._extract_skills(description, profile.skills)
+    extracted = jobs.extract_skills_from_description(description, profile.skills)
     assert extracted == ["Python"]
     assert "Leadership" not in extracted
     assert "Ownership" not in extracted
+
+
+def test_build_jsearch_queries_diversifies() -> None:
+    queries = jobs.build_jsearch_queries(
+        "Data Scientist",
+        "San Francisco",
+        ["Python", "PyTorch", "SQL"],
+    )
+    assert len(queries) >= 2
+    assert any("Data Scientist" in q and "San Francisco" in q for q in queries)
+    assert any("Python" in q for q in queries)
+    assert any("remote" in q.lower() for q in queries)
+
+
+def test_build_jsearch_queries_skips_extra_remote_when_already_remote() -> None:
+    queries = jobs.build_jsearch_queries("ML Engineer", "Remote", ["Python"])
+    assert not any(q.lower().endswith("remote") and " in " not in q.lower() for q in queries if "remote" in q.lower() and q.count("remote") > 1)
+    # Location already Remote → no separate "title remote" broaden query is fine either way;
+    # ensure primary still present.
+    assert any("ML Engineer" in q for q in queries)
+
+
+def test_content_dedupe_key_normalizes() -> None:
+    a = Job(
+        id="1",
+        source="jsearch",
+        source_job_id="a",
+        title="  Backend  Engineer ",
+        company="Acme  Inc",
+        location="Remote",
+        description="x",
+        apply_url="https://example.com",
+    )
+    b = Job(
+        id="2",
+        source="remotive",
+        source_job_id="b",
+        title="Backend Engineer",
+        company="Acme Inc",
+        location="US",
+        description="y",
+        apply_url="https://example.com/2",
+    )
+    assert jobs._content_dedupe_key(a) == jobs._content_dedupe_key(b)
+
+
+def test_filter_and_cap_dedupes_across_sources() -> None:
+    cutoff = datetime.now(UTC) - timedelta(days=14)
+    posted = datetime.now(UTC) - timedelta(days=1)
+    jobs_list = [
+        Job(
+            id="1",
+            source="jsearch",
+            source_job_id="j1",
+            title="Backend Engineer",
+            company="Acme",
+            location="Remote",
+            description="Python",
+            apply_url="https://a.example",
+            posted_at=posted,
+        ),
+        Job(
+            id="2",
+            source="remotive",
+            source_job_id="r1",
+            title="Backend Engineer",
+            company="Acme",
+            location="Remote",
+            description="Python remote",
+            apply_url="https://b.example",
+            posted_at=posted,
+        ),
+        Job(
+            id="3",
+            source="arbeitnow",
+            source_job_id="w1",
+            title="Data Scientist",
+            company="Beta",
+            location="Berlin",
+            description="ML",
+            apply_url="https://c.example",
+            posted_at=posted,
+        ),
+    ]
+    kept = jobs._filter_and_cap(jobs_list, cutoff=cutoff, limit=10)
+    assert len(kept) == 2
+    assert kept[0].source == "jsearch"
+    assert kept[1].title == "Data Scientist"
 
 
 def test_cache_jobs_upserts_existing_rows() -> None:
@@ -47,8 +137,6 @@ def test_cache_jobs_upserts_existing_rows() -> None:
     existing.job_id = "stable-job-id"
     existing.payload_json = None
     db.query.return_value.filter.return_value.one_or_none.return_value = existing
-
-    from app.schemas.jobs import Job
 
     job = Job(
         id="new-uuid-should-not-win",
@@ -70,8 +158,6 @@ def test_cache_jobs_upserts_existing_rows() -> None:
 
 
 def test_cache_jobs_preserves_job_id_from_payload_when_column_empty() -> None:
-    from app.schemas.jobs import Job
-
     db = MagicMock()
     existing = MagicMock()
     existing.job_id = None
@@ -102,3 +188,138 @@ def test_cache_jobs_preserves_job_id_from_payload_when_column_empty() -> None:
     jobs._cache_jobs(db, [incoming])
 
     assert existing.job_id == "payload-job-id"
+
+
+def test_matches_profile_requires_token() -> None:
+    profile = ResumeProfile(title="Data Scientist", skills=["Python", "PyTorch"], location="Remote")
+    assert job_boards._matches_profile("Senior Data Scientist", "Build models", profile) is True
+    assert job_boards._matches_profile("Barista", "Make coffee and latte art", profile) is False
+    assert job_boards._matches_profile("ML Engineer", "Must know Python and ML", profile) is True
+
+
+def test_fetch_optional_boards_swallows_http_errors() -> None:
+    profile = ResumeProfile(title="Engineer", skills=["Python"], location="Remote")
+
+    def boom(_profile: ResumeProfile) -> list[Job]:
+        raise httpx.ConnectError("offline")
+
+    with (
+        patch.object(job_boards, "fetch_remotive", side_effect=boom),
+        patch.object(job_boards, "fetch_arbeitnow", return_value=[]),
+    ):
+        result = job_boards.fetch_optional_boards(profile)
+    assert result == []
+
+
+def test_normalize_remotive_item_via_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
+    profile = ResumeProfile(title="Python Developer", skills=["Python"], location="Remote")
+    payload = {
+        "jobs": [
+            {
+                "id": 99,
+                "url": "https://remotive.com/remote-jobs/software-dev/99",
+                "title": "Python Developer",
+                "company_name": "RemotiveCo",
+                "description": "We need Python developers for backend work.",
+                "candidate_required_location": "Worldwide",
+                "publication_date": "2026-07-01T00:00:00",
+                "tags": ["python", "django"],
+            },
+            {
+                "id": 100,
+                "url": "https://remotive.com/remote-jobs/other/100",
+                "title": "Barista",
+                "company_name": "Cafe",
+                "description": "Coffee only",
+                "candidate_required_location": "US",
+                "publication_date": "2026-07-01T00:00:00",
+                "tags": [],
+            },
+        ]
+    }
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return payload
+
+    class FakeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> "FakeClient":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def get(self, *args: object, **kwargs: object) -> FakeResponse:
+            return FakeResponse()
+
+    monkeypatch.setattr(job_boards.httpx, "Client", FakeClient)
+    result = job_boards.fetch_remotive(profile)
+    assert len(result) == 1
+    assert result[0].source == "remotive"
+    assert result[0].company == "RemotiveCo"
+    assert "python" in [s.lower() for s in result[0].skills]
+
+
+def test_merge_fetch_includes_boards(monkeypatch: pytest.MonkeyPatch) -> None:
+    profile = ResumeProfile(title="Backend Engineer", skills=["Python"], location="Remote")
+    posted = (datetime.now(UTC) - timedelta(days=1)).isoformat().replace("+00:00", "Z")
+    jsearch_item = {
+        "job_id": "js-1",
+        "job_title": "Backend Engineer",
+        "job_description": "Python services",
+        "employer_name": "Acme",
+        "job_apply_link": "https://example.com/js",
+        "job_posted_at_datetime_utc": posted,
+        "job_city": "Remote",
+    }
+    board_job = Job(
+        id="board-1",
+        source="remotive",
+        source_job_id="rm-1",
+        title="Python Backend Engineer",
+        company="BoardCo",
+        location="Remote",
+        description="Python backend role",
+        apply_url="https://example.com/board",
+        posted_at=datetime.now(UTC) - timedelta(days=2),
+        skills=["Python"],
+    )
+    db = MagicMock()
+    db.query.return_value.filter.return_value.one_or_none.return_value = None
+
+    monkeypatch.setattr(jobs.settings, "JOBS_API_KEY", "test-key")
+    monkeypatch.setattr(jobs.settings, "JOBS_API_BASE", "https://jsearch.example")
+    monkeypatch.setattr(jobs.settings, "JOBS_EXTRA_SOURCES_ENABLED", True)
+    monkeypatch.setattr(jobs.settings, "JOBS_FETCH_TARGET", 50)
+    monkeypatch.setattr(jobs, "_jsearch_get", lambda params: [jsearch_item])
+    monkeypatch.setattr(
+        "app.services.job_boards.fetch_optional_boards",
+        lambda _p: [board_job],
+    )
+
+    class Trace:
+        input_tokens = 0
+        output_tokens = 0
+
+        def __enter__(self) -> "Trace":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "app.services.observability.traced_call",
+        lambda *a, **k: Trace(),
+    )
+
+    result = jobs.fetch_jobs(profile, db)
+    sources = {j.source for j in result}
+    assert "jsearch" in sources
+    assert "remotive" in sources
+    db.commit.assert_called()

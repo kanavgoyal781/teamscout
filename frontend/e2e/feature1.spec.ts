@@ -51,7 +51,7 @@ test.describe("Feature 1 — resume → jobs → team", () => {
     await expect(page.getByTestId("extraction-card")).toBeVisible();
     await page.getByTestId("confirm-find-team").click();
     await expect(page.getByTestId("contact-list")).toBeVisible();
-    await expect(page.getByTestId("search-path")).toContainText("Matched Sumble job post");
+    await expect(page.getByTestId("search-path")).toContainText("Matched posted role");
     await waitForOpacityOne(page, "team-panel");
 
     await page.screenshot({

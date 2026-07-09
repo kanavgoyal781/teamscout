@@ -28,7 +28,7 @@ export default function HomePage() {
   return (
     <AppShell
       title="Resume → jobs → team"
-      lede="Upload a resume and rank live jobs, or paste a job description to extract the hiring team and run Sumble — no job board required for the team path."
+      lede="Upload a resume and rank live jobs, or paste a job description to identify the hiring team — no job board required for the team path."
     >
       <ResumeWizard
         searching={searching}

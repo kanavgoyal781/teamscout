@@ -22,7 +22,6 @@ export function useLibraryPage() {
   const [jdTitle, setJdTitle] = useState("");
   const [jdCompany, setJdCompany] = useState("");
   const [jdLocation, setJdLocation] = useState("");
-  const [matchedJobId, setMatchedJobId] = useState<string | null>(null);
   const [matchedJobTitle, setMatchedJobTitle] = useState<string>("");
   const [matchedJobCompany, setMatchedJobCompany] = useState<string>("");
   const [recommendations, setRecommendations] = useState<RankedResumeRecommendation[]>([]);
@@ -79,7 +78,6 @@ export function useLibraryPage() {
       }),
     retry: false,
     onSuccess: (response) => {
-      setMatchedJobId(response.job_id);
       setMatchedJobTitle(response.job_title);
       setMatchedJobCompany(response.job_company);
       setRecommendations(response.recommendations);
@@ -143,7 +141,6 @@ export function useLibraryPage() {
     jdLocation,
     matching: matchMutation.isPending,
     matched,
-    matchedJobId,
     matchedJobTitle,
     matchedJobCompany,
     recommendations,

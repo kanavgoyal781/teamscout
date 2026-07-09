@@ -35,7 +35,7 @@ class FindTeamResponse(BaseModel):
     contacts: list[ContactOut] = Field(default_factory=list)
     credits_used: int = 0
     team_searched: bool = True
-    search_path: str | None = None  # "Matched Sumble job post" | "Filtered by function/level" | None
+    search_path: str | None = None  # "Matched posted role" | "Matched by role filters" | None
 
 
 class TeamListResponse(BaseModel):
@@ -44,7 +44,7 @@ class TeamListResponse(BaseModel):
     extraction_id: str | None = None
     extraction: TeamExtraction | None = None
     team_searched: bool = False
-    search_path: str | None = None  # "Matched Sumble job post" | "Filtered by function/level" | None
+    search_path: str | None = None  # "Matched posted role" | "Matched by role filters" | None
 
 
 class EmailRevealResponse(BaseModel):
@@ -56,7 +56,7 @@ class EmailRevealResponse(BaseModel):
 
 
 class IngestJobFromTextRequest(BaseModel):
-    """Paste a job posting (e.g. LinkedIn) to run extract-team → Sumble without JSearch."""
+    """Paste a job posting (e.g. LinkedIn) to run extract-team → find hiring team without JSearch."""
 
     description: str
     title: str = ""

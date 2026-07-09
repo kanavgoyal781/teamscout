@@ -75,23 +75,27 @@ docker compose up --build
 See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for zero→live commands (`fly.toml`, secrets, Vercel `NEXT_PUBLIC_API_BASE`, Litestream/volume backups, CI deploy job, cost notes).
 
 ```bash
+make deploy-status         # CLIs + auth + app status (no mutations)
+make deploy-api            # flyctl deploy (requires fly auth + secrets)
+make deploy-web            # vercel --prod (requires vercel auth + project link)
 # After the API is live and secrets are set on the server:
 DEMO_API_BASE=https://YOUR-APP.fly.dev make demo-check
 ```
 
 Config-only PRs do not imply a public URL is already live — the runbook is the operator path.
-
 ## Development
 
 ```bash
 make test
+make pipeline              # scope → backend unit tests → fit-signal eval (+ ranking/resume-pick if embeddings in .env; + demo-check if DEMO_API_BASE)
+make pipeline-offline      # scope → backend unit tests → fit-signal eval only
+make eval-fit              # YOE + requirements order (no embeddings)
+make eval                  # hybrid ranking NDCG/MRR (needs embeddings; LLM optional)
+make eval-report           # trends from evals/history.jsonl
 cd backend && pytest -q
 cd frontend && pnpm build && pnpm test
-python scripts/eval_ranking.py
-python scripts/eval_resume_pick.py
-python scripts/smoke_sumble.py
+python3 scripts/smoke_sumble.py
 ```
-
 ## API (M4)
 
 | Endpoint | Description |
@@ -112,14 +116,13 @@ python scripts/smoke_sumble.py
 
 ## Ranking pipeline
 
-1. Fetch ~150 jobs (JSearch), 14-day recency filter, cache in SQLite with indexed `job_id`
+1. Multi-source fetch (~150): JSearch multi-query + optional Remotive/Arbeitnow; 14-day recency; SQLite `jobs_cache`
 2. Dense cosine similarity + BM25 lexical retrieval
 3. Reciprocal Rank Fusion (`k=60`)
-4. LLM rerank top 30
-5. Final score: `0.5·LLM + 0.3·RRF + 0.1·skills + 0.1·recency`
+4. LLM rerank top 30 in batches of 8 (JSON salvage on truncated responses)
+5. Final score (defaults): `0.38·LLM + 0.20·RRF + 0.12·skills + 0.12·experience + 0.10·requirements + 0.08·recency`
 
-Resume pick inverts the pipeline: job description is the query, library resumes are candidates.
-
+Resume pick inverts the pipeline: job description is the query, library resumes are candidates. See [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## UI screenshots (M10)
 

@@ -40,6 +40,8 @@ class ScoredCandidate:
     rrf_normalized: float
     skill_overlap: float
     recency: float
+    experience_fit: float
+    requirements_met: float
     final_score: float
 
 
@@ -75,6 +77,8 @@ def hybrid_rank(
     rerank_fn: Callable[[list[Rankable]], dict[str, RerankResult]] | None = None,
     skill_overlap_fn: Callable[[Rankable], float],
     recency_fn: Callable[[Rankable], float],
+    experience_fn: Callable[[Rankable], float] | None = None,
+    requirements_fn: Callable[[Rankable], float] | None = None,
     use_llm: bool = True,
     score_pool: Literal["rerank_top_n", "all"] = "rerank_top_n",
     top_n: int,
@@ -116,11 +120,15 @@ def hybrid_rank(
             rationale = ""
         overlap = skill_overlap_fn(candidate)
         recency = recency_fn(candidate)
+        experience = experience_fn(candidate) if experience_fn is not None else 0.5
+        requirements = requirements_fn(candidate) if requirements_fn is not None else 0.5
         final = fuse_final_score(
             llm_fit=llm_fit,
             rrf_normalized=rrf_normalized.get(candidate_id, 0.0),
             skill_overlap=overlap,
             recency=recency,
+            experience_fit=experience,
+            requirements_met=requirements,
         )
         scored.append(
             ScoredCandidate(
@@ -132,6 +140,8 @@ def hybrid_rank(
                 rrf_normalized=rrf_normalized.get(candidate_id, 0.0),
                 skill_overlap=overlap,
                 recency=recency,
+                experience_fit=experience,
+                requirements_met=requirements,
                 final_score=round(final, 1),
             )
         )

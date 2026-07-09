@@ -8,7 +8,6 @@ from app.db.models import Contact, EmailReveal, JobTeamSearch, TeamExtractionRec
 from app.db.session import get_db
 from app.errors import ValidationError
 from app.schemas.team import (
-    ContactOut,
     FindTeamRequest,
     FindTeamResponse,
     IngestJobFromTextRequest,
@@ -63,20 +62,6 @@ def _latest_extraction(job_id: str, db: Session) -> tuple[str | None, TeamExtrac
     if row is None:
         return None, None
     return row.id, TeamExtraction.model_validate_json(row.extraction_json)
-
-
-def _contact_to_out(contact: Contact, reveal_email: str | None = None) -> ContactOut:
-    return ContactOut(
-        id=contact.id,
-        full_name=contact.full_name,
-        title=contact.title,
-        company=contact.company,
-        team=contact.team,
-        seniority=contact.seniority,
-        sumble_person_id=contact.sumble_person_id,
-        email_revealed=reveal_email is not None,
-        email=reveal_email,
-    )
 
 
 @router.post("/from-text", response_model=IngestJobFromTextResponse)
@@ -163,7 +148,7 @@ def list_team(job_id: str, db: Session = Depends(get_db)) -> TeamListResponse:
     ts = db.query(JobTeamSearch).filter(JobTeamSearch.job_id == job_id).one_or_none()
     return TeamListResponse(
         job_id=job_id,
-        contacts=[_contact_to_out(row, reveals.get(row.id)) for row in rows],
+        contacts=[team_search.contact_to_out(row, reveals.get(row.id)) for row in rows],
         extraction_id=extraction_id,
         extraction=extraction,
         team_searched=_team_searched(job_id, db),

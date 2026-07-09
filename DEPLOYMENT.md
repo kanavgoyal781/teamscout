@@ -21,7 +21,19 @@ Related files (must match this runbook):
 | [`frontend/next.config.ts`](./frontend/next.config.ts) | `output: 'standalone'` for Docker; Vercel uses its own Next runtime |
 | [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) | `deploy` job after scope/lint/typecheck/test/frontend/eval |
 | [`scripts/demo_check.py`](./scripts/demo_check.py) | `make demo-check` against live API |
+| [`Makefile`](./Makefile) | `deploy-api` / `deploy-web` / `deploy-status` / `pipeline` wrappers |
 
+### Operator shortcuts (repo root)
+
+```bash
+make deploy-status   # flyctl/vercel presence + auth + app status (no mutations)
+make deploy-api      # flyctl deploy --config fly.toml --app teamscout-api
+make deploy-web      # vercel --prod (uses root vercel.json → frontend/)
+make pipeline        # scope + backend unit tests + offline evals (+ ranking evals when embeddings in .env)
+DEMO_API_BASE=https://teamscout-api.fly.dev make demo-check
+```
+
+`make deploy-api` / `make deploy-web` **fail loudly** if the CLI is missing or if auth preflight fails (`fly auth whoami` / `vercel whoami`) — they do not invent a successful deploy. Full first-time setup remains §§1–2 below.
 ---
 
 ## Architecture (one box each)

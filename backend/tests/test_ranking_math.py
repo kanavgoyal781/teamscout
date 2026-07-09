@@ -3,10 +3,15 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from app.errors import ValidationError
 from app.services.ranking_math import (
+    experience_fit_score,
+    extract_requirement_terms,
     fuse_final_score,
+    infer_seniority,
     normalize_scores,
+    parse_required_years,
     recency_score,
     reciprocal_rank_fusion,
+    requirements_met_score,
     skill_jaccard,
     tokenize,
     validate_ranking_weights,
@@ -54,6 +59,71 @@ def test_recency_score_decays_with_age() -> None:
     assert 0 < older < 1
 
 
+def test_parse_required_years_range_and_plus() -> None:
+    assert parse_required_years("Requires 5+ years of experience") == 5.0
+    assert parse_required_years("2-4 years of experience with Python") == 2.0
+    assert parse_required_years("minimum of 3 years") == 3.0
+    assert parse_required_years("no years mentioned") is None
+
+
+def test_infer_seniority_from_title() -> None:
+    assert infer_seniority("Staff Software Engineer") == "staff"
+    assert infer_seniority("Junior Backend Engineer") == "junior"
+    assert infer_seniority("Principal Scientist") == "principal"
+    assert infer_seniority("Software Engineer", "mid-level backend role") == "mid"
+
+
+def test_experience_fit_penalizes_underqualified_for_staff() -> None:
+    good = experience_fit_score(
+        3.0,
+        title="Software Engineer",
+        description="Requirements: 2-4 years of experience with Python.",
+    )
+    bad = experience_fit_score(
+        3.0,
+        title="Staff Software Engineer",
+        description="Minimum 10+ years of experience. Lead multi-team architecture.",
+    )
+    assert good > 0.75
+    assert bad < 0.4
+    assert good > bad
+
+
+def test_experience_fit_penalizes_overqualified_for_junior() -> None:
+    mid = experience_fit_score(8.0, title="Junior Software Engineer", description="Entry-level 0-2 years.")
+    match = experience_fit_score(1.0, title="Junior Software Engineer", description="Entry-level 0-2 years.")
+    assert match > mid
+
+
+def test_requirements_met_prefers_covered_skills() -> None:
+    profile_skills = ["Python", "Django", "PostgreSQL", "Docker"]
+    profile_text = "Built Django REST APIs on PostgreSQL with Docker"
+    high = requirements_met_score(
+        profile_skills=profile_skills,
+        profile_text=profile_text,
+        job_skills=["Python", "Django", "PostgreSQL"],
+        job_description="Requirements: Python, Django, PostgreSQL. 3 years experience.",
+    )
+    low = requirements_met_score(
+        profile_skills=profile_skills,
+        profile_text=profile_text,
+        job_skills=["PyTorch", "CUDA", "Kubernetes"],
+        job_description="Must have: PyTorch, CUDA, Kubernetes operators.",
+    )
+    assert high > low
+    assert high >= 0.6
+    assert low <= 0.35
+
+
+def test_extract_requirement_terms_includes_skills() -> None:
+    terms = extract_requirement_terms(
+        ["Python", "Django"],
+        "Requirements:\n- PostgreSQL\n- Docker experience\n",
+    )
+    assert "python" in terms
+    assert "django" in terms
+
+
 def test_validate_ranking_weights_accepts_defaults() -> None:
     validate_ranking_weights()
 
@@ -65,6 +135,8 @@ def test_validate_ranking_weights_rejects_misconfiguration(monkeypatch: pytest.M
     monkeypatch.setattr(settings, "RANKING_WEIGHT_RRF", 0.3)
     monkeypatch.setattr(settings, "RANKING_WEIGHT_SKILLS", 0.1)
     monkeypatch.setattr(settings, "RANKING_WEIGHT_RECENCY", 0.1)
+    monkeypatch.setattr(settings, "RANKING_WEIGHT_EXPERIENCE", 0.1)
+    monkeypatch.setattr(settings, "RANKING_WEIGHT_REQUIREMENTS", 0.1)
 
     with pytest.raises(ValidationError) as exc:
         validate_ranking_weights()
@@ -74,13 +146,36 @@ def test_validate_ranking_weights_rejects_misconfiguration(monkeypatch: pytest.M
 
 
 def test_fuse_final_score_weights_components() -> None:
+    # With all components at 1.0 / 100 llm → final should be 100
     final = fuse_final_score(
-        llm_fit=80,
-        rrf_normalized=0.9,
-        skill_overlap=0.5,
-        recency=0.8,
+        llm_fit=100,
+        rrf_normalized=1.0,
+        skill_overlap=1.0,
+        recency=1.0,
+        experience_fit=1.0,
+        requirements_met=1.0,
     )
-    assert final == pytest.approx(80.0)
+    assert final == pytest.approx(100.0)
+
+
+def test_fuse_final_score_experience_moves_score() -> None:
+    high = fuse_final_score(
+        llm_fit=0,
+        rrf_normalized=0.0,
+        skill_overlap=0.0,
+        recency=0.0,
+        experience_fit=1.0,
+        requirements_met=0.0,
+    )
+    low = fuse_final_score(
+        llm_fit=0,
+        rrf_normalized=0.0,
+        skill_overlap=0.0,
+        recency=0.0,
+        experience_fit=0.0,
+        requirements_met=0.0,
+    )
+    assert high > low
 
 
 def test_fuse_final_score_surfaces_validation_error_for_bad_weights(
@@ -92,6 +187,8 @@ def test_fuse_final_score_surfaces_validation_error_for_bad_weights(
     monkeypatch.setattr(settings, "RANKING_WEIGHT_RRF", 0.5)
     monkeypatch.setattr(settings, "RANKING_WEIGHT_SKILLS", 0.5)
     monkeypatch.setattr(settings, "RANKING_WEIGHT_RECENCY", 0.5)
+    monkeypatch.setattr(settings, "RANKING_WEIGHT_EXPERIENCE", 0.5)
+    monkeypatch.setattr(settings, "RANKING_WEIGHT_REQUIREMENTS", 0.5)
 
     with pytest.raises(ValidationError) as exc:
         fuse_final_score(llm_fit=80, rrf_normalized=0.9, skill_overlap=0.5, recency=0.8)

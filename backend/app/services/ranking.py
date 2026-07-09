@@ -1,13 +1,24 @@
+import re
+
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.errors import ServiceFailingError
 from app.prompts import load_prompt
 from app.schemas.jobs import Job, RankedJob, ScoreBreakdown
 from app.schemas.resume import ResumeProfile
 from app.services import llm
 from app.services.hybrid_rank import Rankable, RerankResult, hybrid_rank
-from app.services.ranking_math import recency_score, skill_jaccard
+from app.services.ranking_math import (
+    experience_fit_score,
+    parse_required_years,
+    recency_score,
+    requirements_met_score,
+    skill_jaccard,
+)
+
+logger = get_logger(__name__)
 
 
 class _RerankItem(BaseModel):
@@ -30,58 +41,191 @@ def _job_to_rankable(job: Job) -> Rankable:
     )
 
 
-def _build_rerank_prompt(profile: ResumeProfile, jobs: list[Job], instructions: str) -> str:
+# Keep each LLM call small; short aliases avoid UUID corruption by the model.
+_RERANK_BATCH_SIZE = 6
+_RERANK_DESC_CHARS = 220
+
+
+def _alias_jobs(jobs: list[Job]) -> tuple[list[tuple[str, Job]], dict[str, str]]:
+    """Map jobs to short ids j0..jn for the LLM; return (pairs, alias→real_id)."""
+    pairs: list[tuple[str, Job]] = []
+    alias_to_real: dict[str, str] = {}
+    for index, job in enumerate(jobs):
+        alias = f"j{index}"
+        pairs.append((alias, job))
+        alias_to_real[alias] = job.id
+    return pairs, alias_to_real
+
+
+def _build_rerank_prompt(
+    profile: ResumeProfile,
+    alias_jobs: list[tuple[str, Job]],
+    instructions: str,
+) -> str:
     lines = [
         instructions.strip(),
         "",
         f"Candidate title: {profile.title}",
+        f"Candidate years_of_experience: {profile.years_of_experience}",
         f"Candidate location: {profile.location}",
-        f"Candidate skills: {', '.join(profile.skills)}",
-        f"Candidate summary: {profile.summary}",
-        "",
-        "Jobs:",
+        f"Candidate skills: {', '.join(profile.skills[:20])}",
+        f"Candidate summary: {(profile.summary or '')[:400]}",
     ]
-    for job in jobs:
-        snippet = job.description[:600].replace("\n", " ")
+    if profile.work_experience:
+        lines.append("Candidate recent roles:")
+        for role in profile.work_experience[:3]:
+            bullet = "; ".join(role.bullets[:1])
+            lines.append(f"  - {role.title} @ {role.company}: {bullet[:160]}")
+    aliases = [alias for alias, _ in alias_jobs]
+    lines.append("")
+    lines.append(
+        f"Jobs ({len(alias_jobs)}). Score EVERY job_id in this exact list: {', '.join(aliases)}."
+    )
+    lines.append("Use those job_id strings verbatim in your JSON (e.g. j0, j1).")
+    for alias, job in alias_jobs:
+        snippet = re.sub(r"\s+", " ", job.description[:_RERANK_DESC_CHARS]).strip()
+        req_years = parse_required_years(f"{job.title}\n{job.description}")
+        yoe_note = f"min_years={req_years}; " if req_years is not None else ""
+        skills = ", ".join(job.skills[:10])
         lines.append(
-            f"- job_id={job.id}; title={job.title}; company={job.company}; "
-            f"location={job.location}; skills={', '.join(job.skills)}; description={snippet}"
+            f"- job_id={alias}; title={job.title}; company={job.company}; "
+            f"location={job.location}; {yoe_note}skills={skills}; desc={snippet}"
         )
     return "\n".join(lines)
 
 
-def _llm_rerank(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _RerankItem]:
-    if not jobs:
-        return {}
+def _heuristic_rerank_item(profile: ResumeProfile, job: Job) -> _RerankItem:
+    """Transparent non-LLM fit when the model omits a job_id (not a silent fake success)."""
+    profile_text = profile.search_text()
+    skill = skill_jaccard(profile.skills, job.skills)
+    exp = experience_fit_score(
+        profile.years_of_experience,
+        title=job.title,
+        description=job.description,
+    )
+    req = requirements_met_score(
+        profile_skills=profile.skills,
+        profile_text=profile_text,
+        job_skills=job.skills,
+        job_description=job.description,
+    )
+    # Weighted blend on 0–100; clearly labeled as heuristic fill.
+    fit = round((0.45 * skill + 0.35 * exp + 0.20 * req) * 100.0, 1)
+    matched = [
+        s
+        for s in profile.skills
+        if s.strip() and s.strip().lower() in {js.strip().lower() for js in job.skills if js}
+    ][:5]
+    missing = [
+        s
+        for s in job.skills
+        if s.strip() and s.strip().lower() not in {ps.strip().lower() for ps in profile.skills if ps}
+    ][:5]
+    return _RerankItem(
+        job_id=job.id,
+        fit_score=fit,
+        matched_skills=matched,
+        missing_skills=missing,
+        rationale="Heuristic fill: model omitted this job_id; used skills/experience/requirements.",
+    )
 
-    expected_ids = {job.id for job in jobs}
+
+def _map_alias_results(
+    response: _RerankResponse,
+    alias_to_real: dict[str, str],
+) -> dict[str, _RerankItem]:
+    """Map alias job_ids back to real UUIDs; drop unknown/extra aliases."""
+    real_to_item: dict[str, _RerankItem] = {}
+    for item in response.results:
+        raw_id = (item.job_id or "").strip()
+        real_id = alias_to_real.get(raw_id)
+        if real_id is None and raw_id in alias_to_real.values():
+            # Model echoed a real UUID somehow
+            real_id = raw_id
+        if real_id is None:
+            # fuzzy: j0 vs "j0 " vs job_id=j0
+            cleaned = re.sub(r"[^a-z0-9]", "", raw_id.lower())
+            for alias, rid in alias_to_real.items():
+                if cleaned == alias.lower() or cleaned == f"job{alias[1:]}":
+                    real_id = rid
+                    break
+        if real_id is None:
+            logger.warning("jobs.rerank_unknown_id", job_id=raw_id)
+            continue
+        if real_id in real_to_item:
+            continue  # first wins on duplicate
+        real_to_item[real_id] = item.model_copy(update={"job_id": real_id})
+    return real_to_item
+
+
+def _call_rerank_llm(
+    profile: ResumeProfile,
+    alias_jobs: list[tuple[str, Job]],
+    *,
+    max_retries: int = 2,
+) -> _RerankResponse:
     tmpl = load_prompt("rerank")
-    response = llm.complete_json(
-        _build_rerank_prompt(profile, jobs, tmpl.body),
+    base_budget = int(
+        tmpl.model_params.get("max_tokens") or settings.max_tokens_for_operation("rerank")
+    )
+    per_job = 200
+    budget = min(base_budget, max(1400, 500 + per_job * len(alias_jobs)))
+    return llm.complete_json(
+        _build_rerank_prompt(profile, alias_jobs, tmpl.body),
         _RerankResponse,
         system=tmpl.system or "You are a recruiting matcher. Return JSON only.",
-        max_tokens=int(tmpl.model_params.get("max_tokens") or settings.max_tokens_for_operation("rerank")),
+        max_tokens=budget,
+        max_retries=max_retries,
         operation="rerank",
         prompt_meta=tmpl,
     )
 
+
+def _llm_rerank_batch(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _RerankItem]:
+    """One (or two) LLM JSON calls for a small job batch with alias ids + recovery."""
+    if not jobs:
+        return {}
+
+    alias_jobs, alias_to_real = _alias_jobs(jobs)
+    jobs_by_id = {job.id: job for job in jobs}
+    expected = set(jobs_by_id)
+
+    response = _call_rerank_llm(profile, alias_jobs)
     if not response.results:
         raise ServiceFailingError("LLM", "rerank returned no results")
 
-    returned_ids = [item.job_id for item in response.results]
-    if len(returned_ids) != len(set(returned_ids)):
-        raise ServiceFailingError("LLM", "rerank returned duplicate job_ids")
+    mapped = _map_alias_results(response, alias_to_real)
+    missing_ids = sorted(expected - set(mapped))
 
-    returned_set = set(returned_ids)
-    if returned_set != expected_ids:
-        missing = sorted(expected_ids - returned_set)
-        extra = sorted(returned_set - expected_ids)
-        raise ServiceFailingError(
-            "LLM",
-            f"rerank job_id mismatch: missing={missing}, extra={extra}",
-        )
+    if missing_ids:
+        # Retry only omitted jobs with a tighter prompt (still aliases).
+        retry_jobs = [jobs_by_id[mid] for mid in missing_ids]
+        retry_pairs, retry_alias = _alias_jobs(retry_jobs)
+        logger.info("jobs.rerank_retry_missing", count=len(missing_ids), ids=missing_ids)
+        try:
+            retry_resp = _call_rerank_llm(profile, retry_pairs, max_retries=1)
+            mapped.update(_map_alias_results(retry_resp, retry_alias))
+        except ServiceFailingError as exc:
+            logger.warning("jobs.rerank_retry_failed", error=str(exc))
 
-    return {item.job_id: item for item in response.results}
+    still_missing = sorted(expected - set(mapped))
+    for mid in still_missing:
+        logger.warning("jobs.rerank_heuristic_fill", job_id=mid)
+        mapped[mid] = _heuristic_rerank_item(profile, jobs_by_id[mid])
+
+    return mapped
+
+
+def _llm_rerank(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _RerankItem]:
+    """Rerank in batches so large top-N shortlists don't truncate mid-JSON."""
+    if not jobs:
+        return {}
+
+    merged: dict[str, _RerankItem] = {}
+    for offset in range(0, len(jobs), _RERANK_BATCH_SIZE):
+        batch = jobs[offset : offset + _RERANK_BATCH_SIZE]
+        merged.update(_llm_rerank_batch(profile, batch))
+    return merged
 
 
 def rank_jobs(profile: ResumeProfile, jobs: list[Job], *, use_llm: bool = True) -> list[RankedJob]:
@@ -90,6 +234,7 @@ def rank_jobs(profile: ResumeProfile, jobs: list[Job], *, use_llm: bool = True) 
 
     jobs_by_id = {job.id: job for job in jobs}
     rankables = [_job_to_rankable(job) for job in jobs]
+    profile_text = profile.search_text()
 
     def rerank_fn(candidates: list[Rankable]) -> dict[str, RerankResult]:
         rerank_jobs_list = [jobs_by_id[candidate.id] for candidate in candidates]
@@ -104,13 +249,32 @@ def rank_jobs(profile: ResumeProfile, jobs: list[Job], *, use_llm: bool = True) 
             for job_id, item in lookup.items()
         }
 
+    def experience_fn(rankable: Rankable) -> float:
+        job = jobs_by_id[rankable.id]
+        return experience_fit_score(
+            profile.years_of_experience,
+            title=job.title,
+            description=job.description,
+        )
+
+    def requirements_fn(rankable: Rankable) -> float:
+        job = jobs_by_id[rankable.id]
+        return requirements_met_score(
+            profile_skills=profile.skills,
+            profile_text=profile_text,
+            job_skills=job.skills,
+            job_description=job.description,
+        )
+
     scored = hybrid_rank(
-        profile.search_text(),
-        profile.search_text(),
+        profile_text,
+        profile_text,
         rankables,
         rerank_fn=rerank_fn if use_llm else None,
         skill_overlap_fn=lambda rankable: skill_jaccard(profile.skills, jobs_by_id[rankable.id].skills),
         recency_fn=lambda rankable: recency_score(jobs_by_id[rankable.id].posted_at),
+        experience_fn=experience_fn,
+        requirements_fn=requirements_fn,
         use_llm=use_llm,
         score_pool="rerank_top_n",
         top_n=settings.SEARCH_RESULTS_TOP_N,
@@ -119,6 +283,7 @@ def rank_jobs(profile: ResumeProfile, jobs: list[Job], *, use_llm: bool = True) 
     ranked: list[RankedJob] = []
     for item in scored:
         job = jobs_by_id[item.id]
+        required_years = parse_required_years(f"{job.title}\n{job.description}")
         ranked.append(
             RankedJob(
                 job=job,
@@ -128,6 +293,9 @@ def rank_jobs(profile: ResumeProfile, jobs: list[Job], *, use_llm: bool = True) 
                     rrf_normalized=item.rrf_normalized,
                     skill_jaccard=item.skill_overlap,
                     recency=item.recency,
+                    experience_fit=item.experience_fit,
+                    requirements_met=item.requirements_met,
+                    required_years=required_years,
                     final_score=item.final_score,
                     matched_skills=item.matched_skills,
                     missing_skills=item.missing_skills,
@@ -146,11 +314,23 @@ def rank_jobs_dense_only(profile: ResumeProfile, jobs: list[Job]) -> list[Ranked
     rankables = [_job_to_rankable(job) for job in jobs]
     dense_ids = dense_ranking(profile.search_text(), rankables)
     jobs_by_id = {job.id: job for job in jobs}
+    profile_text = profile.search_text()
     ranked: list[RankedJob] = []
     for position, job_id in enumerate(dense_ids[: settings.SEARCH_RESULTS_TOP_N]):
         job = jobs_by_id[job_id]
         overlap = skill_jaccard(profile.skills, job.skills)
         recency = recency_score(job.posted_at)
+        exp = experience_fit_score(
+            profile.years_of_experience,
+            title=job.title,
+            description=job.description,
+        )
+        req = requirements_met_score(
+            profile_skills=profile.skills,
+            profile_text=profile_text,
+            job_skills=job.skills,
+            job_description=job.description,
+        )
         dense_score = (1.0 - position / max(len(dense_ids), 1)) * 100.0
         ranked.append(
             RankedJob(
@@ -162,6 +342,9 @@ def rank_jobs_dense_only(profile: ResumeProfile, jobs: list[Job]) -> list[Ranked
                     dense_rank_score=round(dense_score, 1),
                     skill_jaccard=overlap,
                     recency=recency,
+                    experience_fit=exp,
+                    requirements_met=req,
+                    required_years=parse_required_years(f"{job.title}\n{job.description}"),
                     final_score=round(dense_score, 1),
                     matched_skills=[],
                     missing_skills=[],

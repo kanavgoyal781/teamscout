@@ -7,15 +7,12 @@ import type {
   EmailRevealResponse,
   FindTeamResponse,
   HealthResponse,
-  IntentSearchRequest,
-  IntentSearchResponse,
   LibraryResumeListResponse,
   LibraryUploadResponse,
   IngestJobFromTextRequest,
   IngestJobFromTextResponse,
   RecommendFromJdRequest,
   RecommendFromJdResponse,
-  RecommendResumesResponse,
   ResumeProfile,
   ResumeUploadResponse,
   SearchResponse,
@@ -23,6 +20,8 @@ import type {
   TeamListResponse,
 } from "./types";
 
+/** Re-exports for UI-used client types only. Retained backend routes (intent-search,
+ * recommend-by-job-id) keep schemas in `./types` but are not re-exported here. */
 export type {
   ApiErrorBody,
   CheckStatus,
@@ -31,15 +30,14 @@ export type {
   EmailRevealResponse,
   FindTeamResponse,
   HealthResponse,
-  IntentSearchRequest,
-  IntentSearchResponse,
   Job,
   LibraryResume,
   LibraryResumeListResponse,
   LibraryUploadResponse,
   RankedJob,
   RankedResumeRecommendation,
-  RecommendResumesResponse,
+  RecommendFromJdRequest,
+  RecommendFromJdResponse,
   RequirementCoverage,
   ResumeProfile,
   ResumeUploadResponse,
@@ -239,20 +237,6 @@ export async function syncDrive(folderUrl: string): Promise<DriveSyncResponse> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ folder_url: folderUrl }),
-  });
-}
-
-export async function intentSearch(payload: IntentSearchRequest): Promise<IntentSearchResponse> {
-  return request<IntentSearchResponse>("/library/intent/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function recommendResumes(jobId: string): Promise<RecommendResumesResponse> {
-  return request<RecommendResumesResponse>(`/library/jobs/${jobId}/recommend-resumes`, {
-    method: "POST",
   });
 }
 

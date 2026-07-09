@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import statistics
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Generator
+from typing import Any
 
 import structlog
 from sqlalchemy import func
@@ -155,7 +156,7 @@ def sumble_credits_today(db: Session | None = None) -> int:
                 )
                 return int(total or 0)
             raise CostCeilingExceededError(
-                "Sumble credit ceiling check failed — denying request (fail closed)",
+                "Hiring-team credit ceiling check failed — denying request (fail closed)",
                 details={"reason": str(exc)},
             ) from exc
     finally:
@@ -178,7 +179,7 @@ def assert_sumble_budget_allows(*, estimated_credits: int = 0) -> None:
     ceiling = int(settings.SUMBLE_DAILY_CREDIT_CEILING)
     if spent + max(estimated_credits, 0) > ceiling:
         raise CostCeilingExceededError(
-            f"Daily Sumble credit ceiling exceeded ({spent} used, ceiling {ceiling})",
+            f"Daily hiring-team credit ceiling exceeded ({spent} used, ceiling {ceiling})",
             details={"spent_credits": spent, "ceiling_credits": ceiling},
         )
 
