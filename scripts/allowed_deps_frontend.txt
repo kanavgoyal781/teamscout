@@ -17,3 +17,8 @@ jsdom                    # DOM environment for Vitest
 tailwindcss              # Utility CSS (single styling system)
 typescript               # TypeScript compiler
 vitest                   # Frontend unit test runner
+framer-motion            # Staggered cards, score fills, wizard transitions; respects reduced-motion
+@tanstack/react-query    # Server-state fetching/caching; mutations with retry:false for credit spend
+sonner                   # Accessible toast notifications with request-id error surface
+lucide-react             # Lightweight icons for stepper, empty states, actions (no icon framework)
+@playwright/test         # E2E tests with route-mocked API and screenshot artifacts (dev)

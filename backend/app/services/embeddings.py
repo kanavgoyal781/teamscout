@@ -10,17 +10,34 @@ from app.core.env_utils import is_set
 from app.core.http_timeouts import default_timeout, embeddings_batch_timeout
 from app.core.logging import get_logger
 from app.db.models import EmbeddingCache
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, ensure_db
 from app.errors import ServiceFailingError, ServiceNotConfiguredError
 from app.services import observability
 
 logger = get_logger(__name__)
 
 
+def embeddings_endpoint() -> str:
+    """Resolve embeddings POST URL.
+
+    Accepts either a full `.../embeddings` URL or an OpenAI-compatible API base
+    (`LLM_API_BASE` / `EMBEDDINGS_API`); appends `/embeddings` when missing.
+    """
+    if is_set(settings.EMBEDDINGS_API):
+        base = (settings.EMBEDDINGS_API or "").rstrip("/")
+    elif is_set(settings.LLM_API_BASE):
+        base = (settings.LLM_API_BASE or "").rstrip("/")
+    else:
+        return ""
+    if base.endswith("/embeddings"):
+        return base
+    return f"{base}/embeddings"
+
+
 def _require_embeddings_config() -> None:
     if not is_set(settings.EMBEDDINGS_API_KEY):
         raise ServiceNotConfiguredError("Embeddings", "EMBEDDINGS_API_KEY")
-    if not is_set(settings.EMBEDDINGS_API):
+    if not embeddings_endpoint():
         raise ServiceNotConfiguredError("Embeddings", "EMBEDDINGS_API")
 
 
@@ -35,6 +52,7 @@ def _cache_key(text: str) -> str:
 
 
 def _cache_get(content_hash: str) -> list[float] | None:
+    ensure_db()
     session = SessionLocal()
     try:
         row = session.query(EmbeddingCache).filter(EmbeddingCache.content_hash == content_hash).one_or_none()
@@ -52,6 +70,7 @@ def _cache_get(content_hash: str) -> list[float] | None:
 
 
 def _cache_put(content_hash: str, vector: list[float]) -> None:
+    ensure_db()
     session = SessionLocal()
     try:
         existing = session.query(EmbeddingCache).filter(EmbeddingCache.content_hash == content_hash).one_or_none()
@@ -125,7 +144,7 @@ def embed(text: str) -> list[float]:
     ) as trace:
         try:
             with httpx.Client(timeout=default_timeout()) as client:
-                response = client.post(settings.EMBEDDINGS_API or "", headers=headers, json=payload)
+                response = client.post(embeddings_endpoint(), headers=headers, json=payload)
                 response.raise_for_status()
                 data = response.json()
         except httpx.HTTPError as exc:
@@ -190,7 +209,7 @@ def embed_batch(texts: list[str]) -> list[list[float]]:
     ) as trace:
         try:
             with httpx.Client(timeout=embeddings_batch_timeout()) as client:
-                response = client.post(settings.EMBEDDINGS_API or "", headers=headers, json=payload)
+                response = client.post(embeddings_endpoint(), headers=headers, json=payload)
                 response.raise_for_status()
                 data = response.json()
         except httpx.HTTPError as exc:

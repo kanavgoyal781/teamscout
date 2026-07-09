@@ -12,21 +12,18 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Generator
-from urllib.parse import urlparse
 
-import httpx
 import structlog
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.env_utils import is_set
-from app.core.http_timeouts import default_timeout
 from app.core.logging import get_logger
 from app.db.models import Trace
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, ensure_db
 from app.errors import CostCeilingExceededError
+from app.services.observability_otlp import maybe_export_otlp
 
 logger = get_logger(__name__)
 
@@ -80,41 +77,87 @@ def _today_start_naive() -> datetime:
     return datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
 
 
+def _retry_after_schema(exc: SQLAlchemyError) -> bool:
+    """If the DB is missing M8 tables, force schema create once."""
+    msg = str(exc).lower()
+    return "no such table" in msg and ("traces" in msg or "embedding_cache" in msg)
+
+
 def llm_cost_today_usd(db: Session | None = None) -> float:
+    from app.db.session import init_db
+
+    ensure_db()
     own = db is None
     session = db or SessionLocal()
     try:
-        total = (
-            session.query(func.coalesce(func.sum(Trace.cost_usd), 0.0))
-            .filter(Trace.created_at >= _today_start_naive(), Trace.operation.in_(tuple(LLM_OPERATIONS)))
-            .scalar()
-        )
-        return float(total or 0.0)
-    except SQLAlchemyError as exc:
-        raise CostCeilingExceededError(
-            "LLM cost ceiling check failed — denying request (fail closed)",
-            details={"reason": str(exc)},
-        ) from exc
+        try:
+            total = (
+                session.query(func.coalesce(func.sum(Trace.cost_usd), 0.0))
+                .filter(
+                    Trace.created_at >= _today_start_naive(),
+                    Trace.operation.in_(tuple(LLM_OPERATIONS)),
+                )
+                .scalar()
+            )
+            return float(total or 0.0)
+        except SQLAlchemyError as exc:
+            if own and _retry_after_schema(exc):
+                session.close()
+                init_db()
+                session = SessionLocal()
+                total = (
+                    session.query(func.coalesce(func.sum(Trace.cost_usd), 0.0))
+                    .filter(
+                        Trace.created_at >= _today_start_naive(),
+                        Trace.operation.in_(tuple(LLM_OPERATIONS)),
+                    )
+                    .scalar()
+                )
+                return float(total or 0.0)
+            raise CostCeilingExceededError(
+                "LLM cost ceiling check failed — denying request (fail closed)",
+                details={"reason": str(exc)},
+            ) from exc
     finally:
         if own:
             session.close()
 
 
 def sumble_credits_today(db: Session | None = None) -> int:
+    from app.db.session import init_db
+
+    ensure_db()
     own = db is None
     session = db or SessionLocal()
     try:
-        total = (
-            session.query(func.coalesce(func.sum(Trace.credits_used), 0))
-            .filter(Trace.created_at >= _today_start_naive(), Trace.operation.like("sumble.%"))
-            .scalar()
-        )
-        return int(total or 0)
-    except SQLAlchemyError as exc:
-        raise CostCeilingExceededError(
-            "Sumble credit ceiling check failed — denying request (fail closed)",
-            details={"reason": str(exc)},
-        ) from exc
+        try:
+            total = (
+                session.query(func.coalesce(func.sum(Trace.credits_used), 0))
+                .filter(
+                    Trace.created_at >= _today_start_naive(),
+                    Trace.operation.like("sumble.%"),
+                )
+                .scalar()
+            )
+            return int(total or 0)
+        except SQLAlchemyError as exc:
+            if own and _retry_after_schema(exc):
+                session.close()
+                init_db()
+                session = SessionLocal()
+                total = (
+                    session.query(func.coalesce(func.sum(Trace.credits_used), 0))
+                    .filter(
+                        Trace.created_at >= _today_start_naive(),
+                        Trace.operation.like("sumble.%"),
+                    )
+                    .scalar()
+                )
+                return int(total or 0)
+            raise CostCeilingExceededError(
+                "Sumble credit ceiling check failed — denying request (fail closed)",
+                details={"reason": str(exc)},
+            ) from exc
     finally:
         if own:
             session.close()
@@ -157,6 +200,7 @@ def record_trace(
     cache_hit: bool = False,
     request_id: str | None = None,
 ) -> None:
+    ensure_db()
     rid = request_id if request_id is not None else current_request_id()
     row = Trace(
         request_id=rid,
@@ -188,44 +232,7 @@ def record_trace(
         return
     finally:
         session.close()
-    _maybe_export_otlp(operation=op_name, status=op_status, request_id=op_rid)
-
-
-def _maybe_export_otlp(*, operation: str, status: str, request_id: str) -> None:
-    endpoint = settings.OTEL_EXPORTER_OTLP_ENDPOINT
-    if not is_set(endpoint):
-        return
-    url = (endpoint or "").rstrip("/")
-    if not url.endswith("/v1/traces"):
-        url = f"{url}/v1/traces"
-    body = {
-        "resourceSpans": [
-            {
-                "scopeSpans": [
-                    {
-                        "spans": [
-                            {
-                                "name": operation,
-                                "attributes": [
-                                    {"key": "teamscout.operation", "value": {"stringValue": operation}},
-                                    {"key": "teamscout.status", "value": {"stringValue": status}},
-                                    {
-                                        "key": "teamscout.request_id",
-                                        "value": {"stringValue": request_id},
-                                    },
-                                ],
-                            }
-                        ]
-                    }
-                ]
-            }
-        ]
-    }
-    try:
-        with httpx.Client(timeout=default_timeout()) as client:
-            client.post(url, json=body, headers={"Content-Type": "application/json"})
-    except httpx.HTTPError as exc:
-        logger.warning("otlp.export_failed", error=str(exc), host=urlparse(url).netloc)
+    maybe_export_otlp(operation=op_name, status=op_status, request_id=op_rid)
 
 
 @dataclass

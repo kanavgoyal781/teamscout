@@ -2,7 +2,8 @@
 
 import { FormEvent } from "react";
 
-import { IntentSearchRequest, LibraryResume } from "../lib/api";
+import type { IntentSearchRequest, LibraryResume } from "../lib/types";
+import EmptyState from "./ui/EmptyState";
 
 type IntentSearchPanelProps = {
   resumes: LibraryResume[];
@@ -32,12 +33,18 @@ export default function IntentSearchPanel({
   onSearch,
 }: IntentSearchPanelProps) {
   return (
-    <section className="panel">
+    <section className="panel" data-testid="intent-search">
       <h2>2. Job intent search</h2>
       <form className="field-grid" onSubmit={onSearch}>
         <label>
           Desired role
-          <input value={role} onChange={(event) => onRoleChange(event.target.value)} required />
+          <input
+            value={role}
+            onChange={(event) => onRoleChange(event.target.value)}
+            required
+            aria-label="Desired role"
+            placeholder="e.g. Staff Backend Engineer"
+          />
         </label>
         <label>
           Years of experience
@@ -47,11 +54,18 @@ export default function IntentSearchPanel({
             type="number"
             min="0"
             step="0.5"
+            className="font-num"
+            aria-label="Years of experience"
           />
         </label>
         <label>
           Location
-          <input value={location} onChange={(event) => onLocationChange(event.target.value)} />
+          <input
+            value={location}
+            onChange={(event) => onLocationChange(event.target.value)}
+            aria-label="Location"
+            placeholder="City or region"
+          />
         </label>
         <label>
           Remote preference
@@ -60,6 +74,7 @@ export default function IntentSearchPanel({
             onChange={(event) =>
               onRemotePreferenceChange(event.target.value as IntentSearchRequest["remote_preference"])
             }
+            aria-label="Remote preference"
           >
             <option value="any">Any</option>
             <option value="remote">Remote</option>
@@ -68,13 +83,20 @@ export default function IntentSearchPanel({
           </select>
         </label>
         <div className="actions full-width">
-          <button type="submit" className="primary" disabled={searching || resumes.length === 0}>
+          <button
+            type="submit"
+            className="primary"
+            disabled={searching || resumes.length === 0}
+            data-testid="intent-search-submit"
+          >
             {searching ? "Searching & ranking…" : "Search jobs by intent"}
           </button>
         </div>
       </form>
       {resumes.length === 0 ? (
-        <p className="meta empty-hint">Add resumes to the library before searching.</p>
+        <div style={{ marginTop: 12 }}>
+          <EmptyState instruction="Add resumes to the library before searching by intent." />
+        </div>
       ) : null}
     </section>
   );

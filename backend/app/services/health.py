@@ -17,7 +17,9 @@ def check_llm() -> CheckStatus:
 
 
 def check_embeddings() -> CheckStatus:
-    if not is_set(settings.EMBEDDINGS_API_KEY) or not is_set(settings.EMBEDDINGS_API):
+    from app.services.embeddings import embeddings_endpoint
+
+    if not is_set(settings.EMBEDDINGS_API_KEY) or not embeddings_endpoint():
         return "missing"
     return "configured"
 

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -25,11 +25,22 @@ class Settings(BaseSettings):
     APP_VERSION: str | None = None
     GIT_SHA: str | None = None
 
-    LLM_API_KEY: str | None = None
-    LLM_API_BASE: str | None = None
+    # Prefer LLM_*; accept common OPENAI_* aliases from older .env files.
+    LLM_API_KEY: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"),
+    )
+    LLM_API_BASE: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LLM_API_BASE", "OPENAI_BASE_URL"),
+    )
     LLM_MODEL: str = "gpt-4o-mini"
 
-    EMBEDDINGS_API_KEY: str | None = None
+    EMBEDDINGS_API_KEY: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("EMBEDDINGS_API_KEY", "OPENAI_API_KEY"),
+    )
+    # Full POST URL for embeddings, or leave unset to use LLM_API_BASE + /embeddings.
     EMBEDDINGS_API: str | None = None
     EMBEDDINGS_MODEL: str = "BAAI/bge-m3"
 

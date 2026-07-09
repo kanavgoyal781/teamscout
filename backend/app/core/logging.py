@@ -53,7 +53,8 @@ def log_configured_services() -> None:
 
     services = {
         "llm": is_set(settings.LLM_API_KEY) and is_set(settings.LLM_API_BASE),
-        "embeddings": is_set(settings.EMBEDDINGS_API_KEY) and is_set(settings.EMBEDDINGS_API),
+        "embeddings": is_set(settings.EMBEDDINGS_API_KEY)
+        and (is_set(settings.EMBEDDINGS_API) or is_set(settings.LLM_API_BASE)),
         "jobs_api": is_set(settings.JOBS_API_KEY) and is_set(settings.JOBS_API_BASE),
         "sumble": is_set(settings.SUMBLE_API_KEY),
         "drive": (

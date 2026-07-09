@@ -13,11 +13,11 @@ export default function LibraryPage() {
     <AppShell
       title="Resume library and best-resume pick"
       lede="Ingest resumes from Drive or local upload, search jobs by intent, then pick the best resume for a job with coverage and justification."
-      toast={state.toast}
     >
       <LibraryIngestPanel
         resumes={state.resumes}
         loadingLibrary={state.loadingLibrary}
+        libraryError={state.libraryError}
         uploading={state.uploading}
         syncing={state.syncing}
         driveUrl={state.driveUrl}
@@ -42,6 +42,7 @@ export default function LibraryPage() {
       <ResumeRecommendations
         jobResults={state.jobResults}
         searching={state.searching}
+        searched={state.intentSearched}
         selectedJobId={state.selectedJobId}
         recommending={state.recommending}
         recommendations={state.recommendations}

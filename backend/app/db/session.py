@@ -1,4 +1,6 @@
 from collections.abc import Generator
+from pathlib import Path
+from threading import Lock
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -11,12 +13,41 @@ from app.db import models as _models  # noqa: F401
 from app.db.base import Base
 from app.schemas.jobs import Job
 
-connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
+# Resolve relative sqlite:/// paths against backend/ so scripts run from the
+# repo root and `cd backend && uvicorn` share the same database file.
+# session.py lives at backend/app/db/session.py → parents[2] == backend/
+_BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
+def resolve_database_url(url: str) -> str:
+    if not url.startswith("sqlite:"):
+        return url
+    if ":memory:" in url:
+        return url
+    # Absolute file URL: sqlite:////abs/path (4 slashes) or sqlite:////var/...
+    if url.startswith("sqlite:////"):
+        return url
+    # Relative: sqlite:///./teamscout.db or sqlite:///teamscout.db
+    prefix = "sqlite:///"
+    if not url.startswith(prefix):
+        return url
+    rel = url[len(prefix) :]
+    if not rel or rel.startswith("/"):
+        return url
+    abs_path = (_BACKEND_DIR / rel).resolve()
+    return f"sqlite:///{abs_path}"
+
+
+DATABASE_URL = resolve_database_url(settings.DATABASE_URL)
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine_kwargs: dict = {"connect_args": connect_args}
-if settings.DATABASE_URL.startswith("sqlite") and ":memory:" in settings.DATABASE_URL:
+if DATABASE_URL.startswith("sqlite") and ":memory:" in DATABASE_URL:
     engine_kwargs["poolclass"] = StaticPool
-engine = create_engine(settings.DATABASE_URL, **engine_kwargs)
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+_init_lock = Lock()
+_initialized = False
 
 
 def _ensure_column(table: str, column: str, ddl: str) -> None:
@@ -55,15 +86,54 @@ def _migrate_jobs_cache_job_id() -> None:
         conn.commit()
 
 
+_REQUIRED_SQLITE_TABLES = frozenset({"traces", "embedding_cache"})
+
+
+def _sqlite_tables() -> set[str]:
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+    return {str(row[0]) for row in rows}
+
+
+def _schema_ready() -> bool:
+    if not DATABASE_URL.startswith("sqlite") or ":memory:" in DATABASE_URL:
+        return _initialized
+    return _REQUIRED_SQLITE_TABLES.issubset(_sqlite_tables())
+
+
 def init_db() -> None:
-    Base.metadata.create_all(bind=engine)
-    if settings.DATABASE_URL.startswith("sqlite"):
-        _migrate_schema()
+    """Create missing tables and run lightweight SQLite migrations (idempotent)."""
+    global _initialized
+    with _init_lock:
+        Base.metadata.create_all(bind=engine)
+        if DATABASE_URL.startswith("sqlite") and ":memory:" not in DATABASE_URL:
+            _migrate_schema()
+            missing = _REQUIRED_SQLITE_TABLES - _sqlite_tables()
+            if missing:
+                raise RuntimeError(
+                    f"SQLite schema incomplete at {DATABASE_URL}; missing tables: "
+                    f"{sorted(missing)}. Check DATABASE_URL and write permissions."
+                )
+        _initialized = True
+
+
+def ensure_db() -> None:
+    """Idempotent schema ensure for scripts / first request that bypasses lifespan.
+
+    Verifies M8 tables exist (not only an in-process flag) so older DBs and
+    CLI scripts always create `traces` / `embedding_cache` before use.
+    """
+    if _initialized and _schema_ready():
+        return
+    init_db()
 
 
 def ping_db() -> bool:
     logger = get_logger(__name__)
     try:
+        ensure_db()
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return True

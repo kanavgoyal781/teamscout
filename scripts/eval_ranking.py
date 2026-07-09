@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.core.config import settings
 from app.core.env_utils import is_set
+from app.db.session import ensure_db
 from app.schemas.jobs import Job
 from app.services import ranking
 from scripts.fixtures.ranking_fixtures import PERSONAS, PersonaFixture
@@ -96,12 +97,22 @@ def evaluate_persona(persona: PersonaFixture) -> dict[str, float]:
 
 
 def main() -> int:
-    if not is_set(settings.EMBEDDINGS_API_KEY) or not is_set(settings.EMBEDDINGS_API):
-        print("SKIP: embeddings not configured — set EMBEDDINGS_API_KEY and EMBEDDINGS_API to run eval")
+    # Ensure M8 traces / embedding_cache tables exist (CLI has no FastAPI lifespan).
+    ensure_db()
+
+    from app.services.embeddings import embeddings_endpoint
+
+    if not is_set(settings.EMBEDDINGS_API_KEY) or not embeddings_endpoint():
+        print(
+            "SKIP: embeddings not configured — set EMBEDDINGS_API_KEY and "
+            "EMBEDDINGS_API (or LLM_API_BASE) to run eval"
+        )
         return 0
 
     if not is_set(settings.LLM_API_KEY) or not is_set(settings.LLM_API_BASE):
         print("NOTE: LLM not configured — eval runs hybrid retrieval without LLM rerank")
+
+    print(f"Embeddings endpoint: {embeddings_endpoint()}")
 
     totals = {
         "hybrid_ndcg10": 0.0,

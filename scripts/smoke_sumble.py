@@ -24,6 +24,7 @@ load_dotenv(ROOT / ".env")
 
 from app.core.config import settings
 from app.core.env_utils import is_set
+from app.db.session import ensure_db
 from app.services import sumble
 
 
@@ -31,6 +32,9 @@ def main() -> int:
     if not is_set(settings.SUMBLE_API_KEY):
         print("SKIP: SUMBLE_API_KEY not set — smoke_sumble.py exiting 0")
         return 0
+
+    # Ensure M8 traces/embedding_cache tables exist (scripts skip FastAPI lifespan).
+    ensure_db()
 
     company = os.environ.get("SMOKE_SUMBLE_COMPANY", "Stripe")
     jd_title = os.environ.get("SMOKE_SUMBLE_JD_TITLE", "Software Engineer")

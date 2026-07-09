@@ -6,14 +6,14 @@ import AppShell from "../components/AppShell";
 import JobResultsList from "../components/JobResultsList";
 import ResumeWizard from "../components/ResumeWizard";
 import { useJobTeam } from "../hooks/useJobTeam";
-import type { RankedJob } from "../lib/api";
-
-type Toast = { kind: "error" | "info"; message: string } | null;
+import type { RankedJob } from "../lib/types";
 
 export default function HomePage() {
   const [results, setResults] = useState<RankedJob[]>([]);
   const [searchId, setSearchId] = useState<string | null>(null);
-  const [toast, setToast] = useState<Toast>(null);
+  const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [teamStepActive, setTeamStepActive] = useState(false);
 
   const {
     getTeamState,
@@ -24,40 +24,47 @@ export default function HomePage() {
     resetTeams,
   } = useJobTeam(searchId);
 
-  function onToast(next: Toast) {
-    setToast(next);
-  }
-
   return (
     <AppShell
-      title="Resume upload, job search, and team discovery"
+      title="Resume → jobs → team"
       lede="Upload a resume, confirm your searchable profile, rank live jobs, then extract hiring teams and reveal contact emails via Sumble."
-      toast={toast}
     >
       <ResumeWizard
-        onToast={onToast}
+        searching={searching}
+        hasResults={results.length > 0}
+        teamStepActive={teamStepActive}
         onSearchStart={() => {
           setResults([]);
           setSearchId(null);
+          setSearching(true);
+          setSearched(false);
+          setTeamStepActive(false);
           resetTeams();
         }}
         onSearchComplete={(nextResults, nextSearchId) => {
           setResults(nextResults);
           setSearchId(nextSearchId);
+          setSearching(false);
+          setSearched(true);
+        }}
+        onSearchError={() => {
+          setSearching(false);
+          setSearched(false);
         }}
       />
 
       <JobResultsList
         results={results}
+        loading={searching}
+        searched={searched}
         getTeamState={getTeamState}
-        onHydrate={(jobId) =>
-          hydrateJobTeam(jobId, (kind, message) => onToast({ kind, message }))
-        }
-        onExtract={(jobId) => handleExtractTeam(jobId, (kind, message) => onToast({ kind, message }))}
-        onFindTeam={(jobId) => handleFindTeam(jobId, (kind, message) => onToast({ kind, message }))}
+        onHydrate={(jobId) => hydrateJobTeam(jobId)}
+        onExtract={(jobId) => handleExtractTeam(jobId)}
+        onFindTeam={(jobId) => handleFindTeam(jobId)}
         onRevealEmail={(jobId, contact, confirm) =>
-          handleRevealEmail(jobId, contact, confirm, (kind, message) => onToast({ kind, message }))
+          handleRevealEmail(jobId, contact, confirm)
         }
+        onTeamPanelOpenChange={setTeamStepActive}
       />
     </AppShell>
   );

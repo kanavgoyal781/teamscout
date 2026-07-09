@@ -23,6 +23,39 @@ def _require_llm_config() -> None:
         raise ServiceNotConfiguredError("LLM", "LLM_API_BASE")
 
 
+def _extract_message_text(message: object) -> str:
+    """Pull assistant text from OpenAI-compatible chat payloads.
+
+    Some hosted models (e.g. MiniMax on Friendli) put interim text in
+    reasoning_content and leave content null when max_tokens is tight.
+    """
+    if not isinstance(message, dict):
+        raise ServiceFailingError("LLM", "unexpected response format")
+
+    content = message.get("content")
+    if isinstance(content, str) and content.strip():
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, str) and part.strip():
+                parts.append(part)
+            elif isinstance(part, dict):
+                text = part.get("text")
+                if isinstance(text, str) and text.strip():
+                    parts.append(text)
+        if parts:
+            return "".join(parts)
+
+    # Fallback: reasoning-only / truncated outputs
+    for key in ("reasoning_content", "reasoning", "text"):
+        val = message.get(key)
+        if isinstance(val, str) and val.strip():
+            return val
+
+    raise ServiceFailingError("LLM", "unexpected response format: empty message content")
+
+
 def complete(
     prompt: str,
     *,
@@ -77,14 +110,17 @@ def complete(
             raise ServiceFailingError("LLM", str(exc)) from exc
 
         try:
-            content = data["choices"][0]["message"]["content"]
+            message = data["choices"][0]["message"]
+            content = _extract_message_text(message)
         except (KeyError, IndexError, TypeError) as exc:
             raise ServiceFailingError("LLM", "unexpected response format") from exc
 
         usage = data.get("usage") if isinstance(data, dict) else None
         if isinstance(usage, dict):
             trace.input_tokens = int(usage.get("prompt_tokens") or est_in)
-            trace.output_tokens = int(usage.get("completion_tokens") or observability.approx_token_count(content))
+            trace.output_tokens = int(
+                usage.get("completion_tokens") or observability.approx_token_count(content)
+            )
         else:
             trace.input_tokens = est_in
             trace.output_tokens = observability.approx_token_count(content)

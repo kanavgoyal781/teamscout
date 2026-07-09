@@ -1,11 +1,13 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { FileText, Upload } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
-import { ResumeUploadResponse, confirmResume, createSearch, uploadResume } from "../lib/api";
-import type { RankedJob } from "../lib/api";
-
-type Toast = { kind: "error" | "info"; message: string } | null;
+import { confirmResume, createSearch, formatApiError, uploadResume } from "../lib/api";
+import type { RankedJob, ResumeUploadResponse } from "../lib/types";
+import Stepper from "./ui/Stepper";
 
 type ConfirmedSnapshot = {
   title: string;
@@ -14,29 +16,39 @@ type ConfirmedSnapshot = {
 };
 
 type ResumeWizardProps = {
-  onToast: (toast: Toast) => void;
   onSearchComplete: (results: RankedJob[], searchId: string) => void;
   onSearchStart: () => void;
+  onSearchError?: () => void;
+  searching?: boolean;
+  hasResults?: boolean;
+  /** Parent sets true when any job team panel is open. */
+  teamStepActive?: boolean;
 };
 
-export default function ResumeWizard({ onToast, onSearchComplete, onSearchStart }: ResumeWizardProps) {
-  const [uploading, setUploading] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const [searching, setSearching] = useState(false);
+const STEPS = [
+  { id: "upload", label: "Upload" },
+  { id: "profile", label: "Profile" },
+  { id: "matches", label: "Matches" },
+  { id: "team", label: "Team" },
+];
+
+export default function ResumeWizard({
+  onSearchComplete,
+  onSearchStart,
+  onSearchError,
+  searching = false,
+  hasResults = false,
+  teamStepActive = false,
+}: ResumeWizardProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
   const [resume, setResume] = useState<ResumeUploadResponse | null>(null);
   const [title, setTitle] = useState("");
   const [location, setLocation] = useState("");
-  const [skillsText, setSkillsText] = useState("");
+  const [skills, setSkills] = useState<string[]>([]);
+  const [skillDraft, setSkillDraft] = useState("");
   const [confirmedSnapshot, setConfirmedSnapshot] = useState<ConfirmedSnapshot | null>(null);
-
-  const skills = useMemo(
-    () =>
-      skillsText
-        .split(",")
-        .map((skill) => skill.trim())
-        .filter(Boolean),
-    [skillsText],
-  );
 
   const profileDirty =
     confirmedSnapshot !== null &&
@@ -45,91 +57,174 @@ export default function ResumeWizard({ onToast, onSearchComplete, onSearchStart 
       skills.length !== confirmedSnapshot.skills.length ||
       skills.some((skill, index) => skill !== confirmedSnapshot.skills[index]));
 
-  const canSearch = Boolean(resume?.confirmed && confirmedSnapshot && !profileDirty && title && skills.length > 0);
+  const canSearch = Boolean(
+    resume?.confirmed && confirmedSnapshot && !profileDirty && title && skills.length > 0,
+  );
 
-  async function handleUpload(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const fileInput = form.elements.namedItem("resume") as HTMLInputElement;
-    const file = fileInput.files?.[0];
-    if (!file) {
-      onToast({ kind: "error", message: "Choose a PDF or DOCX resume to upload." });
-      return;
-    }
+  const stepIndex = useMemo(() => {
+    if (teamStepActive) return 3;
+    if (hasResults || searching) return 2;
+    if (resume) return 1;
+    return 0;
+  }, [teamStepActive, hasResults, searching, resume]);
 
-    setUploading(true);
-    onToast(null);
-    onSearchStart();
-    try {
-      const uploaded = await uploadResume(file);
+  const uploadMutation = useMutation({
+    mutationFn: (f: File) => uploadResume(f),
+    retry: false,
+    onSuccess: (uploaded) => {
       setResume(uploaded);
       setTitle(uploaded.profile.title);
       setLocation(uploaded.profile.location);
-      setSkillsText(uploaded.profile.skills.join(", "));
+      setSkills(uploaded.profile.skills);
       setConfirmedSnapshot(null);
-      onToast({ kind: "info", message: `Parsed ${uploaded.filename}. Review and confirm before searching.` });
-    } catch (error) {
-      onToast({ kind: "error", message: error instanceof Error ? error.message : "Upload failed" });
-    } finally {
-      setUploading(false);
-    }
-  }
+      toast.success(`Parsed ${uploaded.filename}. Review and confirm before searching.`);
+    },
+    onError: (error) => toast.error(formatApiError(error)),
+  });
 
-  async function handleConfirm() {
-    if (!resume) return;
-    setConfirming(true);
-    onToast(null);
-    try {
-      const confirmed = await confirmResume(resume.id, { title, location, skills });
+  const confirmMutation = useMutation({
+    mutationFn: () => {
+      if (!resume) throw new Error("No resume");
+      return confirmResume(resume.id, { title, location, skills });
+    },
+    retry: false,
+    onSuccess: (confirmed) => {
+      if (!resume) return;
       setResume({ ...resume, confirmed: confirmed.confirmed, profile: confirmed.profile });
       setConfirmedSnapshot({
         title: confirmed.profile.title,
         location: confirmed.profile.location,
         skills: confirmed.profile.skills,
       });
-      onToast({ kind: "info", message: "Profile confirmed. Ready to search." });
-    } catch (error) {
-      onToast({ kind: "error", message: error instanceof Error ? error.message : "Confirm failed" });
-    } finally {
-      setConfirming(false);
+      toast.success("Profile confirmed. Ready to search.");
+    },
+    onError: (error) => toast.error(formatApiError(error)),
+  });
+
+  const searchMutation = useMutation({
+    mutationFn: () => {
+      if (!resume) throw new Error("No resume");
+      return createSearch(resume.id);
+    },
+    retry: false,
+    onMutate: () => {
+      onSearchStart();
+    },
+    onSuccess: (response) => {
+      onSearchComplete(response.results, response.search_id);
+      toast.success(
+        response.results.length > 0
+          ? `Found top ${response.results.length} matches.`
+          : "Search complete — no jobs matched.",
+      );
+    },
+    onError: (error) => {
+      onSearchError?.();
+      toast.error(formatApiError(error));
+    },
+  });
+
+  function pickFile(next: File | null) {
+    if (!next) return;
+    const ok =
+      next.type === "application/pdf" ||
+      next.name.toLowerCase().endsWith(".pdf") ||
+      next.name.toLowerCase().endsWith(".docx");
+    if (!ok) {
+      toast.error("Choose a PDF or DOCX resume.");
+      return;
     }
+    setFile(next);
   }
 
-  async function handleSearch() {
-    if (!resume || !canSearch) return;
-    setSearching(true);
-    onToast(null);
-    onSearchStart();
-    try {
-      const response = await createSearch(resume.id);
-      onSearchComplete(response.results, response.search_id);
-      onToast({ kind: "info", message: `Found top ${response.results.length} matches.` });
-    } catch (error) {
-      onToast({ kind: "error", message: error instanceof Error ? error.message : "Search failed" });
-    } finally {
-      setSearching(false);
-    }
+  function onDrop(event: React.DragEvent) {
+    event.preventDefault();
+    setDragging(false);
+    const next = event.dataTransfer.files?.[0] ?? null;
+    pickFile(next);
   }
+
+  function addSkill() {
+    const value = skillDraft.trim();
+    if (!value) return;
+    if (!skills.includes(value)) {
+      setSkills((s) => [...s, value]);
+    }
+    setSkillDraft("");
+  }
+
+  function removeSkill(skill: string) {
+    setSkills((s) => s.filter((x) => x !== skill));
+  }
+
+  const parsed = Boolean(resume);
 
   return (
-    <>
-      <section className="panel">
-        <h2>1. Upload resume</h2>
-        <form className="upload-form" onSubmit={handleUpload}>
-          <input
-            name="resume"
-            type="file"
-            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          />
-          <button type="submit" disabled={uploading}>
-            {uploading ? "Parsing…" : "Upload & parse"}
+    <section className="panel" data-testid="resume-wizard">
+      <Stepper steps={STEPS} current={stepIndex} />
+
+      <h2>Upload resume</h2>
+      <div
+        className={`dropzone${dragging ? " is-dragging" : ""}`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Upload resume PDF or DOCX"
+      >
+        <Upload size={28} strokeWidth={1.5} aria-hidden style={{ color: "var(--accent)", marginBottom: 8 }} />
+        <p className="dropzone-title">Drag & drop resume</p>
+        <p className="meta" style={{ margin: 0 }}>
+          PDF or DOCX · click to browse
+        </p>
+        <input
+          ref={inputRef}
+          name="resume"
+          type="file"
+          accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+        />
+      </div>
+
+      {file ? (
+        <div className="file-preview" data-testid="file-preview">
+          <FileText size={20} aria-hidden />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {file.name}
+            </strong>
+            <span className="meta font-num" style={{ margin: 0 }}>
+              {(file.size / 1024).toFixed(1)} KB
+              {parsed ? " · parsed" : ""}
+            </span>
+          </div>
+          <button
+            type="button"
+            className={parsed ? "ghost" : "primary"}
+            disabled={uploadMutation.isPending}
+            onClick={() => {
+              uploadMutation.mutate(file);
+            }}
+          >
+            {uploadMutation.isPending ? "Parsing…" : parsed ? "Re-parse" : "Upload & parse"}
           </button>
-        </form>
-      </section>
+        </div>
+      ) : null}
 
       {resume ? (
-        <section className="panel">
-          <h2>2. Confirm profile</h2>
+        <div style={{ marginTop: 24 }} data-testid="profile-confirm">
+          <h2>Confirm profile</h2>
           <p className="meta">
             Parsed from <strong>{resume.filename}</strong>
             {resume.confirmed ? " · confirmed" : " · not confirmed"}
@@ -138,27 +233,78 @@ export default function ResumeWizard({ onToast, onSearchComplete, onSearchStart 
           <div className="field-grid">
             <label>
               Title
-              <input value={title} onChange={(event) => setTitle(event.target.value)} />
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                aria-label="Job title"
+              />
             </label>
             <label>
               Location
-              <input value={location} onChange={(event) => setLocation(event.target.value)} />
+              <input
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                aria-label="Location"
+              />
             </label>
-            <label className="full-width">
-              Skills (comma-separated)
-              <textarea value={skillsText} onChange={(event) => setSkillsText(event.target.value)} rows={3} />
-            </label>
+            <div className="full-width">
+              <span className="meta" style={{ display: "block", marginBottom: 8 }}>
+                Skills
+              </span>
+              <div className="chip-row" style={{ marginTop: 0, marginBottom: 10 }}>
+                {skills.map((skill) => (
+                  <span key={skill} className="chip chip-removable">
+                    {skill}
+                    <button
+                      type="button"
+                      onClick={() => removeSkill(skill)}
+                      aria-label={`Remove skill ${skill}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="actions">
+                <input
+                  value={skillDraft}
+                  onChange={(e) => setSkillDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addSkill();
+                    }
+                  }}
+                  placeholder="Add skill"
+                  aria-label="Add skill"
+                  style={{ minWidth: 160 }}
+                />
+                <button type="button" onClick={addSkill}>
+                  Add
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="actions">
-            <button type="button" onClick={handleConfirm} disabled={confirming}>
-              {confirming ? "Saving…" : "Confirm profile"}
+          <div className="actions" style={{ marginTop: 16 }}>
+            <button
+              type="button"
+              onClick={() => confirmMutation.mutate()}
+              disabled={confirmMutation.isPending || !title || skills.length === 0}
+            >
+              {confirmMutation.isPending ? "Saving…" : "Confirm profile"}
             </button>
-            <button type="button" className="primary" onClick={handleSearch} disabled={searching || !canSearch}>
-              {searching ? "Searching & ranking…" : "Search jobs"}
+            <button
+              type="button"
+              className="primary"
+              onClick={() => searchMutation.mutate()}
+              disabled={searchMutation.isPending || searching || !canSearch}
+              data-testid="search-jobs"
+            >
+              {searchMutation.isPending || searching ? "Searching & ranking…" : "Search jobs"}
             </button>
           </div>
-        </section>
+        </div>
       ) : null}
-    </>
+    </section>
   );
 }

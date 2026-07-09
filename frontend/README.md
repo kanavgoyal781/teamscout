@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TeamScout frontend
 
-## Getting Started
+Next.js App Router UI for Feature 1 (resume → jobs → team) and Feature 2 (library → best resume).
 
-First, run the development server:
+## Stack
+
+- Next.js + React 19 + TypeScript
+- Tailwind CSS v4 (design tokens in `app/globals.css`)
+- `@tanstack/react-query` for server state
+- `framer-motion` for motion (respects `prefers-reduced-motion`)
+- `sonner` toasts (errors include request id when present)
+- `lucide-react` icons
+- Playwright e2e under `e2e/`
+
+## Scripts
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm dev          # http://localhost:3000
+pnpm typecheck
+pnpm test         # vitest
+pnpm build
+pnpm test:e2e     # Playwright (mocks API via route interception)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Set `NEXT_PUBLIC_API_BASE` (default `http://localhost:8000`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Design
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Dark-mode-first with light toggle (cookie `teamscout-theme`, class strategy, pre-paint script in `layout.tsx`; no browser storage APIs)
+- Geist Sans + Geist Mono for scores, credits, and IDs
+- One accent for primary actions / scores; 8px grid
 
-## Learn More
+## Credit-safe mutations
 
-To learn more about Next.js, take a look at the following resources:
+All mutations use `retry: false` (QueryClient defaults + explicit on upload/search/find-team/reveal/recommend).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Lighthouse
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Not measured in automated CI. Manual target guidance: Performance ≥85, Accessibility ≥95, Best Practices ≥95. Run locally against a production build if you need numbers — do not claim scores without a run.
 
-## Deploy on Vercel
+## Screenshots
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+E2E writes six screenshots under `public/screenshots/` when `pnpm test:e2e` runs:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. `01-wizard-upload.png`
+2. `02-profile-confirm.png`
+3. `03-job-matches.png`
+4. `04-team-discovery.png`
+5. `05-library.png`
+6. `06-resume-comparison.png`

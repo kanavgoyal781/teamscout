@@ -1,27 +1,26 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FormEvent, useState } from "react";
+import { toast } from "sonner";
 
 import {
-  IntentSearchRequest,
-  LibraryResume,
-  RankedJob,
-  RankedResumeRecommendation,
+  formatApiError,
   intentSearch,
   listLibraryResumes,
   recommendResumes,
   syncDrive,
   uploadLibrary,
 } from "../lib/api";
-
-export type LibraryToast = { kind: "error" | "info"; message: string } | null;
+import type {
+  IntentSearchRequest,
+  RankedJob,
+  RankedResumeRecommendation,
+} from "../lib/types";
+import { queryKeys } from "../lib/query";
 
 export function useLibraryPage() {
-  const [toast, setToast] = useState<LibraryToast>(null);
-  const [resumes, setResumes] = useState<LibraryResume[]>([]);
-  const [loadingLibrary, setLoadingLibrary] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const queryClient = useQueryClient();
   const [driveUrl, setDriveUrl] = useState("");
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [role, setRole] = useState("");
@@ -29,150 +28,143 @@ export function useLibraryPage() {
   const [location, setLocation] = useState("");
   const [remotePreference, setRemotePreference] =
     useState<IntentSearchRequest["remote_preference"]>("any");
-  const [searching, setSearching] = useState(false);
   const [jobResults, setJobResults] = useState<RankedJob[]>([]);
+  const [intentSearched, setIntentSearched] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [recommending, setRecommending] = useState(false);
   const [recommendations, setRecommendations] = useState<RankedResumeRecommendation[]>([]);
 
-  async function refreshLibrary() {
-    setLoadingLibrary(true);
-    try {
-      const response = await listLibraryResumes();
-      setResumes(response.resumes);
-    } catch (error) {
-      setToast({ kind: "error", message: error instanceof Error ? error.message : "Failed to load library" });
-    } finally {
-      setLoadingLibrary(false);
-    }
-  }
+  const libraryQuery = useQuery({
+    queryKey: queryKeys.library,
+    queryFn: listLibraryResumes,
+    retry: 1,
+  });
 
-  useEffect(() => {
-    void refreshLibrary();
-  }, []);
+  const uploadMutation = useMutation({
+    mutationFn: (files: File[]) => uploadLibrary(files),
+    retry: false,
+    onSuccess: async (response) => {
+      const ignoredNote =
+        response.files_ignored > 0
+          ? `, ${response.files_ignored} ignored (unsupported type)`
+          : "";
+      toast.success(
+        `Uploaded ${response.files_received} file(s): ${response.files_parsed} parsed, ${response.files_skipped} skipped (duplicate hash)${ignoredNote}.`,
+      );
+      await queryClient.invalidateQueries({ queryKey: queryKeys.library });
+    },
+    onError: (error) => toast.error(formatApiError(error)),
+  });
 
-  async function handleUpload(event: FormEvent<HTMLFormElement>) {
+  const syncMutation = useMutation({
+    mutationFn: (url: string) => syncDrive(url),
+    retry: false,
+    onSuccess: async (response) => {
+      const ignoredNote =
+        response.files_ignored > 0
+          ? `, ${response.files_ignored} ignored (non-PDF/DOCX)`
+          : "";
+      setSyncStatus(
+        `Synced folder ${response.folder_id}: ${response.files_seen} resume files seen, ${response.files_parsed} parsed, ${response.files_skipped} skipped${ignoredNote}.`,
+      );
+      toast.success(
+        `Drive sync complete: ${response.files_parsed} parsed, ${response.files_skipped} skipped${ignoredNote}.`,
+      );
+      await queryClient.invalidateQueries({ queryKey: queryKeys.library });
+    },
+    onError: (error) => toast.error(formatApiError(error)),
+  });
+
+  const searchMutation = useMutation({
+    mutationFn: (payload: IntentSearchRequest) => intentSearch(payload),
+    retry: false,
+    onSuccess: (response) => {
+      setJobResults(response.results);
+      setSelectedJobId(null);
+      setRecommendations([]);
+      setIntentSearched(true);
+      toast.success(
+        response.results.length > 0
+          ? `Ranked ${response.results.length} jobs for your intent.`
+          : "Search complete — no jobs matched this intent.",
+      );
+    },
+    onError: (error) => toast.error(formatApiError(error)),
+  });
+
+  const recommendMutation = useMutation({
+    mutationFn: (jobId: string) => recommendResumes(jobId),
+    retry: false,
+    onSuccess: (response) => {
+      setRecommendations(response.recommendations);
+      if (response.recommendations.length === 0) {
+        toast.message("No resume recommendations returned.");
+      }
+    },
+    onError: (error) => toast.error(formatApiError(error)),
+  });
+
+  function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const fileInput = form.elements.namedItem("library-files") as HTMLInputElement;
     const files = Array.from(fileInput.files ?? []);
     if (files.length === 0) {
-      setToast({ kind: "error", message: "Choose one or more PDF/DOCX files or a ZIP archive." });
+      toast.error("Choose one or more PDF/DOCX files or a ZIP archive.");
       return;
     }
-
-    setUploading(true);
-    setToast(null);
-    try {
-      const response = await uploadLibrary(files);
-      setResumes(response.resumes);
-      const ignoredNote =
-        response.files_ignored > 0 ? `, ${response.files_ignored} ignored (unsupported type)` : "";
-      setToast({
-        kind: "info",
-        message: `Uploaded ${response.files_received} file(s): ${response.files_parsed} parsed, ${response.files_skipped} skipped (duplicate hash)${ignoredNote}.`,
-      });
-      await refreshLibrary();
-    } catch (error) {
-      setToast({ kind: "error", message: error instanceof Error ? error.message : "Upload failed" });
-    } finally {
-      setUploading(false);
-    }
+    uploadMutation.mutate(files);
   }
 
-  async function handleDriveSync(event: FormEvent<HTMLFormElement>) {
+  function handleDriveSync(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!driveUrl.trim()) {
-      setToast({ kind: "error", message: "Enter a Google Drive folder URL." });
+      toast.error("Enter a Google Drive folder URL.");
       return;
     }
-
-    setSyncing(true);
-    setToast(null);
-    try {
-      const response = await syncDrive(driveUrl.trim());
-      const ignoredNote =
-        response.files_ignored > 0 ? `, ${response.files_ignored} ignored (non-PDF/DOCX)` : "";
-      setSyncStatus(
-        `Synced folder ${response.folder_id}: ${response.files_seen} resume files seen, ${response.files_parsed} parsed, ${response.files_skipped} skipped${ignoredNote}.`,
-      );
-      setToast({
-        kind: "info",
-        message: `Drive sync complete: ${response.files_parsed} parsed, ${response.files_skipped} skipped${ignoredNote}.`,
-      });
-      await refreshLibrary();
-    } catch (error) {
-      setToast({ kind: "error", message: error instanceof Error ? error.message : "Drive sync failed" });
-    } finally {
-      setSyncing(false);
-    }
+    syncMutation.mutate(driveUrl.trim());
   }
 
-  async function handleIntentSearch(event: FormEvent<HTMLFormElement>) {
+  function handleIntentSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!role.trim()) {
-      setToast({ kind: "error", message: "Desired role is required." });
+      toast.error("Desired role is required.");
       return;
     }
-
-    setSearching(true);
-    setToast(null);
     setJobResults([]);
     setSelectedJobId(null);
     setRecommendations([]);
-    try {
-      const response = await intentSearch({
-        role: role.trim(),
-        years_of_experience: Number(years) || 0,
-        location: location.trim(),
-        remote_preference: remotePreference,
-      });
-      setJobResults(response.results);
-      setToast({ kind: "info", message: `Ranked ${response.results.length} jobs for your intent.` });
-    } catch (error) {
-      setToast({ kind: "error", message: error instanceof Error ? error.message : "Intent search failed" });
-    } finally {
-      setSearching(false);
-    }
+    setIntentSearched(false);
+    searchMutation.mutate({
+      role: role.trim(),
+      years_of_experience: Number(years) || 0,
+      location: location.trim(),
+      remote_preference: remotePreference,
+    });
   }
 
-  async function handlePickJob(jobId: string) {
+  function handlePickJob(jobId: string) {
     setSelectedJobId(jobId);
-    setRecommending(true);
     setRecommendations([]);
-    setToast(null);
-    try {
-      const response = await recommendResumes(jobId);
-      setRecommendations(response.recommendations);
-      if (response.recommendations.length === 0) {
-        setToast({ kind: "info", message: "No resume recommendations returned." });
-      }
-    } catch (error) {
-      setToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : "Resume recommendation failed",
-      });
-    } finally {
-      setRecommending(false);
-    }
+    recommendMutation.mutate(jobId);
   }
 
   return {
-    toast,
-    resumes,
-    loadingLibrary,
-    uploading,
-    syncing,
+    resumes: libraryQuery.data?.resumes ?? [],
+    loadingLibrary: libraryQuery.isPending,
+    libraryError: libraryQuery.isError ? formatApiError(libraryQuery.error) : null,
+    uploading: uploadMutation.isPending,
+    syncing: syncMutation.isPending,
     driveUrl,
     syncStatus,
     role,
     years,
     location,
     remotePreference,
-    searching,
+    searching: searchMutation.isPending,
     jobResults,
+    intentSearched,
     selectedJobId,
-    recommending,
+    recommending: recommendMutation.isPending,
     recommendations,
     setDriveUrl,
     setRole,

@@ -1,67 +1,56 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { X } from "lucide-react";
+import { useState } from "react";
 
-type CheckStatus = "configured" | "missing" | "failing";
+import { fetchHealth } from "../lib/api";
+import { HEALTH_ENV_HINTS } from "../lib/types";
+import { queryKeys } from "../lib/query";
 
-type HealthResponse = {
-  ok: boolean;
-  checks: Record<string, CheckStatus>;
-  optional_checks?: string[];
-  db?: boolean;
-};
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 const OPTIONAL_SERVICES = new Set(["google_drive"]);
 
 function formatService(name: string): string {
   return name.replace(/_/g, " ");
 }
 
+function envHint(service: string, status: string): string {
+  const keys = HEALTH_ENV_HINTS[service];
+  if (status === "missing" && keys?.length) {
+    return `${formatService(service)} missing (${keys.join(", ")})`;
+  }
+  return `${formatService(service)} ${status}`;
+}
+
 export default function HealthBanner() {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const { data: health, error, isFetched, isError, isPending } = useQuery({
+    queryKey: queryKeys.health,
+    queryFn: fetchHealth,
+    refetchInterval: 30_000,
+    // Poll handles blips; avoid multi-second retry delay before degraded banner
+    retry: false,
+  });
 
-    async function loadHealth() {
-      try {
-        const response = await fetch(`${API_BASE}/health`, { cache: "no-store" });
-        const payload = (await response.json()) as HealthResponse;
-        if (!cancelled) {
-          setHealth(payload);
-          setLoadError(null);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setHealth(null);
-          setLoadError(error instanceof Error ? error.message : "Failed to reach backend");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoaded(true);
-        }
-      }
-    }
-
-    loadHealth();
-    const timer = window.setInterval(loadHealth, 30000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  if (!loaded) {
+  // No flash while loading — hide until first fetch settles
+  if (!isFetched && isPending) {
+    return null;
+  }
+  if (!isFetched && !isError) {
     return null;
   }
 
+  if (dismissed) {
+    return null;
+  }
+
+  const loadError = error instanceof Error ? error.message : error ? String(error) : null;
   const optional = new Set(health?.optional_checks ?? Array.from(OPTIONAL_SERVICES));
   const degraded =
     loadError !== null ||
     health === null ||
+    health === undefined ||
     health.ok === false ||
     health.db === false;
 
@@ -78,26 +67,30 @@ export default function HealthBanner() {
   }
   if (health?.checks) {
     for (const [service, status] of Object.entries(health.checks)) {
-      if (optional.has(service)) {
-        continue;
-      }
+      if (optional.has(service)) continue;
       if (status === "missing" || status === "failing") {
-        problems.push(`${formatService(service)} ${status}`);
+        problems.push(envHint(service, status));
       }
     }
   }
-  if (health === null && !loadError) {
+  if (!health && !loadError) {
     problems.push("health status unknown");
   }
 
   return (
-    <div
-      role="alert"
-      className="health-banner"
-      data-testid="health-banner"
-    >
-      <strong>TeamScout is degraded.</strong>{" "}
-      {problems.length > 0 ? problems.join(" · ") : "Configuration incomplete."}
+    <div role="alert" className="health-banner" data-testid="health-banner">
+      <div>
+        <strong>TeamScout is degraded.</strong>{" "}
+        {problems.length > 0 ? problems.join(" · ") : "Configuration incomplete."}
+      </div>
+      <button
+        type="button"
+        onClick={() => setDismissed(true)}
+        aria-label="Dismiss health banner"
+        title="Dismiss"
+      >
+        <X size={16} />
+      </button>
     </div>
   );
 }

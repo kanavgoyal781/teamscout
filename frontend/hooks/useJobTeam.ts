@@ -1,15 +1,17 @@
 "use client";
 
+import { useMutation } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
+import { toast } from "sonner";
 
 import {
-  Contact,
-  TeamExtraction,
   extractTeam,
   findTeam,
+  formatApiError,
   getJobTeam,
   revealEmail,
 } from "../lib/api";
+import type { Contact, TeamExtraction } from "../lib/types";
 
 export type JobTeamState = {
   extracting: boolean;
@@ -53,14 +55,43 @@ export function useJobTeam(searchId: string | null) {
     setTeamByJob({});
   }, []);
 
+  const hydrateMutation = useMutation({
+    mutationFn: (jobId: string) => getJobTeam(jobId),
+    retry: false,
+    meta: { silent: true },
+  });
+
+  const extractMutation = useMutation({
+    mutationFn: (jobId: string) => extractTeam(jobId),
+    retry: false,
+  });
+
+  const findMutation = useMutation({
+    mutationFn: ({
+      jobId,
+      extractionId,
+    }: {
+      jobId: string;
+      extractionId: string;
+    }) =>
+      findTeam(jobId, {
+        extraction_id: extractionId,
+        search_id: searchId,
+      }),
+    retry: false,
+  });
+
+  const revealMutation = useMutation({
+    mutationFn: ({ contactId, confirm }: { contactId: string; confirm: boolean }) =>
+      revealEmail(contactId, confirm),
+    retry: false,
+  });
+
   const hydrateJobTeam = useCallback(
-    async (
-      jobId: string,
-      onToast?: (kind: "error" | "info", message: string) => void,
-    ) => {
+    async (jobId: string) => {
       updateJobTeam(jobId, { hydrating: true });
       try {
-        const cached = await getJobTeam(jobId);
+        const cached = await hydrateMutation.mutateAsync(jobId);
         updateJobTeam(jobId, {
           contacts: cached.contacts,
           extractionId: cached.extraction_id,
@@ -71,44 +102,41 @@ export function useJobTeam(searchId: string | null) {
         });
       } catch (error) {
         updateJobTeam(jobId, { hydrating: false });
-        onToast?.("error", error instanceof Error ? error.message : "Failed to load team");
+        toast.error(formatApiError(error));
       }
     },
-    [updateJobTeam],
+    [hydrateMutation, updateJobTeam],
   );
 
   const handleExtractTeam = useCallback(
-    async (jobId: string, onToast: (kind: "error" | "info", message: string) => void) => {
+    async (jobId: string) => {
       updateJobTeam(jobId, { extracting: true, teamSearched: false });
       try {
-        const response = await extractTeam(jobId);
+        const response = await extractMutation.mutateAsync(jobId);
         updateJobTeam(jobId, {
           extractionId: response.extraction_id,
           extraction: response.extraction,
           extracting: false,
         });
-        onToast(
-          "info",
-          "Team extracted from job description. Review and confirm before Sumble lookup.",
-        );
+        toast.success("Team extracted. Review and confirm before Sumble lookup.");
       } catch (error) {
         updateJobTeam(jobId, { extracting: false });
-        onToast("error", error instanceof Error ? error.message : "Team extraction failed");
+        toast.error(formatApiError(error));
       }
     },
-    [updateJobTeam],
+    [extractMutation, updateJobTeam],
   );
 
   const handleFindTeam = useCallback(
-    async (jobId: string, onToast: (kind: "error" | "info", message: string) => void) => {
+    async (jobId: string) => {
       const state = teamByJob[jobId];
       if (!state?.extractionId) return;
 
       updateJobTeam(jobId, { finding: true });
       try {
-        await findTeam(jobId, {
-          extraction_id: state.extractionId,
-          search_id: searchId,
+        await findMutation.mutateAsync({
+          jobId,
+          extractionId: state.extractionId,
         });
         const cached = await getJobTeam(jobId);
         updateJobTeam(jobId, {
@@ -119,62 +147,60 @@ export function useJobTeam(searchId: string | null) {
           searchPath: cached.search_path ?? null,
           finding: false,
         });
-        onToast(
-          "info",
+        toast.success(
           cached.contacts.length > 0
             ? `Found ${cached.contacts.length} people.`
-            : "No people matched. Try broadening team or title filters.",
+            : "No people matched. Try broadening filters.",
         );
       } catch (error) {
         updateJobTeam(jobId, { finding: false });
-        onToast("error", error instanceof Error ? error.message : "Find team failed");
+        toast.error(formatApiError(error));
       }
     },
-    [searchId, teamByJob, updateJobTeam],
+    [findMutation, teamByJob, updateJobTeam],
   );
 
   const handleRevealEmail = useCallback(
-    async (
-      jobId: string,
-      contact: Contact,
-      confirm: boolean,
-      onToast: (kind: "error" | "info", message: string) => void,
-    ) => {
+    async (jobId: string, contact: Contact, confirm: boolean) => {
+      const current = teamByJob[jobId] ?? emptyTeamState();
       updateJobTeam(jobId, {
-        revealLoading: { ...teamByJob[jobId]?.revealLoading, [contact.id]: true },
+        revealLoading: { ...current.revealLoading, [contact.id]: true },
       });
       try {
-        const response = await revealEmail(contact.id, confirm);
+        const response = await revealMutation.mutateAsync({
+          contactId: contact.id,
+          confirm,
+        });
         if (!confirm && response.status === "preview" && response.cost_credits !== null) {
           updateJobTeam(jobId, {
-            revealLoading: { ...teamByJob[jobId]?.revealLoading, [contact.id]: false },
-            pendingReveal: { ...teamByJob[jobId]?.pendingReveal, [contact.id]: response.cost_credits },
+            revealLoading: { ...current.revealLoading, [contact.id]: false },
+            pendingReveal: { ...current.pendingReveal, [contact.id]: response.cost_credits },
           });
           return;
         }
 
-        const contacts = (teamByJob[jobId]?.contacts ?? []).map((row) =>
+        const contacts = (teamByJob[jobId]?.contacts ?? current.contacts).map((row) =>
           row.id === contact.id
             ? { ...row, email: response.email, email_revealed: Boolean(response.email) }
             : row,
         );
         updateJobTeam(jobId, {
           contacts,
-          revealLoading: { ...teamByJob[jobId]?.revealLoading, [contact.id]: false },
-          pendingReveal: { ...teamByJob[jobId]?.pendingReveal, [contact.id]: null },
+          revealLoading: { ...current.revealLoading, [contact.id]: false },
+          pendingReveal: { ...current.pendingReveal, [contact.id]: null },
         });
         if (response.email) {
-          onToast("info", `Email revealed for ${contact.full_name}.`);
+          toast.success(`Email revealed for ${contact.full_name}.`);
         }
       } catch (error) {
         updateJobTeam(jobId, {
-          revealLoading: { ...teamByJob[jobId]?.revealLoading, [contact.id]: false },
-          pendingReveal: { ...teamByJob[jobId]?.pendingReveal, [contact.id]: null },
+          revealLoading: { ...current.revealLoading, [contact.id]: false },
+          pendingReveal: { ...current.pendingReveal, [contact.id]: null },
         });
-        onToast("error", error instanceof Error ? error.message : "Email reveal failed");
+        toast.error(formatApiError(error));
       }
     },
-    [teamByJob, updateJobTeam],
+    [revealMutation, teamByJob, updateJobTeam],
   );
 
   const getTeamState = useCallback(

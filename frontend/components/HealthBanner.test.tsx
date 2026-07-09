@@ -1,7 +1,19 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import HealthBanner from "./HealthBanner";
+
+function renderBanner() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <HealthBanner />
+    </QueryClientProvider>,
+  );
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -16,7 +28,7 @@ describe("HealthBanner", () => {
       vi.fn(() => new Promise(() => {})),
     );
 
-    render(<HealthBanner />);
+    renderBanner();
     expect(screen.queryByTestId("health-banner")).not.toBeInTheDocument();
   });
 
@@ -24,6 +36,8 @@ describe("HealthBanner", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
+        ok: true,
+        headers: new Headers(),
         json: async () => ({
           ok: false,
           db: true,
@@ -38,18 +52,21 @@ describe("HealthBanner", () => {
       }),
     );
 
-    render(<HealthBanner />);
+    renderBanner();
 
     await waitFor(() => {
       expect(screen.getByTestId("health-banner")).toBeInTheDocument();
     });
     expect(screen.getByText(/llm missing/i)).toBeInTheDocument();
+    expect(screen.getByText(/LLM_API_KEY/i)).toBeInTheDocument();
   });
 
   it("renders a red banner when the database is failing", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
+        ok: true,
+        headers: new Headers(),
         json: async () => ({
           ok: false,
           db: false,
@@ -64,7 +81,7 @@ describe("HealthBanner", () => {
       }),
     );
 
-    render(<HealthBanner />);
+    renderBanner();
 
     await waitFor(() => {
       expect(screen.getByText(/database failing/i)).toBeInTheDocument();
@@ -74,7 +91,7 @@ describe("HealthBanner", () => {
   it("renders a red banner when the backend is unreachable", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
 
-    render(<HealthBanner />);
+    renderBanner();
 
     await waitFor(() => {
       expect(screen.getByText(/backend unreachable/i)).toBeInTheDocument();
@@ -85,6 +102,8 @@ describe("HealthBanner", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
+        ok: true,
+        headers: new Headers(),
         json: async () => ({
           ok: true,
           db: true,
@@ -99,7 +118,7 @@ describe("HealthBanner", () => {
       }),
     );
 
-    const { container } = render(<HealthBanner />);
+    const { container } = renderBanner();
 
     await waitFor(() => {
       expect(within(container).queryByTestId("health-banner")).not.toBeInTheDocument();
@@ -110,6 +129,8 @@ describe("HealthBanner", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
+        ok: true,
+        headers: new Headers(),
         json: async () => ({
           ok: true,
           db: true,
@@ -125,7 +146,7 @@ describe("HealthBanner", () => {
       }),
     );
 
-    const { container } = render(<HealthBanner />);
+    const { container } = renderBanner();
 
     await waitFor(() => {
       expect(within(container).queryByTestId("health-banner")).not.toBeInTheDocument();
