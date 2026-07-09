@@ -146,6 +146,57 @@ def _cache_jobs(db: Session, jobs: list[Job]) -> None:
     db.commit()
 
 
+def _jsearch_headers() -> dict[str, str]:
+    return {
+        "X-RapidAPI-Key": settings.JOBS_API_KEY or "",
+        "X-RapidAPI-Host": settings.JOBS_API_HOST or "jsearch.p.rapidapi.com",
+    }
+
+
+def _jsearch_search_url() -> str:
+    """RapidAPI JSearch deprecated /search; current path is /search-v2."""
+    return f"{(settings.JOBS_API_BASE or 'https://jsearch.p.rapidapi.com').rstrip('/')}/search-v2"
+
+
+def _extract_jsearch_items(payload: object) -> list[dict]:
+    """Normalize search-v2 (and legacy) payloads to a list of job dicts.
+
+    search-v2: { "data": { "jobs": [ ... ], "cursor": "..." }, ... }
+    legacy:    { "data": [ ... ], ... }
+    """
+    if not isinstance(payload, dict):
+        raise ServiceFailingError("Jobs API", "unexpected response format")
+
+    data = payload.get("data")
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    if isinstance(data, dict):
+        jobs = data.get("jobs")
+        if isinstance(jobs, list):
+            return [item for item in jobs if isinstance(item, dict)]
+        # Some variants nest under results / job_results
+        for key in ("results", "job_results", "items"):
+            nested = data.get(key)
+            if isinstance(nested, list):
+                return [item for item in nested if isinstance(item, dict)]
+    raise ServiceFailingError("Jobs API", "missing data.jobs array in search response")
+
+
+def _jsearch_get(params: dict[str, str]) -> list[dict]:
+    try:
+        with httpx.Client(timeout=default_timeout()) as client:
+            response = client.get(
+                _jsearch_search_url(),
+                headers=_jsearch_headers(),
+                params=params,
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except httpx.HTTPError as exc:
+        raise ServiceFailingError("Jobs API", str(exc)) from exc
+    return _extract_jsearch_items(payload)
+
+
 def fetch_jobs(profile: ResumeProfile, db: Session) -> list[Job]:
     _require_jobs_config()
 
@@ -155,10 +206,6 @@ def fetch_jobs(profile: ResumeProfile, db: Session) -> list[Job]:
     top_skills = " ".join(s for s in profile.skills[:2] if s.strip())
     query = f"{title} {top_skills} in {location}".strip()
 
-    headers = {
-        "X-RapidAPI-Key": settings.JOBS_API_KEY or "",
-        "X-RapidAPI-Host": settings.JOBS_API_HOST,
-    }
     # Align recency param with JOBS_RECENCY_DAYS (use month for 14d, week for <=7)
     date_posted = "month" if settings.JOBS_RECENCY_DAYS > 7 else "week"
     params = {
@@ -172,31 +219,12 @@ def fetch_jobs(profile: ResumeProfile, db: Session) -> list[Job]:
     from app.services import observability
 
     with observability.traced_call("jsearch.search", model="jsearch") as trace:
-        try:
-            with httpx.Client(timeout=default_timeout()) as client:
-                response = client.get(
-                    f"{(settings.JOBS_API_BASE or '').rstrip('/')}/search",
-                    headers=headers,
-                    params=params,
-                )
-                response.raise_for_status()
-                payload = response.json()
-        except httpx.HTTPError as exc:
-            raise ServiceFailingError("Jobs API", str(exc)) from exc
-
-        if not isinstance(payload, dict):
-            raise ServiceFailingError("Jobs API", "unexpected response format")
-
-        raw_items = payload.get("data")
-        if not isinstance(raw_items, list):
-            raise ServiceFailingError("Jobs API", "missing data array")
+        raw_items = _jsearch_get(params)
 
         cutoff = datetime.now(UTC) - timedelta(days=settings.JOBS_RECENCY_DAYS)
         jobs: list[Job] = []
         seen: set[str] = set()
         for item in raw_items:
-            if not isinstance(item, dict):
-                continue
             source_job_id = str(item.get("job_id") or item.get("job_google_link") or "")
             cached_id = _cached_job_id(db, "jsearch", source_job_id) if source_job_id else None
             job = _normalize_job(item, profile, job_id=cached_id)
@@ -227,10 +255,6 @@ def fetch_jobs_for_intent(intent: IntentProfile, db: Session) -> list[Job]:
     loc = intent.location.strip() or "United States"
     # title + loc + <=2 skills style; keep remote handling
     query = f"{role} in {loc}".strip()
-    headers = {
-        "X-RapidAPI-Key": settings.JOBS_API_KEY or "",
-        "X-RapidAPI-Host": settings.JOBS_API_HOST,
-    }
     date_posted = "month" if settings.JOBS_RECENCY_DAYS > 7 else "week"
     params = {
         "query": query,
@@ -245,32 +269,13 @@ def fetch_jobs_for_intent(intent: IntentProfile, db: Session) -> list[Job]:
     from app.services import observability
 
     with observability.traced_call("jsearch.search", model="jsearch") as trace:
-        try:
-            with httpx.Client(timeout=default_timeout()) as client:
-                response = client.get(
-                    f"{(settings.JOBS_API_BASE or '').rstrip('/')}/search",
-                    headers=headers,
-                    params=params,
-                )
-                response.raise_for_status()
-                payload = response.json()
-        except httpx.HTTPError as exc:
-            raise ServiceFailingError("Jobs API", str(exc)) from exc
-
-        if not isinstance(payload, dict):
-            raise ServiceFailingError("Jobs API", "unexpected response format")
-
-        raw_items = payload.get("data")
-        if not isinstance(raw_items, list):
-            raise ServiceFailingError("Jobs API", "missing data array")
+        raw_items = _jsearch_get(params)
 
         profile = intent.as_query_profile()
         cutoff = datetime.now(UTC) - timedelta(days=settings.JOBS_RECENCY_DAYS)
         jobs: list[Job] = []
         seen: set[str] = set()
         for item in raw_items:
-            if not isinstance(item, dict):
-                continue
             source_job_id = str(item.get("job_id") or item.get("job_google_link") or "")
             cached_id = _cached_job_id(db, "jsearch", source_job_id) if source_job_id else None
             job = _normalize_job(item, profile, job_id=cached_id)

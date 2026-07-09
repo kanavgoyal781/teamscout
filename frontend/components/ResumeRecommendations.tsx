@@ -19,6 +19,10 @@ type ResumeRecommendationsProps = {
   recommending: boolean;
   recommendations: RankedResumeRecommendation[];
   onPickJob: (jobId: string) => void;
+  /** When true, skip job-pick list — show top resumes for a pasted JD. */
+  jdMode?: boolean;
+  jdTitle?: string;
+  jdCompany?: string;
 };
 
 function highlightCited(text: string, phrases: string[]): React.ReactNode {
@@ -51,13 +55,18 @@ export default function ResumeRecommendations({
   recommending,
   recommendations,
   onPickJob,
+  jdMode = false,
+  jdTitle = "",
+  jdCompany = "",
 }: ResumeRecommendationsProps) {
   const reduced = useReducedMotion();
   const skipEntrance = shouldSkipEntrance(reduced);
+  const recsHeading = jdMode ? "3. Best resumes for this job" : "4. Top resume picks";
+  const showRecs = jdMode ? searched || recommending || recommendations.length > 0 : !!selectedJobId;
 
   return (
     <>
-      {searching ? (
+      {!jdMode && searching ? (
         <section className="panel" data-testid="intent-jobs-loading">
           <h2>3. Pick a job</h2>
           <div className="job-list">
@@ -65,7 +74,7 @@ export default function ResumeRecommendations({
             <JobCardSkeleton />
           </div>
         </section>
-      ) : jobResults.length > 0 ? (
+      ) : !jdMode && jobResults.length > 0 ? (
         <section className="panel" data-testid="intent-jobs">
           <h2>3. Pick a job</h2>
           <div className="job-list">
@@ -104,25 +113,31 @@ export default function ResumeRecommendations({
             ))}
           </div>
         </section>
-      ) : searched ? (
+      ) : !jdMode && searched ? (
         <section className="panel" data-testid="intent-jobs-empty">
           <h2>3. Pick a job</h2>
           <EmptyState instruction="No jobs matched this intent. Adjust role, location, or remote preference and search again." />
         </section>
       ) : null}
 
-      {selectedJobId && recommending ? (
+      {showRecs && recommending ? (
         <section className="panel" data-testid="recommendations-loading">
-          <h2>4. Top resume picks</h2>
+          <h2>{recsHeading}</h2>
           <div className="recommendation-list">
             <JobCardSkeleton />
             <JobCardSkeleton />
             <JobCardSkeleton />
           </div>
         </section>
-      ) : selectedJobId && recommendations.length > 0 ? (
+      ) : showRecs && recommendations.length > 0 ? (
         <section className="panel" data-testid="recommendations">
-          <h2>4. Top resume picks</h2>
+          <h2>{recsHeading}</h2>
+          {jdMode && (jdTitle || jdCompany) ? (
+            <p className="meta" style={{ marginTop: 0 }}>
+              For <strong>{jdTitle || "pasted job"}</strong>
+              {jdCompany ? ` · ${jdCompany}` : ""}
+            </p>
+          ) : null}
           <motion.div
             className="recommendation-list"
             variants={skipEntrance ? undefined : staggerContainer}

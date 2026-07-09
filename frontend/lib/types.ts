@@ -179,6 +179,37 @@ export type RecommendResumesResponse = {
   recommendations: RankedResumeRecommendation[];
 };
 
+export type RecommendFromJdRequest = {
+  job_description: string;
+  title?: string;
+  company?: string;
+  location?: string;
+  apply_url?: string;
+};
+
+export type RecommendFromJdResponse = {
+  job_id: string;
+  job_title: string;
+  job_company: string;
+  recommendations: RankedResumeRecommendation[];
+};
+
+export type IngestJobFromTextRequest = {
+  description: string;
+  title?: string;
+  company?: string;
+  location?: string;
+  apply_url?: string;
+};
+
+export type IngestJobFromTextResponse = {
+  job_id: string;
+  title: string;
+  company: string;
+  location: string;
+  description_preview: string;
+};
+
 export type CheckStatus = "configured" | "missing" | "failing";
 
 export type HealthResponse = {

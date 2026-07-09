@@ -11,6 +11,10 @@ import type {
   IntentSearchResponse,
   LibraryResumeListResponse,
   LibraryUploadResponse,
+  IngestJobFromTextRequest,
+  IngestJobFromTextResponse,
+  RecommendFromJdRequest,
+  RecommendFromJdResponse,
   RecommendResumesResponse,
   ResumeProfile,
   ResumeUploadResponse,
@@ -249,5 +253,25 @@ export async function intentSearch(payload: IntentSearchRequest): Promise<Intent
 export async function recommendResumes(jobId: string): Promise<RecommendResumesResponse> {
   return request<RecommendResumesResponse>(`/library/jobs/${jobId}/recommend-resumes`, {
     method: "POST",
+  });
+}
+
+export async function recommendFromJd(
+  payload: RecommendFromJdRequest,
+): Promise<RecommendFromJdResponse> {
+  return request<RecommendFromJdResponse>("/library/recommend-from-jd", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function ingestJobFromText(
+  payload: IngestJobFromTextRequest,
+): Promise<IngestJobFromTextResponse> {
+  return request<IngestJobFromTextResponse>("/jobs/from-text", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
 }

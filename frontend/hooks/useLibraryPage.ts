@@ -6,32 +6,27 @@ import { toast } from "sonner";
 
 import {
   formatApiError,
-  intentSearch,
   listLibraryResumes,
-  recommendResumes,
+  recommendFromJd,
   syncDrive,
   uploadLibrary,
 } from "../lib/api";
-import type {
-  IntentSearchRequest,
-  RankedJob,
-  RankedResumeRecommendation,
-} from "../lib/types";
+import type { RankedResumeRecommendation } from "../lib/types";
 import { queryKeys } from "../lib/query";
 
 export function useLibraryPage() {
   const queryClient = useQueryClient();
   const [driveUrl, setDriveUrl] = useState("");
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
-  const [role, setRole] = useState("");
-  const [years, setYears] = useState("5");
-  const [location, setLocation] = useState("");
-  const [remotePreference, setRemotePreference] =
-    useState<IntentSearchRequest["remote_preference"]>("any");
-  const [jobResults, setJobResults] = useState<RankedJob[]>([]);
-  const [intentSearched, setIntentSearched] = useState(false);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [jdText, setJdText] = useState("");
+  const [jdTitle, setJdTitle] = useState("");
+  const [jdCompany, setJdCompany] = useState("");
+  const [jdLocation, setJdLocation] = useState("");
+  const [matchedJobId, setMatchedJobId] = useState<string | null>(null);
+  const [matchedJobTitle, setMatchedJobTitle] = useState<string>("");
+  const [matchedJobCompany, setMatchedJobCompany] = useState<string>("");
   const [recommendations, setRecommendations] = useState<RankedResumeRecommendation[]>([]);
+  const [matched, setMatched] = useState(false);
 
   const libraryQuery = useQuery({
     queryKey: queryKeys.library,
@@ -74,31 +69,26 @@ export function useLibraryPage() {
     onError: (error) => toast.error(formatApiError(error)),
   });
 
-  const searchMutation = useMutation({
-    mutationFn: (payload: IntentSearchRequest) => intentSearch(payload),
+  const matchMutation = useMutation({
+    mutationFn: () =>
+      recommendFromJd({
+        job_description: jdText.trim(),
+        title: jdTitle.trim() || undefined,
+        company: jdCompany.trim() || undefined,
+        location: jdLocation.trim() || undefined,
+      }),
     retry: false,
     onSuccess: (response) => {
-      setJobResults(response.results);
-      setSelectedJobId(null);
-      setRecommendations([]);
-      setIntentSearched(true);
-      toast.success(
-        response.results.length > 0
-          ? `Ranked ${response.results.length} jobs for your intent.`
-          : "Search complete — no jobs matched this intent.",
-      );
-    },
-    onError: (error) => toast.error(formatApiError(error)),
-  });
-
-  const recommendMutation = useMutation({
-    mutationFn: (jobId: string) => recommendResumes(jobId),
-    retry: false,
-    onSuccess: (response) => {
+      setMatchedJobId(response.job_id);
+      setMatchedJobTitle(response.job_title);
+      setMatchedJobCompany(response.job_company);
       setRecommendations(response.recommendations);
-      if (response.recommendations.length === 0) {
-        toast.message("No resume recommendations returned.");
-      }
+      setMatched(true);
+      toast.success(
+        response.recommendations.length > 0
+          ? `Ranked ${response.recommendations.length} resume(s) for this job.`
+          : "No recommendations returned.",
+      );
     },
     onError: (error) => toast.error(formatApiError(error)),
   });
@@ -124,28 +114,19 @@ export function useLibraryPage() {
     syncMutation.mutate(driveUrl.trim());
   }
 
-  function handleIntentSearch(event: FormEvent<HTMLFormElement>) {
+  function handleMatchJd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!role.trim()) {
-      toast.error("Desired role is required.");
+    if (jdText.trim().length < 40) {
+      toast.error("Paste a fuller job description (at least ~40 characters).");
       return;
     }
-    setJobResults([]);
-    setSelectedJobId(null);
+    if ((libraryQuery.data?.resumes.length ?? 0) === 0) {
+      toast.error("Upload or sync resumes into the library first.");
+      return;
+    }
     setRecommendations([]);
-    setIntentSearched(false);
-    searchMutation.mutate({
-      role: role.trim(),
-      years_of_experience: Number(years) || 0,
-      location: location.trim(),
-      remote_preference: remotePreference,
-    });
-  }
-
-  function handlePickJob(jobId: string) {
-    setSelectedJobId(jobId);
-    setRecommendations([]);
-    recommendMutation.mutate(jobId);
+    setMatched(false);
+    matchMutation.mutate();
   }
 
   return {
@@ -156,24 +137,23 @@ export function useLibraryPage() {
     syncing: syncMutation.isPending,
     driveUrl,
     syncStatus,
-    role,
-    years,
-    location,
-    remotePreference,
-    searching: searchMutation.isPending,
-    jobResults,
-    intentSearched,
-    selectedJobId,
-    recommending: recommendMutation.isPending,
+    jdText,
+    jdTitle,
+    jdCompany,
+    jdLocation,
+    matching: matchMutation.isPending,
+    matched,
+    matchedJobId,
+    matchedJobTitle,
+    matchedJobCompany,
     recommendations,
     setDriveUrl,
-    setRole,
-    setYears,
-    setLocation,
-    setRemotePreference,
+    setJdText,
+    setJdTitle,
+    setJdCompany,
+    setJdLocation,
     handleUpload,
     handleDriveSync,
-    handleIntentSearch,
-    handlePickJob,
+    handleMatchJd,
   };
 }

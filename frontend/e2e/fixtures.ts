@@ -275,65 +275,86 @@ export async function mockApi(
       return json({ search_id: "is-1", results: [rankedJob] });
     }
 
+    const recPayload = {
+      job_id: "job-paste-1",
+      job_title: "Staff Backend Engineer",
+      job_company: "Acme Labs",
+      recommendations: [
+        {
+          resume_id: "lib-1",
+          filename: "ada.pdf",
+          match_score: 91,
+          score_breakdown: {
+            ...rankedJob.score_breakdown,
+            recency: 0,
+            experience_fit: 0.85,
+            final_score: 91,
+            rationale: "Ada shows Python systems experience matching Platform API work.",
+            matched_skills: ["Python", "Systems"],
+            missing_skills: ["Kubernetes"],
+          },
+          coverage: [
+            { requirement: "Python APIs", status: "hit", evidence: "Python systems experience" },
+            { requirement: "Kubernetes", status: "miss", evidence: null },
+          ],
+        },
+        {
+          resume_id: "lib-2",
+          filename: "grace.pdf",
+          match_score: 78,
+          score_breakdown: {
+            ...rankedJob.score_breakdown,
+            recency: 0,
+            experience_fit: 0.6,
+            final_score: 78,
+            rationale: "Solid systems background with partial skill overlap.",
+            matched_skills: ["Systems"],
+            missing_skills: ["SQL"],
+          },
+          coverage: [
+            { requirement: "Python APIs", status: "miss", evidence: null },
+            { requirement: "Systems", status: "hit", evidence: "Systems Engineer" },
+          ],
+        },
+        {
+          resume_id: "lib-3",
+          filename: "alan.pdf",
+          match_score: 70,
+          score_breakdown: {
+            ...rankedJob.score_breakdown,
+            recency: 0,
+            experience_fit: 0.45,
+            final_score: 70,
+            rationale: "Research profile with theoretical systems strength.",
+            matched_skills: ["Systems"],
+            missing_skills: ["Python"],
+          },
+          coverage: [{ requirement: "Python APIs", status: "miss", evidence: null }],
+        },
+      ],
+    };
+
+    if (path === "/library/recommend-from-jd" && method === "POST") {
+      if (options.recommendEmpty) {
+        return json({ job_id: "job-paste-1", job_title: "x", job_company: "y", recommendations: [] });
+      }
+      return json(recPayload);
+    }
+
     if (path === "/library/jobs/job-1/recommend-resumes" && method === "POST") {
       if (options.recommendEmpty) {
         return json({ job_id: "job-1", recommendations: [] });
       }
+      return json({ job_id: "job-1", recommendations: recPayload.recommendations });
+    }
+
+    if (path === "/jobs/from-text" && method === "POST") {
       return json({
         job_id: "job-1",
-        recommendations: [
-          {
-            resume_id: "lib-1",
-            filename: "ada.pdf",
-            match_score: 91,
-            score_breakdown: {
-              ...rankedJob.score_breakdown,
-              recency: 0,
-              experience_fit: 0.85,
-              final_score: 91,
-              rationale: "Ada shows Python systems experience matching Platform API work.",
-              matched_skills: ["Python", "Systems"],
-              missing_skills: ["Kubernetes"],
-            },
-            coverage: [
-              { requirement: "Python APIs", status: "hit", evidence: "Python systems experience" },
-              { requirement: "Kubernetes", status: "miss", evidence: null },
-            ],
-          },
-          {
-            resume_id: "lib-2",
-            filename: "grace.pdf",
-            match_score: 78,
-            score_breakdown: {
-              ...rankedJob.score_breakdown,
-              recency: 0,
-              experience_fit: 0.6,
-              final_score: 78,
-              rationale: "Solid systems background with partial skill overlap.",
-              matched_skills: ["Systems"],
-              missing_skills: ["SQL"],
-            },
-            coverage: [
-              { requirement: "Python APIs", status: "miss", evidence: null },
-              { requirement: "Systems", status: "hit", evidence: "Systems Engineer" },
-            ],
-          },
-          {
-            resume_id: "lib-3",
-            filename: "alan.pdf",
-            match_score: 70,
-            score_breakdown: {
-              ...rankedJob.score_breakdown,
-              recency: 0,
-              experience_fit: 0.45,
-              final_score: 70,
-              rationale: "Research profile with theoretical systems strength.",
-              matched_skills: ["Systems"],
-              missing_skills: ["Python"],
-            },
-            coverage: [{ requirement: "Python APIs", status: "miss", evidence: null }],
-          },
-        ],
+        title: "Staff Backend Engineer",
+        company: "Acme Labs",
+        location: "Remote",
+        description_preview: "Build reliable APIs…",
       });
     }
 

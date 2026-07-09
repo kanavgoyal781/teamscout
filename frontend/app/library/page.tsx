@@ -1,8 +1,8 @@
 "use client";
 
 import AppShell from "../../components/AppShell";
-import IntentSearchPanel from "../../components/IntentSearchPanel";
 import LibraryIngestPanel from "../../components/LibraryIngestPanel";
+import PasteJdPanel from "../../components/PasteJdPanel";
 import ResumeRecommendations from "../../components/ResumeRecommendations";
 import { useLibraryPage } from "../../hooks/useLibraryPage";
 
@@ -11,8 +11,8 @@ export default function LibraryPage() {
 
   return (
     <AppShell
-      title="Resume library and best-resume pick"
-      lede="Ingest resumes from Drive or local upload, search jobs by intent, then pick the best resume for a job with coverage and justification."
+      title="Resume library → best pick"
+      lede="Load many resumes (upload or Drive), paste a job description, and we pick the best resume for that posting — close calls included."
     >
       <LibraryIngestPanel
         resumes={state.resumes}
@@ -26,27 +26,30 @@ export default function LibraryPage() {
         onUpload={state.handleUpload}
         onDriveSync={state.handleDriveSync}
       />
-      <IntentSearchPanel
-        resumes={state.resumes}
-        role={state.role}
-        years={state.years}
-        location={state.location}
-        remotePreference={state.remotePreference}
-        searching={state.searching}
-        onRoleChange={state.setRole}
-        onYearsChange={state.setYears}
-        onLocationChange={state.setLocation}
-        onRemotePreferenceChange={state.setRemotePreference}
-        onSearch={state.handleIntentSearch}
+      <PasteJdPanel
+        resumeCount={state.resumes.length}
+        jdText={state.jdText}
+        title={state.jdTitle}
+        company={state.jdCompany}
+        location={state.jdLocation}
+        matching={state.matching}
+        onJdTextChange={state.setJdText}
+        onTitleChange={state.setJdTitle}
+        onCompanyChange={state.setJdCompany}
+        onLocationChange={state.setJdLocation}
+        onSubmit={state.handleMatchJd}
       />
       <ResumeRecommendations
-        jobResults={state.jobResults}
-        searching={state.searching}
-        searched={state.intentSearched}
-        selectedJobId={state.selectedJobId}
-        recommending={state.recommending}
+        jobResults={[]}
+        searching={state.matching}
+        searched={state.matched}
+        selectedJobId={state.matchedJobId}
+        recommending={state.matching}
         recommendations={state.recommendations}
-        onPickJob={state.handlePickJob}
+        onPickJob={() => {}}
+        jdMode
+        jdTitle={state.matchedJobTitle}
+        jdCompany={state.matchedJobCompany}
       />
     </AppShell>
   );

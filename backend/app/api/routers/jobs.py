@@ -11,12 +11,14 @@ from app.schemas.team import (
     ContactOut,
     FindTeamRequest,
     FindTeamResponse,
+    IngestJobFromTextRequest,
+    IngestJobFromTextResponse,
     TeamExtraction,
     TeamExtractionResponse,
     TeamListResponse,
 )
 from app.services import team_extract, team_search
-from app.services.jobs_store import resolve_job
+from app.services.jobs_store import cache_pasted_job, resolve_job
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -74,6 +76,30 @@ def _contact_to_out(contact: Contact, reveal_email: str | None = None) -> Contac
         sumble_person_id=contact.sumble_person_id,
         email_revealed=reveal_email is not None,
         email=reveal_email,
+    )
+
+
+@router.post("/from-text", response_model=IngestJobFromTextResponse)
+def ingest_job_from_text(
+    payload: IngestJobFromTextRequest,
+    db: Session = Depends(get_db),
+) -> IngestJobFromTextResponse:
+    """Paste a job posting → cache as a job. Then call extract-team / find-team as usual."""
+    job = cache_pasted_job(
+        description=payload.description,
+        title=payload.title,
+        company=payload.company,
+        location=payload.location,
+        apply_url=payload.apply_url,
+        db=db,
+    )
+    preview = job.description[:280] + ("…" if len(job.description) > 280 else "")
+    return IngestJobFromTextResponse(
+        job_id=job.id,
+        title=job.title,
+        company=job.company,
+        location=job.location,
+        description_preview=preview,
     )
 
 

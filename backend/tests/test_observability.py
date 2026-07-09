@@ -342,7 +342,7 @@ def test_record_trace_no_secrets_in_otlp(monkeypatch: pytest.MonkeyPatch) -> Non
     mock_client.__exit__.return_value = False
     mock_client.post.side_effect = _post
 
-    with patch("app.services.observability.httpx.Client", return_value=mock_client):
+    with patch("app.services.observability_otlp.httpx.Client", return_value=mock_client):
         observability.record_trace(operation="rerank", status="ok", cost_usd=0.01)
 
     assert seen

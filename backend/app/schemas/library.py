@@ -104,3 +104,20 @@ class RankedResumeRecommendation(BaseModel):
 class RecommendResumesResponse(BaseModel):
     job_id: str
     recommendations: list[RankedResumeRecommendation] = Field(default_factory=list)
+
+
+class RecommendFromJdRequest(BaseModel):
+    """Paste a full job description; rank library resumes against it (no JSearch)."""
+
+    job_description: str
+    title: str = ""
+    company: str = ""
+    location: str = ""
+    apply_url: str = ""
+
+
+class RecommendFromJdResponse(BaseModel):
+    job_id: str
+    job_title: str = ""
+    job_company: str = ""
+    recommendations: list[RankedResumeRecommendation] = Field(default_factory=list)

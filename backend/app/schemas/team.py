@@ -53,3 +53,21 @@ class EmailRevealResponse(BaseModel):
     cached: bool = False
     email: str | None = None
     status: str = "pending"
+
+
+class IngestJobFromTextRequest(BaseModel):
+    """Paste a job posting (e.g. LinkedIn) to run extract-team → Sumble without JSearch."""
+
+    description: str
+    title: str = ""
+    company: str = ""
+    location: str = ""
+    apply_url: str = ""
+
+
+class IngestJobFromTextResponse(BaseModel):
+    job_id: str
+    title: str
+    company: str
+    location: str
+    description_preview: str

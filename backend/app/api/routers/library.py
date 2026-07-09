@@ -15,10 +15,12 @@ from app.schemas.library import (
     IntentSearchResponse,
     LibraryResumeListResponse,
     LibraryUploadResponse,
+    RecommendFromJdRequest,
+    RecommendFromJdResponse,
     RecommendResumesResponse,
 )
 from app.services import drive, jobs, library_store, ranking, resume_ranking
-from app.services.jobs_store import resolve_job
+from app.services.jobs_store import cache_pasted_job, resolve_job
 
 router = APIRouter(prefix="/library", tags=["library"])
 
@@ -83,6 +85,35 @@ def intent_search(
     db.refresh(row)
 
     return IntentSearchResponse(search_id=row.id, results=ranked)
+
+
+@router.post("/recommend-from-jd", response_model=RecommendFromJdResponse)
+@limiter.limit(llm_limit)
+def recommend_from_jd(
+    request: Request,
+    payload: RecommendFromJdRequest,
+    db: Session = Depends(get_db),
+) -> RecommendFromJdResponse:
+    """Primary Feature 2 path: paste a JD → rank all library resumes → top 3."""
+    candidates = library_store.load_candidates(db)
+    if not candidates:
+        raise ValidationError("Resume library is empty — upload resumes or sync Drive first")
+
+    job = cache_pasted_job(
+        description=payload.job_description,
+        title=payload.title,
+        company=payload.company,
+        location=payload.location,
+        apply_url=payload.apply_url,
+        db=db,
+    )
+    recommendations = resume_ranking.rank_resumes_for_job(job, candidates)
+    return RecommendFromJdResponse(
+        job_id=job.id,
+        job_title=job.title,
+        job_company=job.company,
+        recommendations=recommendations,
+    )
 
 
 @router.post("/jobs/{job_id}/recommend-resumes", response_model=RecommendResumesResponse)
