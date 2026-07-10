@@ -34,13 +34,13 @@ Single process API + single Next frontend. No message bus, no remote vector DB, 
 Upload PDF/DOCX
   → parser (LLM complete_json, prompt resume_schema)
   → confirm profile fields
-  → optional LLM query expand (3–5 variants) + SearchParams hard/soft filters
+  → optional LLM query expand (3–5 variants) + SearchParams must-have (hard) / prefer (soft) filters
   → multi-source job fetch via provider registry (JSearch + free ATS boards + remote feeds + optional Adzuna)
   → annotate + hard filters + exact/embedding dedupe (prefer direct_ats)
   → dense + BM25 → RRF
   → optional cross-encoder (RRF top 50 → CE → top 15; flag RANKING_USE_CROSS_ENCODER, default off until experiment win)
   → LLM rerank (pointwise default; listwise when RANKING_LLM_LISTWISE) → weighted fuse
-  → soft preference boosts → MMR diversify + company soft-cap
+  → Prefer (soft) preference boosts → MMR diversify + company soft-cap
   → top SEARCH_RESULTS_TOP_N (default 10) with score_breakdown, facets, dropped_counts
   → team extract (prompt team_extract) → Sumble find → email reveal
 ```
@@ -212,9 +212,16 @@ usage (UI)
 
 Platform sprawl (cluster orchestration, IaC-as-product, feature stores, remote model registries, queues, A/B SDKs) does not earn its place for a two-feature recruiting tool. Production-grade here means reproducible builds, CI gates, observable credit calls, eval floors, secure defaults, and one live deploy (Fly + Vercel). Auto-tuning production rankers from online feedback is also rejected — the learning loop is human-gated.
 
+## Search prefs: Must have vs Prefer (UI)
+
+API fields stay `hard` / `soft` (`SearchParams.*_pref`). UI labels:
+
+- **Must have** (`hard`): drops jobs that fail the criterion.
+- **Prefer** (`soft`): keeps all jobs; matching ones rank higher (soft boost points).
+
 ## Anonymous workspaces (M19)
 
-Each browser gets an opaque `ts_workspace` cookie (`HttpOnly`, `SameSite=Lax`, `Secure` when `ENV=prod`). The first request without a cookie mints `secrets.token_urlsafe` and persists a `workspaces` row. All product reads/writes for resumes, resume_units, searches, intent_searches, jobs_cache (session-created), team_extractions, job_team_searches, contacts, and feedback are filtered by `workspace_id`. Direct ID probing across workspaces returns 404.
+Each browser gets an opaque `ts_workspace` cookie (`HttpOnly`; `SameSite=Lax` in dev; **`SameSite=None; Secure` in prod** so credentialed browser calls from a different site such as Vercel UI → Fly API still send the cookie). Override with `WORKSPACE_COOKIE_SAMESITE=lax|none|strict`. Alternative topology: same-site reverse proxy so Lax is enough. `/livez` and `/health` do **not** mint workspaces. Cookie `Max-Age` is re-set on every product response so TTL slides with activity. First product request without a cookie mints `secrets.token_urlsafe` and persists a `workspaces` row. Uploads live under `uploads/{workspace_id}/` so TTL cannot delete another workspace's files. All product reads/writes for resumes, resume_units, searches, intent_searches, jobs_cache (session-created), team_extractions, job_team_searches, contacts, and feedback are filtered by `workspace_id`. Direct ID probing across workspaces returns 404.
 
 ### Global-by-design exceptions
 
@@ -224,6 +231,7 @@ Each browser gets an opaque `ts_workspace` cookie (`HttpOnly`, `SameSite=Lax`, `
 | `traces` | Global rows + optional `workspace_id` | Used for /ops cost and per-workspace usage today |
 | prompts / evals / experiments | Untouched | Shared offline artifacts |
 | embedding / query-expand / JD / pairwise caches | Global | Content-addressed cost caches |
+| `drive_synced_files` / `drive_sync_state` | **Workspace** | Per-workspace skip map for Drive re-sync |
 
 ### Ephemerality
 

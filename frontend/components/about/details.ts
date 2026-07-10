@@ -95,7 +95,7 @@ export const DETAILS: Record<Exclude<DetailKey, null>, Detail> = {
     title: "LLM (OpenAI-compatible)",
     why: "Structured extraction, rerank rationales, and resume justifications need language understanding — but only on top candidates.",
     how: "complete_json with versioned prompts from versioned prompt files; traces record prompt name/version/hash and estimated cost.",
-    tradeoff: "Daily USD ceiling fail-closed (429). Unconfigured → 503 ServiceNotConfiguredError, never invented text.",
+    tradeoff: "Daily USD ceiling fail-closed (429). Unconfigured keys return a clear error, never invented text.",
     color: "#c084fc",
   },
   emb: {
@@ -143,8 +143,8 @@ export const DETAILS: Record<Exclude<DetailKey, null>, Detail> = {
   retrieve: {
     title: "1 · Retrieve",
     why: "Ranking needs a candidate set large enough for fusion but small enough for LLM cost.",
-    how: "Optional LLM query expand → registry parallel fetch (JSearch + ATS boards + remote feeds + optional Adzuna). Official APIs only (no HTML scraping). Post-fetch criteria filter; hard SearchParams filters; exact/embedding dedupe preferring direct_ats; jobs_cache; per_source_counts + dropped_counts. Target ~JOBS_FETCH_TARGET.",
-    tradeoff: "Broader pool costs more aggregator pages; ATS boards are keyless but cold cache is slower. Soft prefs never exclude. Empty after filters fails loud — no mock jobs.",
+    how: "Optional LLM query expand → registry parallel fetch (JSearch + ATS boards + remote feeds + optional Adzuna). Official APIs only (no HTML scraping). Post-fetch criteria filter; must-have search filters; exact/embedding dedupe preferring direct_ats; stable job cache; per-source and drop counts. Target about 150 roles.",
+    tradeoff: "Broader pool costs more aggregator pages; ATS boards are keyless but cold cache is slower. Prefer mode never excludes. Empty after filters fails loud — no mock jobs.",
     color: "#5b8def",
   },
   dense: {
