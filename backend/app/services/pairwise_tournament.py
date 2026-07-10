@@ -64,17 +64,33 @@ def pairwise_cache_key(jd_hash: str, hash_a: str, hash_b: str) -> str:
     return hashlib.sha256(f"{jd_hash}:{a}:{b}".encode()).hexdigest()
 def strip_weight_notation(text: str) -> str:
     return _WEIGHT_NOTATION.sub("", text or "").strip()
+_AB_COMPARE = re.compile(
+    r"\b(?:beats|wins|leads|shows|has|is|over|with|than|versus|vs\.?|prefer|between|and|or)\b",
+    re.IGNORECASE,
+)
+
 def materialize_ab_labels(text: str, *, name_a: str, name_b: str) -> str:
-    """Replace Resume A/B and residual lone A/B labels with filenames (pair-local)."""
+    """Replace Resume A/B and bare A/B (subject and object) with pair-local filenames.
+
+    Placeholders avoid re-matching letters inside filenames (e.g. name_a containing 'A').
+    Bare A/B are rewritten when comparison language is present so both sides of
+    \"A beats B …\" become filenames.
+    """
     out = text or ""
+    # Opaque placeholders without letter A/B so residual bare-letter pass is safe.
+    pa, pb = "<<PAIR_LEFT>>", "<<PAIR_RIGHT>>"
     for pat, rep in (
-        (r"\bResume A\b", name_a), (r"\bResume B\b", name_b),
-        (r"\bresume A\b", name_a), (r"\bresume B\b", name_b),
-        # Lone letter labels in comparison phrasing (after Resume A/B expansion).
-        (r"\bA\b(?=\s+(?:beats|wins|leads|shows|has|is|over|with))", name_a),
-        (r"\bB\b(?=\s+(?:beats|wins|leads|shows|has|is|over|with))", name_b),
+        (r"\bResume A\b", pa),
+        (r"\bResume B\b", pb),
+        (r"\bresume A\b", pa),
+        (r"\bresume B\b", pb),
     ):
         out = re.sub(pat, rep, out)
+    # Residual bare letters in comparison reasons (subject AND object).
+    if _AB_COMPARE.search(out) and re.search(r"\b[AB]\b", out):
+        out = re.sub(r"\bA\b", pa, out)
+        out = re.sub(r"\bB\b", pb, out)
+    out = out.replace(pa, name_a).replace(pb, name_b)
     return strip_weight_notation(out)
 def _cache_get(db: Session | None, key: str) -> tuple[str, str] | None:
     if db is None:
