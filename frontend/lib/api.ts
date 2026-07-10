@@ -22,6 +22,7 @@ import type {
   TeamListResponse,
   FeedbackCreate,
   FeedbackResponse,
+  OutreachDraftResponse,
 } from "./types";
 
 /** Re-exports for UI-used client types only. Retained backend routes (intent-search,
@@ -286,6 +287,13 @@ export async function postFeedback(payload: FeedbackCreate): Promise<FeedbackRes
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  });
+}
+
+/** Compose-only LLM draft (no server send). Requires revealed email. */
+export async function generateOutreachDraft(contactId: string): Promise<OutreachDraftResponse> {
+  return request<OutreachDraftResponse>(`/contacts/${contactId}/outreach-draft`, {
+    method: "POST",
   });
 }
 

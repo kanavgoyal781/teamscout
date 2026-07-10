@@ -1,4 +1,3 @@
-"""Multi-source job fetch facade: registry → hard filters → dedupe → cache."""
 from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field

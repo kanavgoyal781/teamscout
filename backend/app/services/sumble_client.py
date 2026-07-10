@@ -1,4 +1,3 @@
-"""Sumble HTTP client primitives — types, auth, POST helper."""
 from __future__ import annotations
 from dataclasses import dataclass
 from difflib import SequenceMatcher

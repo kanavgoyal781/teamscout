@@ -1,4 +1,3 @@
-"""Bullet-level resume unit extraction, embedding, and SQLite persistence."""
 from __future__ import annotations
 import hashlib
 import json
@@ -11,6 +10,7 @@ from app.db.models import Resume, ResumeUnit
 from app.schemas.resume import ResumeProfile
 from app.services import embeddings
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
+MAX_UNIT_WORDS = 40
 @dataclass(frozen=True)
 class ResumeUnitData:
     unit_text: str
@@ -21,15 +21,37 @@ def unit_hash(text: str, section: str) -> str:
     raw = f"{section}\n{text.strip()}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 def units_stamp(units: list[ResumeUnitData]) -> str:
-    """Stable hash of the unit set (order of extract_units)."""
     return hashlib.sha256("".join(u.unit_hash for u in units).encode("utf-8")).hexdigest()
 def profile_units_stamp(profile: ResumeProfile) -> str:
     return units_stamp(extract_units(profile))
 def _l2_normalize(vec: list[float]) -> list[float]:
     norm = math.sqrt(sum(x * x for x in vec)) or 1.0
     return [x / norm for x in vec]
+def split_into_sentences(text: str) -> list[str]:
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return []
+    parts = [p.strip() for p in _SENTENCE_SPLIT.split(cleaned) if p and p.strip()]
+    return parts or [cleaned]
+def cap_unit_words(text: str, *, max_words: int = MAX_UNIT_WORDS) -> list[str]:
+    cleaned = " ".join((text or "").split()).strip()
+    if not cleaned:
+        return []
+    words = cleaned.split()
+    if len(words) <= max_words:
+        return [cleaned]
+    chunks: list[str] = []
+    for i in range(0, len(words), max_words):
+        chunk = " ".join(words[i : i + max_words]).strip()
+        if chunk:
+            chunks.append(chunk)
+    return chunks
+def segment_text_units(text: str, *, max_words: int = MAX_UNIT_WORDS) -> list[str]:
+    out: list[str] = []
+    for sentence in split_into_sentences(text):
+        out.extend(cap_unit_words(sentence, max_words=max_words))
+    return out
 def extract_units(profile: ResumeProfile) -> list[ResumeUnitData]:
-    """Split profile into atomic units: summary sentences, skills, bullets."""
     units: list[ResumeUnitData] = []
     seen: set[str] = set()
     def add(section: str, text: str) -> None:
@@ -47,11 +69,13 @@ def extract_units(profile: ResumeProfile) -> list[ResumeUnitData]:
                 unit_hash=unit_hash(cleaned, section),
             )
         )
+    def add_segmented(section: str, text: str) -> None:
+        for part in segment_text_units(text):
+            add(section, part)
     if profile.title.strip():
         add("title", profile.title)
     if profile.summary.strip():
-        for part in _SENTENCE_SPLIT.split(profile.summary.strip()):
-            add("summary", part)
+        add_segmented("summary", profile.summary.strip())
     for skill in profile.skills:
         add("skills", skill)
     for role in profile.work_experience:
@@ -59,7 +83,7 @@ def extract_units(profile: ResumeProfile) -> list[ResumeUnitData]:
         if header_bits:
             add("experience", " at ".join(header_bits))
         for bullet in role.bullets:
-            add("experience", bullet)
+            add_segmented("experience", bullet)
     return units
 def embed_units(units: list[ResumeUnitData]) -> list[ResumeUnitData]:
     if not units:
@@ -110,7 +134,9 @@ def persist_units(db: Session, resume_id: str, units: list[ResumeUnitData]) -> N
     db.query(ResumeUnit).filter(ResumeUnit.resume_id == resume_id).delete()
     for u in units:
         db.add(
-            ResumeUnit(workspace_id=workspace_or_system(), resume_id=resume_id,
+            ResumeUnit(
+                workspace_id=workspace_or_system(),
+                resume_id=resume_id,
                 unit_text=u.unit_text,
                 section=u.section,
                 unit_hash=u.unit_hash,
@@ -125,7 +151,6 @@ def index_resume_units(
     *,
     force: bool = False,
 ) -> list[ResumeUnitData]:
-    """Create/update units; gate on profile units stamp vs row.units_content_hash."""
     row = db.query(Resume).filter(Resume.id == resume_id).one_or_none()
     desired = extract_units(profile)
     stamp = units_stamp(desired)
@@ -156,7 +181,6 @@ def ensure_candidate_units(
     db: Session | None = None,
     resume_id: str | None = None,
 ) -> list[ResumeUnitData]:
-    """Load persisted units when stamp matches; else re-index / extract+embed."""
     if db is not None and resume_id:
         return index_resume_units(db, resume_id, profile, force=False)
     return units_for_profile(profile, embed=True)

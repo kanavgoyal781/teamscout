@@ -1,4 +1,3 @@
-"""Tracing, cost ceilings, optional OTLP."""
 from __future__ import annotations
 import statistics
 import time
@@ -97,7 +96,6 @@ def sumble_credits_today(db: Session | None = None) -> int:
     finally:
         if own:
             session.close()
-
 def _ws_sum(col, workspace_id: str, *filters, db: Session | None = None):
     own = db is None
     session = db or SessionLocal()
@@ -116,8 +114,7 @@ def workspace_sumble_credits_today(workspace_id: str, db: Session | None = None)
 def assert_llm_budget_allows(*, estimated_cost_usd: float = 0.0) -> None:
     spent = llm_cost_today_usd()
     ceiling = float(settings.LLM_DAILY_COST_CEILING_USD)
-    if spent + max(estimated_cost_usd, 0.0) > ceiling:
-        raise CostCeilingExceededError(
+    if spent + max(estimated_cost_usd, 0.0) > ceiling: raise CostCeilingExceededError(
             f"Daily LLM cost ceiling exceeded (${spent:.4f} spent, ceiling ${ceiling:.2f})",
             details={"spent_usd": spent, "ceiling_usd": ceiling, "scope": "global"},
         )
@@ -125,16 +122,14 @@ def assert_llm_budget_allows(*, estimated_cost_usd: float = 0.0) -> None:
     if wid:
         wspent = workspace_llm_cost_today_usd(wid)
         wceil = float(settings.WORKSPACE_DAILY_LLM_USD)
-        if wspent + max(estimated_cost_usd, 0.0) > wceil:
-            raise CostCeilingExceededError(
+        if wspent + max(estimated_cost_usd, 0.0) > wceil: raise CostCeilingExceededError(
                 f"Workspace daily LLM limit exceeded (${wspent:.4f} spent, limit ${wceil:.2f})",
                 details={"spent_usd": wspent, "ceiling_usd": wceil, "scope": "workspace", "workspace_id": wid},
             )
 def assert_sumble_budget_allows(*, estimated_credits: int = 0) -> None:
     spent = sumble_credits_today()
     ceiling = int(settings.SUMBLE_DAILY_CREDIT_CEILING)
-    if spent + max(estimated_credits, 0) > ceiling:
-        raise CostCeilingExceededError(
+    if spent + max(estimated_credits, 0) > ceiling: raise CostCeilingExceededError(
             f"Daily Sumble credit ceiling exceeded ({spent} used, ceiling {ceiling})",
             details={"spent_credits": spent, "ceiling_credits": ceiling, "scope": "global"},
         )
@@ -142,12 +137,10 @@ def assert_sumble_budget_allows(*, estimated_credits: int = 0) -> None:
     if wid:
         wspent = workspace_sumble_credits_today(wid)
         wceil = int(settings.WORKSPACE_DAILY_SUMBLE_CREDITS)
-        if wspent + max(estimated_credits, 0) > wceil:
-            raise CostCeilingExceededError(
+        if wspent + max(estimated_credits, 0) > wceil: raise CostCeilingExceededError(
                 f"Workspace daily Sumble credit limit exceeded ({wspent} used, limit {wceil})",
                 details={"spent_credits": wspent, "ceiling_credits": wceil, "scope": "workspace", "workspace_id": wid},
             )
-
 def record_trace(
     *,
     operation: str,
@@ -310,33 +303,26 @@ def traced_call(
             cache_hit=ctx.cache_hit,
         )
 def _percentile(sorted_vals: list[float], p: float) -> float:
-    if not sorted_vals:
-        return 0.0
+    if not sorted_vals: return 0.0
     if len(sorted_vals) == 1:
         return sorted_vals[0]
     k = (len(sorted_vals) - 1) * p
     f = int(k)
     c = min(f + 1, len(sorted_vals) - 1)
-    if f == c:
-        return sorted_vals[f]
+    if f == c: return sorted_vals[f]
     return sorted_vals[f] + (sorted_vals[c] - sorted_vals[f]) * (k - f)
 def sumble_operation_from_path(path: str) -> str:
     p = path.strip().rstrip("/")
-    if "title-lookup" in p:
-        return "sumble.title_lookup"
-    if p.endswith("/organizations") or "/organizations" in p:
-        return "sumble.organizations"
-    if p.endswith("/people"):
-        return "sumble.people"
-    if "/jobs" in p:
-        return "sumble.jobs"
+    if "title-lookup" in p: return "sumble.title_lookup"
+    if p.endswith("/organizations") or "/organizations" in p: return "sumble.organizations"
+    if p.endswith("/people"): return "sumble.people"
+    if "/jobs" in p: return "sumble.jobs"
     return "sumble.unknown"
 def _workspace_usage_today(today: list[Trace]) -> list[dict[str, Any]]:
     by: dict[str, dict[str, Any]] = {}
     for r in today:
         wid = r.workspace_id or ""
-        if not wid:
-            continue
+        if not wid: continue
         b = by.setdefault(wid, {"workspace_id": wid, "llm_cost_usd": 0.0, "sumble_credits": 0})
         if r.operation in LLM_OPERATIONS:
             b["llm_cost_usd"] = float(b["llm_cost_usd"]) + float(r.cost_usd or 0)
@@ -374,28 +360,17 @@ def ops_stats(db: Session) -> dict[str, Any]:
     f2_costs = [sum(float(x.cost_usd or 0) for x in today if x.request_id == rid) for rid in f2_rids]
     embeds = [r for r in today if r.operation == "embed"]
     hits = sum(1 for r in embeds if r.cache_hit)
+    def _trace_row(r: Trace) -> dict[str, Any]:
+        return {
+            "id": r.id, "request_id": r.request_id, "operation": r.operation, "model": r.model,
+            "prompt_name": r.prompt_name, "prompt_version": r.prompt_version, "prompt_hash": r.prompt_hash,
+            "input_tokens": r.input_tokens, "output_tokens": r.output_tokens, "latency_ms": r.latency_ms,
+            "cost_usd": r.cost_usd, "credits_used": r.credits_used, "status": r.status,
+            "error_type": r.error_type, "cache_hit": r.cache_hit,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
     return {
-        "recent_traces": [
-            {
-                "id": r.id,
-                "request_id": r.request_id,
-                "operation": r.operation,
-                "model": r.model,
-                "prompt_name": r.prompt_name,
-                "prompt_version": r.prompt_version,
-                "prompt_hash": r.prompt_hash,
-                "input_tokens": r.input_tokens,
-                "output_tokens": r.output_tokens,
-                "latency_ms": r.latency_ms,
-                "cost_usd": r.cost_usd,
-                "credits_used": r.credits_used,
-                "status": r.status,
-                "error_type": r.error_type,
-                "cache_hit": r.cache_hit,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-            }
-            for r in recent
-        ],
+        "recent_traces": [_trace_row(r) for r in recent],
         "latency_by_operation": latency_summary,
         "total_cost_today_usd": round(sum(float(r.cost_usd or 0) for r in today), 6),
         "llm_cost_today_usd": round(

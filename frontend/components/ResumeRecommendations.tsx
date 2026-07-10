@@ -22,6 +22,29 @@ type ResumeRecommendationsProps = {
   tournamentComparisons?: number;
 };
 
+
+/** Strip internal weight markers like (w=2.0) from tournament reasons. */
+export function stripWeightNotation(text: string): string {
+  return text.replace(/\s*\(w=\d+(?:\.\d+)?\)/g, "").trim();
+}
+
+/**
+ * Display hygiene for tournament reasons.
+ * Backend already materializes pair-local A/B → filenames (with random flip);
+ * do NOT remap A/B by final rank order — that would mislabel flip-local pairs.
+ * Only strip internal weight notation for residual display cleanliness.
+ */
+export function materializeTournamentReason(reason: string): string {
+  return stripWeightNotation(reason || "");
+}
+
+function evidenceCell(status: string, evidence: string | null | undefined): string {
+  if (status === "miss" || !evidence || evidence === "No clear evidence") {
+    return "No clear evidence";
+  }
+  return evidence;
+}
+
 function highlightCited(text: string, phrases: string[]): React.ReactNode {
   if (!text || phrases.length === 0) return text;
   const escaped = phrases
@@ -57,6 +80,9 @@ export default function ResumeRecommendations({
   const skipEntrance = shouldSkipEntrance(reduced);
   const recsHeading = "3. Best resumes for this job";
   const showRecs = searched || recommending || recommendations.length > 0;
+  const tournamentOverrode = recommendations.some(
+    (r) => r.tournament?.ran && r.tournament.overrode_coverage,
+  );
 
   if (showRecs && recommending) {
     return (
@@ -87,6 +113,16 @@ export default function ResumeRecommendations({
             {tournamentComparisons === 1 ? "" : "s"} (logged to ops traces)
           </p>
         ) : null}
+        {tournamentOverrode ? (
+          <p className="meta" data-testid="tournament-override-badge" style={{ marginTop: 4 }}>
+            <span
+              className="chip"
+              title="Coverage scores were close; a pairwise LLM tournament reordered the list. Coverage % is pure MaxSim. Overall match is coverage-based but adjusted so higher-ranked cards never show a lower ring than lower ranks after an override."
+            >
+              Ranked by close-call tournament
+            </span>
+          </p>
+        ) : null}
         <motion.div
           className="recommendation-list"
           variants={skipEntrance ? undefined : staggerContainer}
@@ -98,11 +134,16 @@ export default function ResumeRecommendations({
             const align = item.alignment?.length ? item.alignment : null;
             const citePhrases = (
               align
-                ? align.filter((c) => c.status === "hit" && c.evidence_unit).map((c) => c.evidence_unit as string)
+                ? align
+                    .filter((c) => c.status === "hit" && c.evidence_unit && c.evidence_unit !== "No clear evidence")
+                    .map((c) => c.evidence_unit as string)
                 : item.coverage
-                    .filter((c) => c.status === "hit" && c.evidence)
+                    .filter((c) => c.status === "hit" && c.evidence && c.evidence !== "No clear evidence")
                     .map((c) => c.evidence as string)
             ).slice(0, 6);
+            const reasonRaw = item.tournament?.reasons?.[0]
+              ? materializeTournamentReason(item.tournament.reasons[0])
+              : "";
             return (
               <motion.article
                 key={item.resume_id}
@@ -127,8 +168,8 @@ export default function ResumeRecommendations({
                       </p>
                     ) : null}
                     {typeof item.coverage_score === "number" ? (
-                      <p className="meta font-num" style={{ margin: "4px 0 0" }}>
-                        Requirement coverage {(item.coverage_score * 100).toFixed(0)}%
+                      <p className="meta font-num" style={{ margin: "4px 0 0" }} data-testid={`coverage-label-${index}`}>
+                        Coverage {(item.coverage_score * 100).toFixed(0)}%
                       </p>
                     ) : null}
                   </div>
@@ -141,7 +182,7 @@ export default function ResumeRecommendations({
                   <p className="meta font-num" data-testid={`tournament-${index}`}>
                     Tournament: {item.tournament.wins} win
                     {item.tournament.wins === 1 ? "" : "s"}
-                    {item.tournament.reasons[0] ? ` — ${item.tournament.reasons[0]}` : ""}
+                    {reasonRaw ? ` — ${reasonRaw}` : ""}
                   </p>
                 ) : null}
                 <ScoreBars

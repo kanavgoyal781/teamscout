@@ -39,6 +39,12 @@ class EmailRevealResponse(BaseModel):
     cached: bool = False
     email: str | None = None
     status: str = "pending"
+class OutreachDraftResponse(BaseModel):
+    """Compose-only draft for mailto/Gmail/Outlook deep-links (no server send)."""
+    contact_id: str
+    subject: str
+    body: str
+    email: str
 class IngestJobFromTextRequest(BaseModel):
     """Paste a job posting (e.g. LinkedIn) to run extract-team → find hiring team without JSearch."""
     description: str

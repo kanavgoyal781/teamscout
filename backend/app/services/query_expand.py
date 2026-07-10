@@ -1,4 +1,3 @@
-"""LLM query expansion: profile/intent → 3–5 JSearch query variants (cached)."""
 from __future__ import annotations
 import hashlib
 import json
@@ -19,7 +18,6 @@ class _ExpandVariant(BaseModel):
 class _ExpandResponse(BaseModel):
     variants: list[_ExpandVariant] = Field(default_factory=list)
 def expansion_cache_key(profile: ResumeProfile, params: SearchParams | None = None) -> str:
-    """Stable content hash of profile search text + structured intent."""
     params = params or SearchParams()
     blob = json.dumps(
         {
@@ -120,7 +118,6 @@ def expand_queries(
     *,
     params: SearchParams | None = None,
 ) -> list[str]:
-    """Return 3–5 search query strings. Requires LLM when called (use_expand path)."""
     params = params or SearchParams()
     tmpl = load_prompt("query_expand")
     content_hash = expansion_cache_key(profile, params)

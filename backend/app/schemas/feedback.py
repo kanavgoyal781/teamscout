@@ -3,8 +3,14 @@ from __future__ import annotations
 import re
 from typing import Literal
 from pydantic import BaseModel, Field, field_validator
-FeedbackKind = Literal["thumbs_up", "thumbs_down", "apply_click", "find_team_click"]
-FeedbackTargetType = Literal["job_match", "resume_pick"]
+FeedbackKind = Literal[
+    "thumbs_up",
+    "thumbs_down",
+    "apply_click",
+    "find_team_click",
+    "compose_opened",
+]
+FeedbackTargetType = Literal["job_match", "resume_pick", "contact"]
 _HEX = re.compile(r"^[a-fA-F0-9]{8,64}$")
 _SCORE_COMPONENT_KEYS = frozenset({
     "llm", "rrf", "skills", "recency", "experience", "requirements", "cross_encoder",

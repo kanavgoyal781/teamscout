@@ -39,8 +39,7 @@ _BULLET_SPLIT = re.compile(r"[\n•\-\*]+\s*")
 def tokenize(text: str) -> list[str]:
     return _TOKEN_PATTERN.findall(text.lower())
 def cosine_similarity(a: list[float], b: list[float]) -> float:
-    if len(a) != len(b):
-        raise ValueError("vector dimension mismatch")
+    if len(a) != len(b): raise ValueError("vector dimension mismatch")
     return sum(x * y for x, y in zip(a, b, strict=True))
 def reciprocal_rank_fusion(rankings: list[list[str]], k: int | None = None) -> dict[str, float]:
     rrf_k = k if k is not None else settings.RRF_K
@@ -50,22 +49,18 @@ def reciprocal_rank_fusion(rankings: list[list[str]], k: int | None = None) -> d
             scores[job_id] = scores.get(job_id, 0.0) + 1.0 / (rrf_k + rank + 1)
     return scores
 def normalize_scores(scores: dict[str, float]) -> dict[str, float]:
-    if not scores:
-        return {}
+    if not scores: return {}
     values = list(scores.values())
     minimum = min(values)
     maximum = max(values)
-    if math.isclose(maximum, minimum):
-        return {key: 1.0 for key in scores}
+    if math.isclose(maximum, minimum): return {key: 1.0 for key in scores}
     span = maximum - minimum
     return {key: (value - minimum) / span for key, value in scores.items()}
 def skill_jaccard(resume_skills: list[str], job_skills: list[str]) -> float:
-    """Jaccard with token-aware equality (go≡golang; java≠javascript)."""
     from app.services.ranking_math_align import skill_equals
     resume = [s.strip() for s in resume_skills if s and s.strip()]
     job = [s.strip() for s in job_skills if s and s.strip()]
-    if not resume or not job:
-        return 0.0
+    if not resume or not job: return 0.0
     matched, used = 0, set()
     for rs in resume:
         for ji, js in enumerate(job):
@@ -76,21 +71,17 @@ def skill_jaccard(resume_skills: list[str], job_skills: list[str]) -> float:
     union = len(resume) + len(job) - matched
     return matched / union if union else 0.0
 def recency_score(posted_at: datetime | None, *, half_life_days: int | None = None) -> float:
-    if posted_at is None:
-        return 0.5
+    if posted_at is None: return 0.5
     half_life = half_life_days if half_life_days is not None else settings.RECENCY_HALF_LIFE_DAYS
     now = datetime.now(UTC)
     posted = posted_at if posted_at.tzinfo else posted_at.replace(tzinfo=UTC)
     age_days = max((now - posted.astimezone(UTC)).total_seconds() / 86400.0, 0.0)
     return 0.5 ** (age_days / half_life)
 def parse_required_years(text: str) -> float | None:
-    """Best-effort minimum years from JD/title text. Prefers range lows."""
-    if not text:
-        return None
+    if not text: return None
     for pattern in _YOE_PATTERNS:
         match = pattern.search(text)
-        if not match:
-            continue
+        if not match: continue
         groups = match.groups()
         try:
             if len(groups) >= 2 and groups[1] is not None:
@@ -107,15 +98,12 @@ def parse_required_years(text: str) -> float | None:
 def infer_seniority(title: str, description: str = "") -> str | None:
     blob = f"{title}\n{description[:800]}"
     for name, pattern, _band in _SENIORITY_RULES:
-        if pattern.search(blob):
-            return name
+        if pattern.search(blob): return name
     return None
 def seniority_yoe_band(level: str | None) -> tuple[float, float] | None:
-    if not level:
-        return None
+    if not level: return None
     for name, _pat, band in _SENIORITY_RULES:
-        if name == level:
-            return band
+        if name == level: return band
     return None
 def experience_fit_score(
     candidate_yoe: float,
@@ -123,7 +111,6 @@ def experience_fit_score(
     title: str,
     description: str = "",
 ) -> float:
-    """0–1 fit of candidate years vs JD YOE + seniority band."""
     yoe = max(float(candidate_yoe or 0.0), 0.0)
     required = parse_required_years(f"{title}\n{description}")
     level = infer_seniority(title, description)
@@ -158,18 +145,15 @@ def experience_fit_score(
         return round(max(0.0, min(1.0, base)), 4)
     if band is not None:
         lo, hi = band
-        if lo <= yoe <= hi:
-            return 1.0
+        if lo <= yoe <= hi: return 1.0
         if yoe < lo:
             gap = lo - yoe
             return round(max(0.05, 1.0 - gap * 0.22), 4)
         gap = yoe - hi
         return round(max(0.15, 1.0 - gap * 0.14), 4)
-    if yoe <= 0:
-        return 0.45
+    if yoe <= 0: return 0.45
     return 0.6
 def extract_requirement_terms(job_skills: list[str], description: str) -> list[str]:
-    """Structured skills first, then JD requirement bullets as tech-ish tokens."""
     terms: list[str] = []
     seen: set[str] = set()
     def add(term: str) -> None:
@@ -186,8 +170,7 @@ def extract_requirement_terms(job_skills: list[str], description: str) -> list[s
     section = section_match.group(1) if section_match else (description or "")[:1200]
     for chunk in _BULLET_SPLIT.split(section):
         chunk = chunk.strip()
-        if not chunk:
-            continue
+        if not chunk: continue
         if 2 <= len(chunk) <= 40 and not chunk.endswith("."):
             chunk = re.sub(r"^\d+\+?\s*years?\s+(?:of\s+)?", "", chunk, flags=re.I)
             if chunk:
@@ -205,11 +188,9 @@ def requirements_met_score(
     job_skills: list[str],
     job_description: str,
 ) -> float:
-    """Fraction of requirements covered (token-aware phrase match; Java≠JS)."""
     from app.services.ranking_math_align import phrase_in_text
     terms = extract_requirement_terms(job_skills, job_description)
-    if not terms:
-        return 0.5
+    if not terms: return 0.5
     skill_blob = " ".join(s for s in profile_skills if s)
     hay = f"{profile_text or ''}\n{skill_blob}"
     hits = 0
@@ -227,8 +208,7 @@ def validate_ranking_weights() -> None:
         + settings.RANKING_WEIGHT_REQUIREMENTS
         + settings.RANKING_WEIGHT_CROSS_ENCODER
     )
-    if not math.isclose(total, 1.0, abs_tol=0.01):
-        raise ValidationError(
+    if not math.isclose(total, 1.0, abs_tol=0.01): raise ValidationError(
             f"Ranking weights must sum to 1.0, got {total}",
             details={
                 "llm": settings.RANKING_WEIGHT_LLM,
@@ -268,9 +248,7 @@ def mmr(
     lambda_: float = DEFAULT_MMR_LAMBDA,
     k: int | None = None,
 ) -> list[str]:
-    """Maximal Marginal Relevance diversification (pure)."""
-    if not item_ids:
-        return []
+    if not item_ids: return []
     seen: set[str] = set()
     candidates: list[str] = []
     for item_id in item_ids:
@@ -278,15 +256,12 @@ def mmr(
             seen.add(item_id)
             candidates.append(item_id)
     limit = len(candidates) if k is None else max(0, min(k, len(candidates)))
-    if limit == 0:
-        return []
+    if limit == 0: return []
     def sim(a: str, b: str) -> float:
-        if a == b:
-            return 1.0
+        if a == b: return 1.0
         if (a, b) in pairwise_similarity:
             return pairwise_similarity[(a, b)]
-        if (b, a) in pairwise_similarity:
-            return pairwise_similarity[(b, a)]
+        if (b, a) in pairwise_similarity: return pairwise_similarity[(b, a)]
         return 0.0
     by_rel = sorted(candidates, key=lambda i: (-relevance.get(i, 0.0), i))
     selected: list[str] = []
@@ -321,17 +296,14 @@ def apply_company_soft_cap(
     max_per_company: int = 3,
     pool_company_count: int | None = None,
 ) -> list[str]:
-    """Cap company frequency in the first top_k slots (soft: spill to later ranks)."""
-    if not ordered_ids or top_k <= 0:
-        return list(ordered_ids)
+    if not ordered_ids or top_k <= 0: return list(ordered_ids)
     if pool_company_count is None:
         companies = {company_by_id.get(i, "") for i in ordered_ids}
         companies.discard("")
         pool_count = len(companies)
     else:
         pool_count = pool_company_count
-    if pool_count < top_k:
-        return list(ordered_ids)
+    if pool_count < top_k: return list(ordered_ids)
     head: list[str] = []
     deferred: list[str] = []
     counts: dict[str, int] = {}

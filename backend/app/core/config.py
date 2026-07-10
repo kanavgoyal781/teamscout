@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_CLIENT_SECRET: str | None = None
     GOOGLE_DRIVE_REFRESH_TOKEN: str | None = None
     RESUME_RECOMMEND_TOP_N: int = 3
+    EVIDENCE_FLOOR: float = 0.55  # MaxSim floor; keep == ranking_math_align.DEFAULT_EVIDENCE_FLOOR
     MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024  # 10 MiB
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_UPLOAD: str = "20/minute"
@@ -95,6 +96,7 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS_JUSTIFY: int = 6000
     LLM_MAX_TOKENS_JD_DECOMPOSE: int = 3000
     LLM_MAX_TOKENS_PAIRWISE_JUDGE: int = 1200
+    LLM_MAX_TOKENS_OUTREACH_DRAFT: int = 800
     LLM_MAX_TOKENS_DEFAULT: int = 4096
     LLM_PRICE_INPUT_PER_1M: float = 0.15
     LLM_PRICE_OUTPUT_PER_1M: float = 0.60
@@ -113,6 +115,7 @@ class Settings(BaseSettings):
             "justify": self.LLM_MAX_TOKENS_JUSTIFY,
             "jd_decompose": self.LLM_MAX_TOKENS_JD_DECOMPOSE,
             "pairwise_judge": self.LLM_MAX_TOKENS_PAIRWISE_JUDGE,
+            "outreach_draft": self.LLM_MAX_TOKENS_OUTREACH_DRAFT,
         }
         return mapping.get(operation, self.LLM_MAX_TOKENS_DEFAULT)
     @field_validator(

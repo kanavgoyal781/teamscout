@@ -8,7 +8,11 @@ import pytest
 from app.errors import ServiceFailingError
 from app.schemas.jobs import Job
 from app.services.jd_decompose import JdRequirement
-from app.services.pairwise_tournament import AlignmentEvidence, maybe_run_tournament
+from app.services.pairwise_tournament import (
+    AlignmentEvidence,
+    materialize_ab_labels,
+    maybe_run_tournament,
+)
 from app.services.ranking_math_align import TOURNAMENT_GAP
 
 
@@ -61,7 +65,12 @@ def test_tournament_close_band_reorders_only_band() -> None:
     def fake_complete_json(prompt, schema, **kwargs):
         # Always prefer resume with higher lexical order of left evidence? Return B wins
         # Prompt contains Resume A then B evidence units; force winner B for each pair.
-        return schema(winner="B", reason="decisive unit")
+        return schema(
+            winner="B",
+            margin="decisive",
+            key_differences=["stronger must-requirement evidence on PyTorch"],
+            reason="decisive unit on must-have PyTorch evidence",
+        )
 
     with patch("app.services.pairwise_tournament.llm.complete_json", side_effect=fake_complete_json):
         with patch("app.services.pairwise_tournament.load_prompt") as lp:
@@ -123,7 +132,12 @@ def test_tournament_cache_hits_skip_second_llm() -> None:
 
         def fake_complete_json(prompt, schema, **kwargs):
             calls["n"] += 1
-            return schema(winner="A", reason="cached-path")
+            return schema(
+                winner="A",
+                margin="decisive",
+                key_differences=["clearer PyTorch production evidence"],
+                reason="cached-path decisive unit on PyTorch",
+            )
 
         with patch("app.services.pairwise_tournament.llm.complete_json", side_effect=fake_complete_json):
             with patch("app.services.pairwise_tournament.load_prompt") as lp:
@@ -145,3 +159,30 @@ def test_tournament_cache_hits_skip_second_llm() -> None:
         assert r2.ordered_ids[0] == r1.ordered_ids[0]
     finally:
         db.close()
+
+
+def test_materialize_ab_labels_subject_and_object() -> None:
+    """Both sides of bare A/B comparison reasons become pair-local filenames."""
+    a, b = "fileA.pdf", "fileB.pdf"
+    assert materialize_ab_labels("A beats B on antibodies", name_a=a, name_b=b) == (
+        "fileA.pdf beats fileB.pdf on antibodies"
+    )
+    assert materialize_ab_labels("B beats A on antibodies", name_a=a, name_b=b) == (
+        "fileB.pdf beats fileA.pdf on antibodies"
+    )
+    assert materialize_ab_labels("A wins over B", name_a=a, name_b=b) == (
+        "fileA.pdf wins over fileB.pdf"
+    )
+    assert materialize_ab_labels("prefer A over B for depth", name_a=a, name_b=b) == (
+        "prefer fileA.pdf over fileB.pdf for depth"
+    )
+    assert materialize_ab_labels(
+        "Resume A beats Resume B on antibodies (w=2.0)", name_a=a, name_b=b
+    ) == "fileA.pdf beats fileB.pdf on antibodies"
+    # Filename containing letter A must not be re-scanned into B side
+    odd = materialize_ab_labels("A beats B", name_a="Alpha.pdf", name_b="Beta.pdf")
+    assert odd == "Alpha.pdf beats Beta.pdf"
+    # Non-comparison prose leaves bare letters alone
+    assert materialize_ab_labels("section A of the JD", name_a=a, name_b=b) == (
+        "section A of the JD"
+    )

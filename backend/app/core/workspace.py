@@ -1,4 +1,3 @@
-"""Anonymous workspace cookie, context, TTL hard-delete."""
 from __future__ import annotations
 import json
 import secrets
@@ -28,8 +27,7 @@ def current_workspace_id() -> str | None:
     return _workspace_cv.get()
 def require_workspace_id() -> str:
     wid = _workspace_cv.get()
-    if not wid:
-        raise RuntimeError("workspace_id missing from request context")
+    if not wid: raise RuntimeError("workspace_id missing from request context")
     return wid
 def workspace_or_system() -> str:
     return _workspace_cv.get() or SYSTEM_WORKSPACE
@@ -37,19 +35,15 @@ def mint_workspace_id() -> str:
     return secrets.token_urlsafe(32)
 def parse_cookie_header(header: str | None) -> dict[str, str]:
     out: dict[str, str] = {}
-    if not header:
-        return out
+    if not header: return out
     for part in header.split(";"):
-        if "=" not in part:
-            continue
+        if "=" not in part: continue
         k, v = part.split("=", 1)
         out[k.strip()] = v.strip()
     return out
 def cookie_samesite() -> str:
-    """Prod uses None for Vercel→Fly credentialed fetches; dev uses Lax."""
     raw = (getattr(settings, "WORKSPACE_COOKIE_SAMESITE", None) or "").strip().lower()
-    if raw in {"lax", "none", "strict"}:
-        return raw.capitalize() if raw != "none" else "None"
+    if raw in {"lax", "none", "strict"}: return raw.capitalize() if raw != "none" else "None"
     return "None" if settings.is_prod else "Lax"
 def cookie_header_value(workspace_id: str) -> str:
     parts = [f"{COOKIE_NAME}={workspace_id}", "Path=/", "HttpOnly", f"SameSite={cookie_samesite()}"]
@@ -135,8 +129,7 @@ def maybe_sweep_expired(*, now: datetime | None = None, force: bool = False) -> 
     ts = now or datetime.now(UTC).replace(tzinfo=None)
     day = ts.date().isoformat()
     with _sweep_lock:
-        if not force and _last_sweep_day == day:
-            return 0
+        if not force and _last_sweep_day == day: return 0
         _last_sweep_day = day
     return sweep_expired_workspaces(now=ts)
 class WorkspaceMiddleware:

@@ -1,4 +1,3 @@
-"""Minimal ops dashboard: token-gated HTML of trace + learning stats (no chart libs)."""
 from __future__ import annotations
 import hmac
 import html
@@ -16,14 +15,11 @@ def _extract_token(request: Request, token: str | None) -> str | None:
     auth = request.headers.get("authorization") or ""
     if auth.lower().startswith("bearer "):
         value = auth[7:].strip()
-        if value:
-            return value
+        if value: return value
     header = request.headers.get("x-ops-token")
-    if header and header.strip():
-        return header.strip()
+    if header and header.strip(): return header.strip()
     env = (settings.ENV or "").strip().lower()
-    if env not in {"prod", "production"} and token and token.strip():
-        return token.strip()
+    if env not in {"prod", "production"} and token and token.strip(): return token.strip()
     return None
 def require_ops_token(
     request: Request,
@@ -33,11 +29,9 @@ def require_ops_token(
     ),
 ) -> None:
     expected = settings.OPS_TOKEN
-    if not is_set(expected):
-        raise OpsAuthError("Ops access denied — OPS_TOKEN is not configured")
+    if not is_set(expected): raise OpsAuthError("Ops access denied — OPS_TOKEN is not configured")
     provided = _extract_token(request, token)
-    if not provided or not _tokens_match(provided, expected or ""):
-        raise OpsAuthError("Ops access denied — missing or invalid token")
+    if not provided or not _tokens_match(provided, expected or ""): raise OpsAuthError("Ops access denied — missing or invalid token")
 def _tokens_match(provided: str, expected: str) -> bool:
     try:
         return hmac.compare_digest(provided, expected)
@@ -62,8 +56,7 @@ def _ops_payload(db: Session) -> dict[str, Any]:
     err = stats.get("error_rate_by_service") or {}
     source_rows = []
     for op, v in lat.items():
-        if not str(op).startswith("source."):
-            continue
+        if not str(op).startswith("source."): continue
         name = str(op).split(".", 1)[-1]
         svc = err.get("source") or err.get(name) or {}
         source_rows.append({

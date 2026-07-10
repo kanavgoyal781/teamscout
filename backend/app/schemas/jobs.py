@@ -54,7 +54,6 @@ class RankedJob(BaseModel):
     match_score: float
     score_breakdown: ScoreBreakdown
 class SearchParams(BaseModel):
-    """Structured job search controls (API → JSearch + post-filters)."""
     remote_mode: RemoteMode = "any"
     remote_mode_pref: PrefMode = "soft"
     employment_type: EmploymentType = "any"
@@ -76,13 +75,11 @@ class JobFacets(BaseModel):
     posted_age: list[FacetBucket] = Field(default_factory=list)
     source: list[FacetBucket] = Field(default_factory=list)
 class SourceCounts(BaseModel):
-    """Per-source fetch accounting (visible; never silent)."""
     fetched: int = 0
     kept_after_filters: int = 0
     deduped_away: int = 0
     errors: int = 0
 class DroppedCounts(BaseModel):
-    """How many candidates were excluded, by cause. Zero keys may be omitted."""
     recency: int = 0
     missing_apply_url: int = 0
     missing_title_or_description: int = 0

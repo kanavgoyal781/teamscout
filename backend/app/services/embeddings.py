@@ -13,19 +13,16 @@ from app.errors import ServiceFailingError, ServiceNotConfiguredError
 from app.services import observability
 logger = get_logger(__name__)
 def embeddings_endpoint() -> str:
-    """Resolve embeddings POST URL."""
     if is_set(settings.EMBEDDINGS_API):
         base = (settings.EMBEDDINGS_API or "").rstrip("/")
     elif is_set(settings.LLM_API_BASE):
         base = (settings.LLM_API_BASE or "").rstrip("/")
     else:
         return ""
-    if base.endswith("/embeddings"):
-        return base
+    if base.endswith("/embeddings"): return base
     return f"{base}/embeddings"
 def _require_embeddings_config() -> None:
-    if not is_set(settings.EMBEDDINGS_API_KEY):
-        raise ServiceNotConfiguredError("Embeddings", "EMBEDDINGS_API_KEY")
+    if not is_set(settings.EMBEDDINGS_API_KEY): raise ServiceNotConfiguredError("Embeddings", "EMBEDDINGS_API_KEY")
     if not embeddings_endpoint():
         raise ServiceNotConfiguredError("Embeddings", "EMBEDDINGS_API")
 def _normalize(vec: list[float]) -> list[float]:
@@ -39,11 +36,9 @@ def _cache_get(content_hash: str) -> list[float] | None:
     session = SessionLocal()
     try:
         row = session.query(EmbeddingCache).filter(EmbeddingCache.content_hash == content_hash).one_or_none()
-        if row is None:
-            return None
+        if row is None: return None
         data = json.loads(row.embedding_json)
-        if isinstance(data, list):
-            return [float(x) for x in data]
+        if isinstance(data, list): return [float(x) for x in data]
         return None
     except (SQLAlchemyError, json.JSONDecodeError, TypeError, ValueError) as exc:
         logger.warning("embedding_cache.get_failed", error=str(exc))
@@ -83,12 +78,10 @@ def _parse_single_embedding(data: object) -> list[float]:
                 vec = [float(x) for x in item["embedding"]]
         elif isinstance(data.get("embedding"), list):
             vec = [float(x) for x in data["embedding"]]
-    if not vec:
-        raise ServiceFailingError("Embeddings", "unexpected response format")
+    if not vec: raise ServiceFailingError("Embeddings", "unexpected response format")
     return _normalize(vec)
 def embed(text: str) -> list[float]:
-    if not text or not text.strip():
-        raise ValueError("text must be non-empty")
+    if not text or not text.strip(): raise ValueError("text must be non-empty")
     _require_embeddings_config()
     key = _cache_key(text)
     cached = _cache_get(key)
@@ -135,11 +128,9 @@ def embed(text: str) -> list[float]:
         _cache_put(key, vec)
         return vec
 def embed_batch(texts: list[str]) -> list[list[float]]:
-    if not texts:
-        return []
+    if not texts: return []
     for text in texts:
-        if not text or not text.strip():
-            raise ValueError("text must be non-empty")
+        if not text or not text.strip(): raise ValueError("text must be non-empty")
     _require_embeddings_config()
     keys = [_cache_key(t) for t in texts]
     results: list[list[float] | None] = [None] * len(texts)
@@ -157,8 +148,7 @@ def embed_batch(texts: list[str]) -> list[list[float]]:
             trace.cost_usd = 0.0
             trace.input_tokens = 0
             trace.output_tokens = 0
-    if not miss_indices:
-        return [v for v in results if v is not None]
+    if not miss_indices: return [v for v in results if v is not None]
     miss_texts = [texts[i] for i in miss_indices]
     est_tokens = sum(observability.approx_token_count(t) for t in miss_texts)
     headers = {
@@ -180,16 +170,14 @@ def embed_batch(texts: list[str]) -> list[list[float]]:
         except httpx.HTTPError as exc:
             logger.warning("embeddings.http_error", error=type(exc).__name__)
             raise ServiceFailingError("Embeddings", "upstream request failed") from exc
-        if not isinstance(data, dict) or not isinstance(data.get("data"), list):
-            raise ServiceFailingError("Embeddings", "unexpected response format")
+        if not isinstance(data, dict) or not isinstance(data.get("data"), list): raise ServiceFailingError("Embeddings", "unexpected response format")
         rows = sorted(data["data"], key=lambda item: item.get("index", 0))
         vectors: list[list[float]] = []
         for item in rows:
             if not isinstance(item, dict) or not isinstance(item.get("embedding"), list):
                 raise ServiceFailingError("Embeddings", "unexpected response format")
             vectors.append(_normalize([float(x) for x in item["embedding"]]))
-        if len(vectors) != len(miss_texts):
-            raise ServiceFailingError("Embeddings", "embedding count mismatch")
+        if len(vectors) != len(miss_texts): raise ServiceFailingError("Embeddings", "embedding count mismatch")
         usage = data.get("usage") if isinstance(data, dict) else None
         if isinstance(usage, dict) and usage.get("total_tokens") is not None:
             trace.input_tokens = int(usage["total_tokens"])

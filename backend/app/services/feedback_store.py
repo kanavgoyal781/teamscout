@@ -1,4 +1,3 @@
-"""Persist ranking feedback + aggregate counts for ops (no auto weight mutation)."""
 from __future__ import annotations
 import json
 from collections import Counter
@@ -15,7 +14,6 @@ def current_ranking_config_hash() -> str:
     from app.services.ranking_config import ranking_config_hash
     return ranking_config_hash()
 def resolve_evals_root() -> Path:
-    """Locate directory that contains evals/ (monorepo, Docker /app, /data, EVALS_DIR)."""
     if is_set(getattr(settings, "EVALS_DIR", None)):
         return Path(str(settings.EVALS_DIR)).expanduser().resolve()
     here = Path(__file__).resolve()
@@ -62,9 +60,9 @@ def feedback_label_counts(db: Session) -> dict[str, int]:
         "thumbs_down": counts.get("thumbs_down", 0),
         "apply_click": counts.get("apply_click", 0),
         "find_team_click": counts.get("find_team_click", 0),
+        "compose_opened": counts.get("compose_opened", 0),
     }
 def learning_file_stats(repo_root: Path | str | None = None) -> dict[str, Any]:
-    """Latest eval metrics, trends, last experiments from evals/ on disk."""
     root = Path(repo_root) if repo_root is not None else resolve_evals_root()
     by_suite: dict[str, list[dict]] = {}
     history = root / "evals" / "history.jsonl"

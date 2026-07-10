@@ -1,4 +1,3 @@
-"""Atomic email reveal with SQLite billing lock and terminal cache."""
 from __future__ import annotations
 from datetime import UTC, datetime
 from sqlalchemy import text
@@ -44,7 +43,6 @@ def _cached_not_found_error(contact_id: str, reveal: EmailReveal) -> ValidationE
             "cached": True,
         },
     )
-
 def _global_person_reveal(db: Session, person_id: str | None, *, exclude_contact_id: str | None = None) -> EmailReveal | None:
     if not person_id:
         return None

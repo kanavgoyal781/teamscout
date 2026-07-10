@@ -16,7 +16,6 @@ from app.schemas.resume import ResumeProfile
 from app.services import drive, parser
 from app.services.ranking_math_align import cluster_variant_label
 def _cluster_meta(rows: list[Resume]) -> dict[str, tuple[str | None, int, str | None]]:
-    """resume_id → (cluster_id, size, label)."""
     members: dict[str, list[str]] = defaultdict(list)
     for row in rows:
         cid = row.cluster_id or row.id
@@ -53,13 +52,10 @@ def _resume_to_out(row: Resume, meta: dict[str, tuple[str | None, int, str | Non
 def _resume_out_by_hash(content_hash: str, db: Session) -> LibraryResumeOut:
     wid = require_workspace_id()
     row = db.query(Resume).filter(Resume.workspace_id == wid, Resume.content_hash == content_hash).one_or_none()
-    if row is None:
-        raise NotFoundError("resume", content_hash)
+    if row is None: raise NotFoundError("resume", content_hash)
     return _resume_to_out(row)
 def _maybe_index_units(row: Resume, profile: ResumeProfile, db: Session) -> tuple[bool, str | None]:
-    """Index bullet units when embeddings are configured."""
-    if not is_set(settings.EMBEDDINGS_API_KEY):
-        return False, "embeddings not configured — units deferred to rank time"
+    if not is_set(settings.EMBEDDINGS_API_KEY): return False, "embeddings not configured — units deferred to rank time"
     from sqlalchemy.exc import SQLAlchemyError
     from app.errors import ServiceFailingError, ServiceNotConfiguredError
     from app.services.resume_units import index_resume_units
@@ -95,8 +91,7 @@ def list_library_resumes(db: Session) -> list[LibraryResumeOut]:
 def distinct_version_count(db: Session) -> int:
     wid = require_workspace_id()
     rows = db.query(Resume).filter(Resume.workspace_id == wid, Resume.in_library.is_(True)).all()
-    if not rows:
-        return 0
+    if not rows: return 0
     clusters = {row.cluster_id or row.id for row in rows}
     return len(clusters)
 def ingest_resume_bytes(
@@ -106,8 +101,7 @@ def ingest_resume_bytes(
     *,
     source: str = "upload",
 ) -> tuple[LibraryResumeOut, bool]:
-    if not data:
-        raise ValidationError(f"File is empty: {filename}")
+    if not data: raise ValidationError(f"File is empty: {filename}")
     enforce_upload_size(data)
     file_hash, profile = parser.parse_resume_file(filename, data)
     wid = require_workspace_id()
@@ -140,19 +134,15 @@ def ingest_resume_bytes(
     _maybe_index_units(row, profile, db)
     return _resume_to_out(row), True
 def _index_status_for_resumes(db: Session, resumes: list[LibraryResumeOut]) -> tuple[bool | None, str | None]:
-    """Aggregate unit-index status for an upload batch (visible, non-silent)."""
-    if not is_set(settings.EMBEDDINGS_API_KEY):
-        return None, "embeddings not configured — units deferred to rank time"
+    if not is_set(settings.EMBEDDINGS_API_KEY): return None, "embeddings not configured — units deferred to rank time"
     from app.db.models import ResumeUnit
-    if not resumes:
-        return True, None
+    if not resumes: return True, None
     missing = 0
     for r in resumes:
         count = db.query(ResumeUnit).filter(ResumeUnit.resume_id == r.id).count()
         if count == 0:
             missing += 1
-    if missing:
-        return False, f"{missing} resume(s) missing unit index (will re-index at rank)"
+    if missing: return False, f"{missing} resume(s) missing unit index (will re-index at rank)"
     return True, None
 def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str, object]:
     wid = require_workspace_id()
@@ -232,8 +222,7 @@ async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str,
     received = 0
     resumes: list[LibraryResumeOut] = []
     for upload in files:
-        if not upload.filename:
-            continue
+        if not upload.filename: continue
         data = await upload.read()
         enforce_upload_size(data)
         received += 1
@@ -258,8 +247,7 @@ async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str,
                 else:
                     skipped += 1
             continue
-        if suffix not in parser.ALLOWED_EXTENSIONS:
-            raise ValidationError(
+        if suffix not in parser.ALLOWED_EXTENSIONS: raise ValidationError(
                 f"Unsupported file type: {upload.filename}",
                 details={"allowed": sorted(parser.ALLOWED_EXTENSIONS)},
             )
@@ -269,8 +257,7 @@ async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str,
             parsed += 1
         else:
             skipped += 1
-    if received == 0:
-        raise ValidationError("No files uploaded")
+    if received == 0: raise ValidationError("No files uploaded")
     from app.services.resume_ranking import recluster_library
     recluster_library(db)
     final = list_library_resumes(db)

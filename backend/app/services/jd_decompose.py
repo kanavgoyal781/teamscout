@@ -1,4 +1,3 @@
-"""JD → atomic requirements via LLM (cached by content hash)."""
 from __future__ import annotations
 import hashlib
 import json
@@ -63,7 +62,6 @@ def _normalize_requirements(items: list[JdRequirement]) -> list[JdRequirement]:
         out.append(JdRequirement(text=text, kind=kind, category=category, weight=weight))
     return out
 def deterministic_requirements(job: Job) -> list[JdRequirement]:
-    """Explicit offline path when use_llm=False — not a silent fallback."""
     terms: list[str] = []
     seen: set[str] = set()
     def add(term: str, *, must: bool = True) -> None:

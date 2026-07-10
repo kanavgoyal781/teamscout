@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import type { Contact } from "../lib/types";
 import type { JobTeamState } from "../hooks/useJobTeam";
 import BulkEmailComposer from "./BulkEmailComposer";
+import ContactEmailCompose from "./ContactEmailCompose";
 import EmptyState from "./ui/EmptyState";
 import { ContactSkeleton } from "./ui/Skeleton";
 
@@ -173,7 +174,9 @@ export default function TeamDiscoveryPanel({
                       </button>
                     )}
                   </div>
-                ) : null}
+                ) : (
+                  <ContactEmailCompose contact={contact} />
+                )}
               </div>
             );
           })}

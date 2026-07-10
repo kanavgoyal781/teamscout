@@ -97,7 +97,6 @@ def _build_listwise_prompt(profile: ResumeProfile, alias_jobs: list[tuple[str, J
         lines.append(f"{i}. {_job_line(alias, job)}")
     return "\n".join(lines)
 def _skills_chips(profile: ResumeProfile, job: Job) -> tuple[list[str], list[str]]:
-    """Matched/missing chips using skill_equals (aliases; same as fusion Jaccard)."""
     from app.services.ranking_math_align import skill_equals
     profile_skills = [s for s in profile.skills if s and s.strip()]
     job_skills = [s for s in job.skills if s and s.strip()]
@@ -134,8 +133,7 @@ def _map_alias_results(response: _RerankResponse, alias_to_real: dict[str, str])
         if real_id is None:
             logger.warning("jobs.rerank_unknown_id", job_id=raw_id)
             continue
-        if real_id in real_to_item:
-            continue
+        if real_id in real_to_item: continue
         real_to_item[real_id] = item.model_copy(update={"job_id": real_id})
     return real_to_item
 def _call_rerank_llm(profile: ResumeProfile, alias_jobs: list[tuple[str, Job]], *, max_retries: int = 2) -> _RerankResponse:
@@ -149,14 +147,12 @@ def _call_rerank_llm(profile: ResumeProfile, alias_jobs: list[tuple[str, Job]], 
         max_tokens=budget, max_retries=max_retries, operation="rerank", prompt_meta=tmpl,
     )
 def _llm_rerank_batch(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _RerankItem]:
-    if not jobs:
-        return {}
+    if not jobs: return {}
     alias_jobs, alias_to_real = _alias_jobs(jobs)
     jobs_by_id = {job.id: job for job in jobs}
     expected = set(jobs_by_id)
     response = _call_rerank_llm(profile, alias_jobs)
-    if not response.results:
-        raise ServiceFailingError("LLM", "rerank returned no results")
+    if not response.results: raise ServiceFailingError("LLM", "rerank returned no results")
     mapped = _map_alias_results(response, alias_to_real)
     missing_ids = sorted(expected - set(mapped))
     if missing_ids:
@@ -173,8 +169,7 @@ def _llm_rerank_batch(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _Rer
         mapped[mid] = _heuristic_rerank_item(profile, jobs_by_id[mid])
     return mapped
 def _llm_rerank_pointwise(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _RerankItem]:
-    if not jobs:
-        return {}
+    if not jobs: return {}
     merged: dict[str, _RerankItem] = {}
     for offset in range(0, len(jobs), _RERANK_BATCH_SIZE):
         merged.update(_llm_rerank_batch(profile, jobs[offset : offset + _RERANK_BATCH_SIZE]))
@@ -193,14 +188,11 @@ def _resolve_listwise_aliases(
                 if cleaned == alias.lower():
                     rid = real
                     break
-        if rid is None:
-            raise PermutationError(f"unmapped alias: {raw_id}")
+        if rid is None: raise PermutationError(f"unmapped alias: {raw_id}")
         out.append((rid, reason))
     return out
 def _llm_rerank_listwise(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _RerankItem]:
-    """Single listwise call; retry once on bad permutation. Skills chips are heuristic (no extra LLM)."""
-    if not jobs:
-        return {}
+    if not jobs: return {}
     alias_jobs, alias_to_real = _alias_jobs(jobs)
     aliases = [a for a, _ in alias_jobs]
     jobs_by_id = {j.id: j for j in jobs}
@@ -243,7 +235,6 @@ def _llm_rerank_listwise(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _
         )
     return out
 def _heuristic_rerank_from_order(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _RerankItem]:
-    """No-LLM listwise fallback: keep slate order, position scores + heuristic chips/rationale."""
     fit = ranks_to_fit_scores([j.id for j in jobs])
     out: dict[str, _RerankItem] = {}
     for job in jobs:
@@ -256,14 +247,12 @@ def _heuristic_rerank_from_order(profile: ResumeProfile, jobs: list[Job]) -> dic
         )
     return out
 def _llm_rerank(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _RerankItem]:
-    if settings.RANKING_LLM_LISTWISE:
-        return _llm_rerank_listwise(profile, jobs)
+    if settings.RANKING_LLM_LISTWISE: return _llm_rerank_listwise(profile, jobs)
     return _llm_rerank_pointwise(profile, jobs)
 def _diversify_ranked(
     ranked: list[RankedJob], *, lambda_: float = DEFAULT_MMR_LAMBDA, top_n: int | None = None,
 ) -> list[RankedJob]:
-    if len(ranked) <= 1:
-        return ranked
+    if len(ranked) <= 1: return ranked
     from app.services import embeddings
     ids = [item.job.id for item in ranked]
     by_id = {item.job.id: item for item in ranked}
@@ -287,8 +276,7 @@ def rank_jobs(
     profile: ResumeProfile, jobs: list[Job], *, use_llm: bool = True,
     params: SearchParams | None = None, diversify: bool = True, top_n: int | None = None,
 ) -> list[RankedJob]:
-    if not jobs:
-        return []
+    if not jobs: return []
     params = params or SearchParams()
     result_n = top_n if top_n is not None else settings.SEARCH_RESULTS_TOP_N
     score_n = max(result_n, min(len(jobs), max(settings.RERANK_TOP_N, result_n * 3)))
@@ -360,8 +348,7 @@ def rank_jobs(
     return ranked[:result_n]
 def rank_jobs_dense_only(profile: ResumeProfile, jobs: list[Job]) -> list[RankedJob]:
     from app.services.hybrid_rank import dense_ranking
-    if not jobs:
-        return []
+    if not jobs: return []
     rankables = [_job_to_rankable(job) for job in jobs]
     dense_ids = dense_ranking(profile.search_text(), rankables)
     jobs_by_id = {job.id: job for job in jobs}

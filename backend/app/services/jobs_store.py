@@ -33,7 +33,6 @@ _TECH_ALLOW = frozenset({
     "prometheus", "grafana", "elasticsearch", "opensearch", "helm",
 })
 def extract_skills_from_jd_text(description: str, title: str = "") -> list[str]:
-    """High-precision skill list for pasted JDs (allowlist + JD-derived tech tokens)."""
     from app.services.ranking_math import extract_requirement_terms
     blob = f"{title}\n{description}" if title else (description or "")
     lowered = blob.lower()
@@ -81,7 +80,6 @@ def cache_pasted_job(
     apply_url: str = "",
     db: Session,
 ) -> Job:
-    """Persist a user-pasted JD as a JobCache row and return the Job."""
     desc = (description or "").strip()
     if len(desc) < 40:
         raise ValidationError(

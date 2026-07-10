@@ -1,4 +1,3 @@
-"""Board cache (6h), post-fetch filter, ATS slugs."""
 from __future__ import annotations
 import html as html_lib
 import json

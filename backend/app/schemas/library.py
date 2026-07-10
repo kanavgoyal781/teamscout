@@ -90,7 +90,9 @@ class TournamentRecord(BaseModel):
     cache_hits: int = 0
     cost_usd: float | None = None
     wins: int = 0
+    borda_score: float = 0.0
     contested: bool = False
+    overrode_coverage: bool = False
     reasons: list[str] = Field(default_factory=list)
 class RankedResumeRecommendation(BaseModel):
     resume_id: str
@@ -111,7 +113,6 @@ class RecommendResumesResponse(BaseModel):
     tournament_comparisons: int = 0
     tournament_ran: bool = False
 class RecommendFromJdRequest(BaseModel):
-    """Paste a full job description; rank library resumes against it (no JSearch)."""
     job_description: str
     title: str = ""
     company: str = ""

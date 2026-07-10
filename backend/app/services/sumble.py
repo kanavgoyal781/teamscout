@@ -1,4 +1,3 @@
-"""Sumble REST client — org lookup, people search, email reveal."""
 from __future__ import annotations
 from typing import Any
 from urllib.parse import urlparse
@@ -16,7 +15,6 @@ find_best_matching_job_post = sumble_jobs.find_best_matching_job_post
 get_related_people_for_job = sumble_jobs.get_related_people_for_job
 logger = get_logger(__name__)
 def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str]) -> tuple[list[str], list[str], int]:
-    """Small mapping helper: department + titles -> (job_functions, job_levels)."""
     funcs: list[str] = []
     levels: list[str] = []
     dept = (department or "").strip()
@@ -35,8 +33,7 @@ def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str
         else:
             funcs.append(dept)
     titles = [t.strip() for t in (likely_hiring_titles or []) if t and t.strip()]
-    if not titles:
-        return ([f for f in funcs if f], levels, 0)
+    if not titles: return ([f for f in funcs if f], levels, 0)
     title_credits = 0
     try:
         data = sumble_client.post(
@@ -79,7 +76,6 @@ def build_people_query(
     department: str,
     likely_hiring_titles: list[str],
 ) -> tuple[str | None, int]:
-    """Build documented advanced query string for people filter.query.query ."""
     funcs, levels, title_credits = map_llm_extraction_to_sumble(department, likely_hiring_titles)
     clauses: list[str] = []
     if funcs:
@@ -97,7 +93,6 @@ def build_people_query(
     query = " AND ".join(clauses) if clauses else None
     return query, title_credits
 def _derive_domain(company_name: str, apply_url: str | None = None) -> str | None:
-    """Heuristic to derive domain for org resolve-by-url (per docs preference for url/domain)."""
     if apply_url:
         try:
             host = (urlparse(apply_url).netloc or "").lower().strip()
@@ -129,14 +124,11 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
         except (ValueError, TypeError, AttributeError):
             pass
     slug = "".join(c for c in (company_name or "").lower() if c.isalnum())
-    if slug:
-        return f"{slug}.com"
+    if slug: return f"{slug}.com"
     return None
 def lookup_organization(company_name: str, apply_url: str | None = None) -> tuple[SumbleOrganization, int]:
-    """Resolve org using documented /v6/organizations. Prefer url/domain per docs."""
     company_name = (company_name or "").strip()
-    if not company_name:
-        raise ServiceFailingError("Hiring team lookup", "company name is required for organization lookup")
+    if not company_name: raise ServiceFailingError("Hiring team lookup", "company name is required for organization lookup")
     orgs_inputs: list[dict[str, str]] = []
     dom = _derive_domain(company_name, apply_url)
     if dom:
@@ -177,7 +169,6 @@ def search_people(
     department: str = "",
     likely_hiring_titles: list[str] | None = None,
 ) -> tuple[list[SumblePerson], int]:
-    """Documented filter-mode people search as fallback path."""
     lim = getattr(settings, "SUMBLE_SEARCH_LIMIT", sumble_client.DEFAULT_LIMIT)
     titles = likely_hiring_titles or []
     filter_body: dict[str, Any] = {"organization_ids": [organization_id]}
@@ -194,15 +185,12 @@ def search_people(
         credit_costing=True,
     )
     people_rows = data.get("people")
-    if not isinstance(people_rows, list):
-        raise ServiceFailingError("Hiring team lookup", "missing people array")
+    if not isinstance(people_rows, list): raise ServiceFailingError("Hiring team lookup", "missing people array")
     results: list[SumblePerson] = []
     for row in people_rows:
-        if not isinstance(row, dict):
-            continue
+        if not isinstance(row, dict): continue
         person_id = row.get("person_id")
-        if person_id is None:
-            continue
+        if person_id is None: continue
         attrs = row.get("attributes") or {}
         results.append(
             SumblePerson(
@@ -226,7 +214,6 @@ def find_hiring_team(
     jd_title: str = "",
     company: str = "",
 ) -> tuple[list[SumblePerson], int, str]:
-    """Primary path: org job-posts match -> find-related-people."""
     lim = getattr(settings, "SUMBLE_SEARCH_LIMIT", sumble_client.DEFAULT_LIMIT)
     total_credits = 0
     if jd_title:
@@ -258,7 +245,6 @@ def find_hiring_team(
     logger.info("sumble.team_path", path=path_label, count=len(people))
     return people, total_credits, path_label
 def reveal_email(person_id: int) -> tuple[str | None, int]:
-    """Documented list-mode enrich for email (people list + email attr)."""
     data = sumble_client.post(
         "/v6/people",
         {

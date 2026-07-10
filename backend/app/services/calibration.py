@@ -1,4 +1,3 @@
-"""Platt scaling for match-score → likelihood. Fit only via scripts; never auto-mutates rankers."""
 from __future__ import annotations
 import json
 import math
@@ -126,10 +125,6 @@ def ui_match_likelihood(
     score_0_100: float,
     params: PlattParams | None = None,
 ) -> float | None:
-    """Return 0–1 likelihood only when RANKING_USE_CALIBRATION is on and n≥50.
-    Fitting writes SQLite proposals; the UI path stays off until a human sets
-    RANKING_USE_CALIBRATION=true after reviewing the fit (no silent auto-apply).
-    """
     from app.core.config import settings
     if not settings.RANKING_USE_CALIBRATION:
         return None

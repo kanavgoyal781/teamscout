@@ -1,4 +1,3 @@
-"""JobSource adapters (official APIs only)."""
 from __future__ import annotations
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -47,8 +46,7 @@ class JSearchSource:
     def is_enabled_for(self, criteria: FetchCriteria) -> bool:
         return self.is_configured()
     def fetch(self, criteria: FetchCriteria, db: Session | None = None) -> list[Job]:
-        if not self.is_configured():
-            raise ServiceNotConfiguredError("Jobs API", "JOBS_API_KEY")
+        if not self.is_configured(): raise ServiceNotConfiguredError("Jobs API", "JOBS_API_KEY")
         base = jsearch_params_from_search(criteria.params)
         if criteria.params.remote_mode == "remote" and criteria.params.remote_mode_pref == "hard":
             base = {**base, "remote_jobs_only": "true"}
@@ -110,8 +108,7 @@ class _AtsBoardSource:
     def fetch(self, criteria: FetchCriteria, db: Session | None = None) -> list[Job]:
         _ = db
         slugs = load_ats_slugs().get(self.name, [])
-        if not slugs:
-            return []
+        if not slugs: return []
         merged: list[Job] = []
         errors = 0
         with ThreadPoolExecutor(max_workers=_ATS_N) as pool:
@@ -124,16 +121,14 @@ class _AtsBoardSource:
                     errors += 1
                     logger.warning("jobs.ats_slug_failed", source=self.name, slug=slug,
                                    error=f"{type(exc).__name__}:{str(exc)[:100]}")
-        if errors and not merged:
-            raise ServiceFailingError(self.name, f"all {errors} board fetches failed")
+        if errors and not merged: raise ServiceFailingError(self.name, f"all {errors} board fetches failed")
         return merged
 def _co(slug: str) -> str:
     return slug.replace("-", " ").title()
 class GreenhouseSource(_AtsBoardSource):
     name, _url_tmpl = "greenhouse", "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true"
     def _parse_payload(self, payload: object, slug: str, profile: ResumeProfile) -> list[Job]:
-        if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
-            raise ServiceFailingError("greenhouse", "expected {jobs: [...]}")
+        if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list): raise ServiceFailingError("greenhouse", "expected {jobs: [...]}")
         out, company = [], _co(slug)
         for i, item in enumerate(payload["jobs"]):
             if not isinstance(item, dict):
@@ -151,14 +146,12 @@ class GreenhouseSource(_AtsBoardSource):
                 posted_at=parse_iso(item.get("first_published") or item.get("updated_at")),
                 skills=_skills(content, profile),
             ))
-        if not out and payload["jobs"]:
-            raise ServiceFailingError("greenhouse", f"no parseable jobs for slug={slug}")
+        if not out and payload["jobs"]: raise ServiceFailingError("greenhouse", f"no parseable jobs for slug={slug}")
         return out
 class LeverSource(_AtsBoardSource):
     name, _url_tmpl = "lever", "https://api.lever.co/v0/postings/{slug}?mode=json"
     def _parse_payload(self, payload: object, slug: str, profile: ResumeProfile) -> list[Job]:
-        if not isinstance(payload, list):
-            raise ServiceFailingError("lever", "expected JSON array")
+        if not isinstance(payload, list): raise ServiceFailingError("lever", "expected JSON array")
         out, company = [], _co(slug)
         for i, item in enumerate(payload):
             if not isinstance(item, dict):
@@ -181,28 +174,23 @@ class LeverSource(_AtsBoardSource):
                 posted_at=parse_iso(item.get("createdAt")), skills=_skills(desc, profile),
                 is_remote=is_remote, remote_mode=remote_mode,
             ))
-        if not out and payload:
-            raise ServiceFailingError("lever", f"no parseable jobs for slug={slug}")
+        if not out and payload: raise ServiceFailingError("lever", f"no parseable jobs for slug={slug}")
         return out
 def _ashby_remote(item: dict) -> tuple[bool | None, str | None]:
     wp = str(item.get("workplaceType") or "").strip().lower()
-    if "hybrid" in wp:
-        return None, "hybrid"
+    if "hybrid" in wp: return None, "hybrid"
     if wp in {"remote", "remotefirst", "remote-first"}:
         return True, "remote"
-    if wp in {"onsite", "on-site", "office", "in-office"}:
-        return False, "onsite"
+    if wp in {"onsite", "on-site", "office", "in-office"}: return False, "onsite"
     ir = item.get("isRemote") if isinstance(item.get("isRemote"), bool) else None
-    if ir is True:
-        return True, "remote"
+    if ir is True: return True, "remote"
     if ir is False:
         return False, None
     return None, None
 class AshbySource(_AtsBoardSource):
     name, _url_tmpl = "ashby", "https://api.ashbyhq.com/posting-api/job-board/{slug}"
     def _parse_payload(self, payload: object, slug: str, profile: ResumeProfile) -> list[Job]:
-        if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
-            raise ServiceFailingError("ashby", "expected {jobs: [...]}")
+        if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list): raise ServiceFailingError("ashby", "expected {jobs: [...]}")
         out, company = [], _co(slug)
         for i, item in enumerate(payload["jobs"]):
             if not isinstance(item, dict):
@@ -222,8 +210,7 @@ class AshbySource(_AtsBoardSource):
                 is_remote=is_remote, remote_mode=remote_mode,
                 employment=str(item.get("employmentType") or "") or None,
             ))
-        if not out and payload["jobs"]:
-            raise ServiceFailingError("ashby", f"no parseable jobs for slug={slug}")
+        if not out and payload["jobs"]: raise ServiceFailingError("ashby", f"no parseable jobs for slug={slug}")
         return out
 class RemotiveSource:
     name, cost_free, source_quality = "remotive", True, "feed"
@@ -235,8 +222,7 @@ class RemotiveSource:
     def fetch(self, criteria: FetchCriteria, db: Session | None = None) -> list[Job]:
         q = f"{criteria.profile.title} {' '.join(criteria.profile.skills[:2])}".strip()
         payload = _http_json("https://remotive.com/api/remote-jobs", params={"search": q, "limit": "50"})
-        if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
-            raise ServiceFailingError("remotive", "expected {jobs: [...]}")
+        if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list): raise ServiceFailingError("remotive", "expected {jobs: [...]}")
         out: list[Job] = []
         for i, item in enumerate(payload["jobs"]):
             if not isinstance(item, dict):
@@ -264,8 +250,7 @@ class RemoteOKSource:
                     and criteria.params.remote_mode in {"remote", "any"})
     def fetch(self, criteria: FetchCriteria, db: Session | None = None) -> list[Job]:
         payload = _http_json("https://remoteok.com/api")
-        if not isinstance(payload, list):
-            raise ServiceFailingError("remoteok", "expected JSON array")
+        if not isinstance(payload, list): raise ServiceFailingError("remoteok", "expected JSON array")
         out: list[Job] = []
         for i, item in enumerate(payload):
             if not isinstance(item, dict) or not item.get("id") or not item.get("position"):
@@ -287,8 +272,7 @@ class RemoteOKSource:
                 apply_url=apply_url, posted_at=parse_iso(item.get("date") or item.get("epoch")),
                 skills=skills, is_remote=True,
             ))
-        if not out and len(payload) > 1:
-            raise ServiceFailingError("remoteok", "no parseable jobs")
+        if not out and len(payload) > 1: raise ServiceFailingError("remoteok", "no parseable jobs")
         return out
 class AdzunaSource:
     name, cost_free, source_quality = "adzuna", False, "aggregator"
@@ -297,16 +281,14 @@ class AdzunaSource:
     def is_enabled_for(self, criteria: FetchCriteria) -> bool:
         return self.is_configured()
     def fetch(self, criteria: FetchCriteria, db: Session | None = None) -> list[Job]:
-        if not self.is_configured():
-            raise ServiceNotConfiguredError("Adzuna", "ADZUNA_APP_ID")
+        if not self.is_configured(): raise ServiceNotConfiguredError("Adzuna", "ADZUNA_APP_ID")
         what, where = criteria.profile.title or "software engineer", criteria.profile.location or "United States"
         payload = _http_json(
             "https://api.adzuna.com/v1/api/jobs/us/search/1",
             params={"app_id": settings.ADZUNA_APP_ID or "", "app_key": settings.ADZUNA_APP_KEY or "",
                     "what": what, "where": where, "results_per_page": "50"},
         )
-        if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
-            raise ServiceFailingError("adzuna", "expected {results: [...]}")
+        if not isinstance(payload, dict) or not isinstance(payload.get("results"), list): raise ServiceFailingError("adzuna", "expected {results: [...]}")
         out: list[Job] = []
         for i, item in enumerate(payload["results"]):
             if not isinstance(item, dict):

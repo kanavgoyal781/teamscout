@@ -1,4 +1,3 @@
-"""DeepInfra cross-encoder reranker. Hard-fails when enabled and unconfigured."""
 from __future__ import annotations
 import re
 import httpx
@@ -24,7 +23,6 @@ def _require() -> None:
 def reranker_endpoint() -> str:
     return f"{_INFER}/{_validated_model()}"
 def normalize_cross_encoder_scores(raw: list[float]) -> list[float]:
-    """Min-max normalize raw logits/probs to [0,1] per slate before fusion."""
     if not raw:
         return []
     d = {str(i): float(v) for i, v in enumerate(raw)}
@@ -41,7 +39,6 @@ def _parse_scores(data: object, n_docs: int) -> list[float]:
     except (TypeError, ValueError) as exc:
         raise ServiceFailingError("CrossEncoder", "non-numeric scores") from exc
 def cross_encode(query: str, documents: list[str]) -> list[float]:
-    """Batch-score documents vs one query; returns per-slate [0,1] scores."""
     if not query or not query.strip():
         raise ServiceFailingError("CrossEncoder", "query must be non-empty")
     if not documents:

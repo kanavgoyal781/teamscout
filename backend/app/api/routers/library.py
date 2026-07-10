@@ -96,7 +96,6 @@ def recommend_from_jd(
     payload: RecommendFromJdRequest,
     db: Session = Depends(get_db),
 ) -> RecommendFromJdResponse:
-    """Primary Feature 2 path: paste a JD → rank all library resumes → top 3."""
     candidates = library_store.load_candidates(db)
     if not candidates:
         raise ValidationError("Resume library is empty — upload resumes or sync Drive first")

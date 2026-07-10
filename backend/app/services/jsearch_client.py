@@ -1,4 +1,3 @@
-"""JSearch HTTP client: query build + multi-query fetch."""
 from __future__ import annotations
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -10,7 +9,6 @@ from app.errors import ServiceFailingError
 logger = get_logger(__name__)
 _JSEARCH_CONCURRENCY = 3
 def jsearch_source_job_id(item: dict) -> str:
-    """Stable vendor id: job_id → google_link → apply_link (never random UUID)."""
     for key in ("job_id", "job_google_link", "job_apply_link"):
         text = str(item.get(key) or "").strip()
         if text:
@@ -77,7 +75,6 @@ def build_jsearch_queries(title: str, location: str, skills: list[str] | None = 
         add(f"{' '.join(skill_bits)} {role} jobs")
     return queries[:4]
 def fetch_jsearch_raw(queries: list[str], *, base_params: dict[str, str]) -> tuple[list[dict], int]:
-    """Return (merged items, failed_query_count). Partial failures soft-fail."""
     merged: list[dict] = []
     seen_ids: set[str] = set()
     first_error: ServiceFailingError | None = None

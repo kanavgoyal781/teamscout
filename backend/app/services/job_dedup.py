@@ -1,4 +1,3 @@
-"""Cross-post job deduplication: exact company+title key + embedding cosine."""
 from __future__ import annotations
 import re
 from datetime import UTC
@@ -26,11 +25,9 @@ def _posted_sort_key(job: Job) -> tuple[int, float]:
     posted = job.posted_at if job.posted_at.tzinfo else job.posted_at.replace(tzinfo=UTC)
     return (0, posted.astimezone(UTC).timestamp())
 def _dedupe_winner_key(job: Job) -> tuple:
-    """Prefer direct_ats over feed/aggregator, then earliest posted."""
     q = _QUALITY_RANK.get(getattr(job, "source_quality", None) or "aggregator", 2)
     return (q, *_posted_sort_key(job))
 def dedupe_exact(jobs: list[Job]) -> tuple[list[Job], DroppedCounts]:
-    """Collapse exact company+title; prefer direct_ats, else earliest-posted."""
     dropped = DroppedCounts()
     groups: dict[str, list[Job]] = {}
     order: list[str] = []
@@ -55,7 +52,6 @@ def _should_merge_embedding(job: Job, other: Job, sim: float, *, threshold: floa
         return True
     return sim > _CROSS_COMPANY_THRESHOLD
 def dedupe_embeddings(jobs: list[Job], *, threshold: float = 0.97) -> tuple[list[Job], DroppedCounts]:
-    """Merge near-dups via cosine; prefer direct_ats then earliest-posted as keeper."""
     from app.core.logging import get_logger
     logger = get_logger(__name__)
     dropped = DroppedCounts()

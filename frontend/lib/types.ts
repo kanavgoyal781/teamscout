@@ -253,6 +253,10 @@ export type TournamentRecord = {
   cost_usd: number | null;
   wins: number;
   contested: boolean;
+  /** True when tournament reordering differed from pure coverage order. */
+  overrode_coverage?: boolean;
+  /** Borda points (decisive=1.0, slight=0.5); may diverge from win count. */
+  borda_score?: number;
   reasons: string[];
 };
 
@@ -333,8 +337,20 @@ export const HEALTH_ENV_HINTS: Record<string, string[]> = {
 };
 
 
-export type FeedbackKind = "thumbs_up" | "thumbs_down" | "apply_click" | "find_team_click";
-export type FeedbackTargetType = "job_match" | "resume_pick";
+export type FeedbackKind =
+  | "thumbs_up"
+  | "thumbs_down"
+  | "apply_click"
+  | "find_team_click"
+  | "compose_opened";
+export type FeedbackTargetType = "job_match" | "resume_pick" | "contact";
+
+export type OutreachDraftResponse = {
+  contact_id: string;
+  subject: string;
+  body: string;
+  email: string;
+};
 
 export type FeedbackCreate = {
   kind: FeedbackKind;
