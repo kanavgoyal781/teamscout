@@ -133,6 +133,10 @@ export default function ContactEmailCompose({ contact }: ContactEmailComposeProp
 
   function copyEmail() {
     closeMenu();
+    if (!email) {
+      toast.error("No email revealed yet");
+      return;
+    }
     void navigator.clipboard.writeText(email).then(
       () => toast.success("Email address copied"),
       () => toast.error("Could not copy email"),
