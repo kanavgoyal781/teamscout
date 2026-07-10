@@ -1,12 +1,8 @@
 import uuid
 from datetime import datetime
-
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
-
 from app.db.base import Base
-
-
 def _uuid() -> str:
     return str(uuid.uuid4())
 class Resume(Base):
@@ -179,9 +175,23 @@ class Feedback(Base):
     profile_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     jd_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     score_shown: Mapped[float | None] = mapped_column(Float)
+    shown_rank: Mapped[int | None] = mapped_column(Integer)
+    score_components_json: Mapped[str | None] = mapped_column(Text)
     prompt_versions_json: Mapped[str | None] = mapped_column(Text)
     model: Mapped[str | None] = mapped_column(String(128))
     embeddings_model: Mapped[str | None] = mapped_column(String(128))
     git_sha: Mapped[str | None] = mapped_column(String(64))
     ranking_config_hash: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+class ScoreCalibration(Base):
+    """Platt (or similar) params; written only by explicit fit_weights/calibration scripts."""
+    __tablename__ = "score_calibration"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    kind: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    a: Mapped[float] = mapped_column(Float, nullable=False)
+    b: Mapped[float] = mapped_column(Float, nullable=False)
+    n_labels: Mapped[int] = mapped_column(Integer, default=0)
+    holdout_auc: Mapped[float | None] = mapped_column(Float)
+    fit_at: Mapped[datetime | None] = mapped_column(DateTime)
+    metadata_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

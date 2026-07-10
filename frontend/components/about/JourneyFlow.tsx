@@ -48,7 +48,7 @@ const FEATURE1_STEPS: JourneyStep[] = [
   {
     id: "rank",
     title: "Rank",
-    product: "Hybrid dense + BM25 → RRF → LLM top 30 → weighted fuse → MMR top 10.",
+    product: "Hybrid dense + BM25 → RRF → optional CE (RRF50→15) → LLM → weighted fuse → MMR top 10.",
     underneath:
       "hybrid_rank + ranking.py. Score breakdown is transparent in the UI (llm_fit, rrf, skills, YOE, requirements, recency).",
     module: "services/ranking.py · hybrid_rank.py · ranking_math.py",

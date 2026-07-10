@@ -1,17 +1,12 @@
 """Structured job annotation + hard/soft filters with explicit dropped_counts."""
-
 from __future__ import annotations
-
 import re
 from datetime import UTC, datetime, timedelta
-
 from app.schemas.jobs import DroppedCounts, Job, SearchParams
 from app.services.ranking_math import infer_seniority
-
 _REMOTE_RE = re.compile(r"\b(remote|work\s+from\s+home|wfh|distributed)\b", re.I)
 _HYBRID_RE = re.compile(r"\bhybrid\b", re.I)
 _ONSITE_RE = re.compile(r"\b(on[-\s]?site|in[-\s]?office|office[-\s]?based)\b", re.I)
-
 _SALARY_PATTERNS = (
     re.compile(
         r"\$\s*([\d,]+(?:\.\d+)?)\s*([kK])?(?:\s*[-–—to]+\s*\$?\s*([\d,]+(?:\.\d+)?)\s*([kK])?)?",
@@ -26,7 +21,6 @@ _SALARY_PATTERNS = (
         re.I,
     ),
 )
-
 _EMPLOYMENT_MAP = {
     "FULLTIME": "fulltime",
     "FULL_TIME": "fulltime",
@@ -38,23 +32,19 @@ _EMPLOYMENT_MAP = {
     "PART-TIME": "parttime",
     "INTERN": "intern",
 }
-
 DATE_WINDOW_TO_JSEARCH = {
     "day": "today",
     "3days": "3days",
     "week": "week",
     "month": "month",
 }
-
 DATE_WINDOW_DAYS = {
     "day": 1,
     "3days": 3,
     "week": 7,
     "month": 30,
 }
-
 SOFT_BOOST_POINTS = 5.0
-
 _SENIORITY_MATCH: dict[str, set[str]] = {
     "intern": {"intern"},
     "junior": {"junior"},
@@ -62,7 +52,6 @@ _SENIORITY_MATCH: dict[str, set[str]] = {
     "senior": {"senior"},
     "lead": {"lead", "staff", "principal", "director"},
 }
-
 def _parse_money_token(num: str, k_suffix: str | None) -> float | None:
     try:
         value = float(num.replace(",", ""))
@@ -76,7 +65,6 @@ def _parse_money_token(num: str, k_suffix: str | None) -> float | None:
         if value <= 500:
             value *= 1000.0  # "120-150" style without k
     return value
-
 def parse_salary_min(
     *,
     structured_min: float | None = None,
@@ -88,7 +76,6 @@ def parse_salary_min(
         return float(structured_min), False
     if structured_max is not None and structured_max > 0:
         return float(structured_max), False
-
     text = description or ""
     best: float | None = None
     for pattern in _SALARY_PATTERNS:
@@ -105,7 +92,6 @@ def parse_salary_min(
     if best is not None and best >= 1000:
         return best, False
     return None, True
-
 def infer_remote_mode(
     *,
     location: str,
@@ -125,7 +111,6 @@ def infer_remote_mode(
         if not _REMOTE_RE.search(location):
             return "onsite"
     return "unknown"
-
 def normalize_employment_type(raw: str | None) -> str | None:
     if not raw:
         return None
@@ -140,7 +125,6 @@ def normalize_employment_type(raw: str | None) -> str | None:
     if "part" in lowered:
         return "parttime"
     return "unknown"
-
 def annotate_job(
     job: Job,
     *,
@@ -167,7 +151,6 @@ def annotate_job(
             employment = "fulltime"
         else:
             employment = "unknown"
-
     salary_min, salary_unknown = parse_salary_min(
         structured_min=structured_salary_min if structured_salary_min is not None else job.salary_min,
         structured_max=structured_salary_max,
@@ -182,7 +165,6 @@ def annotate_job(
             "salary_unknown": salary_unknown,
         }
     )
-
 def _seniority_matches(wanted: str, actual: str | None) -> bool:
     if wanted == "any":
         return True
@@ -190,14 +172,12 @@ def _seniority_matches(wanted: str, actual: str | None) -> bool:
         return False
     allowed = _SENIORITY_MATCH.get(wanted, {wanted})
     return actual.lower() in allowed
-
 def _employment_matches(wanted: str, actual: str | None) -> bool:
     if wanted == "any":
         return True
     if not actual:
         return False
     return actual == wanted
-
 def apply_hard_filters(
     jobs: list[Job],
     params: SearchParams,
@@ -210,7 +190,6 @@ def apply_hard_filters(
     cutoff = (now or datetime.now(UTC)) - timedelta(days=window_days)
     if cutoff.tzinfo is None:
         cutoff = cutoff.replace(tzinfo=UTC)
-
     kept: list[Job] = []
     for job in jobs:
         if job.posted_at is not None:
@@ -218,37 +197,31 @@ def apply_hard_filters(
             if posted.astimezone(UTC) < cutoff:
                 dropped.recency += 1
                 continue
-
         if params.seniority != "any" and params.seniority_pref == "hard":
             actual_sen = (job.seniority or "").strip().lower()
             if actual_sen and actual_sen != "unknown":
                 if not _seniority_matches(params.seniority, job.seniority):
                     dropped.hard_seniority += 1
                     continue
-
         if params.remote_mode != "any" and params.remote_mode_pref == "hard":
             actual = (job.remote_mode or "unknown").lower()
             if actual != "unknown" and actual != params.remote_mode:
                 dropped.hard_remote += 1
                 continue
-
         if params.employment_type != "any" and params.employment_type_pref == "hard":
             if not _employment_matches(params.employment_type, job.employment_type):
                 # unknown employment: keep
                 if job.employment_type and job.employment_type != "unknown":
                     dropped.hard_employment += 1
                     continue
-
         if params.min_salary is not None and params.min_salary_pref == "hard":
             if not job.salary_unknown and job.salary_min is not None:
                 if job.salary_min < float(params.min_salary):
                     dropped.hard_salary += 1
                     continue
             # salary_unknown always kept
-
         kept.append(job)
     return kept, dropped
-
 def soft_boost_score(job: Job, params: SearchParams, base_score: float) -> float:
     """Reorder preference via additive boosts; does not exclude."""
     score = float(base_score)
@@ -265,7 +238,6 @@ def soft_boost_score(job: Job, params: SearchParams, base_score: float) -> float
         if not job.salary_unknown and job.salary_min is not None and job.salary_min >= float(params.min_salary):
             score += SOFT_BOOST_POINTS
     return min(100.0, round(score, 1))
-
 def jsearch_params_from_search(params: SearchParams) -> dict[str, str]:
     """Map structured search params → JSearch query string params."""
     date_posted = DATE_WINDOW_TO_JSEARCH.get(params.date_window, "month")
@@ -275,7 +247,6 @@ def jsearch_params_from_search(params: SearchParams) -> dict[str, str]:
             employment = "FULLTIME"
         elif params.employment_type == "contractor":
             employment = "CONTRACTOR"
-
     out: dict[str, str] = {
         "page": "1",
         "num_pages": "3",

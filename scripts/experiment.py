@@ -73,6 +73,9 @@ def normalize_variant(raw: dict[str, Any]) -> dict[str, Any]:
             "recency": float(weights.get("recency", settings.RANKING_WEIGHT_RECENCY)),
             "experience": float(weights.get("experience", settings.RANKING_WEIGHT_EXPERIENCE)),
             "requirements": float(weights.get("requirements", settings.RANKING_WEIGHT_REQUIREMENTS)),
+            "cross_encoder": float(
+                weights.get("cross_encoder", settings.RANKING_WEIGHT_CROSS_ENCODER)
+            ),
         },
         "rrf_k": int(raw.get("rrf_k", settings.RRF_K)),
         "mmr_lambda": float(raw.get("mmr_lambda", DEFAULT_MMR_LAMBDA)),
@@ -86,6 +89,15 @@ def normalize_variant(raw: dict[str, Any]) -> dict[str, Any]:
         "search_results_top_n": int(
             raw.get("search_results_top_n", settings.SEARCH_RESULTS_TOP_N)
         ),
+        "use_cross_encoder": bool(
+            raw.get("use_cross_encoder", settings.RANKING_USE_CROSS_ENCODER)
+        ),
+        "cross_encoder_shortlist": bool(
+            raw.get("cross_encoder_shortlist", settings.CROSS_ENCODER_SHORTLIST)
+        ),
+        "llm_listwise": bool(raw.get("llm_listwise", settings.RANKING_LLM_LISTWISE)),
+        "cross_encoder_pool": int(raw.get("cross_encoder_pool", settings.CROSS_ENCODER_POOL)),
+        "llm_rerank_top_n": int(raw.get("llm_rerank_top_n", settings.LLM_RERANK_TOP_N)),
     }
 
 
@@ -103,10 +115,16 @@ def apply_variant(variant: dict[str, Any]) -> dict[str, Any]:
         "RANKING_WEIGHT_RECENCY": settings.RANKING_WEIGHT_RECENCY,
         "RANKING_WEIGHT_EXPERIENCE": settings.RANKING_WEIGHT_EXPERIENCE,
         "RANKING_WEIGHT_REQUIREMENTS": settings.RANKING_WEIGHT_REQUIREMENTS,
+        "RANKING_WEIGHT_CROSS_ENCODER": settings.RANKING_WEIGHT_CROSS_ENCODER,
         "RRF_K": settings.RRF_K,
         "RECENCY_HALF_LIFE_DAYS": settings.RECENCY_HALF_LIFE_DAYS,
         "RERANK_TOP_N": settings.RERANK_TOP_N,
         "SEARCH_RESULTS_TOP_N": settings.SEARCH_RESULTS_TOP_N,
+        "RANKING_USE_CROSS_ENCODER": settings.RANKING_USE_CROSS_ENCODER,
+        "CROSS_ENCODER_SHORTLIST": settings.CROSS_ENCODER_SHORTLIST,
+        "RANKING_LLM_LISTWISE": settings.RANKING_LLM_LISTWISE,
+        "CROSS_ENCODER_POOL": settings.CROSS_ENCODER_POOL,
+        "LLM_RERANK_TOP_N": settings.LLM_RERANK_TOP_N,
     }
     settings.RANKING_WEIGHT_LLM = w["llm"]
     settings.RANKING_WEIGHT_RRF = w["rrf"]
@@ -114,10 +132,16 @@ def apply_variant(variant: dict[str, Any]) -> dict[str, Any]:
     settings.RANKING_WEIGHT_RECENCY = w["recency"]
     settings.RANKING_WEIGHT_EXPERIENCE = w["experience"]
     settings.RANKING_WEIGHT_REQUIREMENTS = w["requirements"]
+    settings.RANKING_WEIGHT_CROSS_ENCODER = w.get("cross_encoder", 0.0)
     settings.RRF_K = variant["rrf_k"]
     settings.RECENCY_HALF_LIFE_DAYS = variant["recency_half_life_days"]
     settings.RERANK_TOP_N = variant["rerank_top_n"]
     settings.SEARCH_RESULTS_TOP_N = variant["search_results_top_n"]
+    settings.RANKING_USE_CROSS_ENCODER = bool(variant.get("use_cross_encoder", False))
+    settings.CROSS_ENCODER_SHORTLIST = bool(variant.get("cross_encoder_shortlist", False))
+    settings.RANKING_LLM_LISTWISE = bool(variant.get("llm_listwise", False))
+    settings.CROSS_ENCODER_POOL = int(variant.get("cross_encoder_pool", settings.CROSS_ENCODER_POOL))
+    settings.LLM_RERANK_TOP_N = int(variant.get("llm_rerank_top_n", settings.LLM_RERANK_TOP_N))
     return prev
 
 
@@ -131,19 +155,32 @@ def run_synthetic(variant: dict[str, Any]) -> tuple[dict[str, float], dict[str, 
 
     Returns (metrics, variant_flags). Weights/rrf_k/recency/rerank already applied
     via apply_variant → settings. MMR params applied here to diversity + persona diversify.
-    expansion/tournament_threshold are production knobs (LLM paths); recorded in flags only
-    for this offline suite (no silent fake metric impact).
+    expansion/tournament_threshold/llm_listwise are production LLM knobs; recorded in flags
+    (listwise not exercised offline without LLM). Cross-encoder offline uses a rank-order
+    proxy (no DeepInfra) so weight rebalance remains measurable without live CE.
     """
     from app.core.env_utils import is_set
     from app.services.embeddings import embeddings_endpoint
+    from app.services import cross_encoder as ce_mod
 
     totals = {"hybrid_ndcg10": 0.0, "hybrid_mrr": 0.0, "dense_ndcg10": 0.0, "dense_mrr": 0.0}
     original_diversify = ranking._diversify_ranked
+    original_ce = ce_mod.cross_encode_ids
 
     def diversify_patched(ranked: list, *, lambda_: float = 0.75, top_n: int | None = None):
         return original_diversify(ranked, lambda_=variant["mmr_lambda"], top_n=top_n)
 
+    def ce_proxy(query: str, id_texts: list[tuple[str, str]]) -> dict[str, float]:
+        # Offline proxy: preserve input order (RRF pool order) as descending CE scores.
+        _ = query
+        n = max(len(id_texts), 1)
+        return {cid: (n - i) / n for i, (cid, _) in enumerate(id_texts)}
+
     ranking._diversify_ranked = diversify_patched  # type: ignore[assignment]
+    ce_proxy_used = False
+    if variant.get("use_cross_encoder"):
+        ce_mod.cross_encode_ids = ce_proxy  # type: ignore[assignment]
+        ce_proxy_used = True
     try:
         out: dict[str, float] = {}
         use_div = bool(variant["use_mmr"])
@@ -166,6 +203,8 @@ def run_synthetic(variant: dict[str, Any]) -> tuple[dict[str, float], dict[str, 
         out["mmr_companies_top10"] = div["mmr_companies_top10"]
         out["mmr_ndcg_drop"] = div["mmr_ndcg_drop"]
         out["rel_only_companies_top10"] = div["rel_only_companies_top10"]
+        if ce_proxy_used:
+            out["ce_offline_proxy"] = 1.0
 
         flags = {
             "use_mmr": bool(variant["use_mmr"]),
@@ -173,10 +212,14 @@ def run_synthetic(variant: dict[str, Any]) -> tuple[dict[str, float], dict[str, 
             "expansion": bool(variant["expansion"]),
             "tournament_threshold": float(variant["tournament_threshold"]),
             "rrf_k": int(variant["rrf_k"]),
+            "use_cross_encoder": bool(variant.get("use_cross_encoder", False)),
+            "llm_listwise": bool(variant.get("llm_listwise", False)),
+            "ce_offline_proxy": ce_proxy_used,
         }
         return out, flags
     finally:
         ranking._diversify_ranked = original_diversify  # type: ignore[assignment]
+        ce_mod.cross_encode_ids = original_ce  # type: ignore[assignment]
 
 
 def run_feedback_suite() -> dict[str, float] | None:

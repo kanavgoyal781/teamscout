@@ -1,16 +1,11 @@
 """Sumble job-post matching and related-people path."""
-
 from __future__ import annotations
-
 import httpx
-
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.errors import ServiceFailingError
 from app.services import sumble_client
-
 logger = get_logger(__name__)
-
 def search_org_job_posts(organization_id: int, limit: int | None = None) -> tuple[list[dict], int]:
     """Search org's job posts (filter mode). Used to find matching JD post."""
     lim = limit or getattr(settings, "SUMBLE_JOB_MATCH_LIMIT", 30)
@@ -26,7 +21,6 @@ def search_org_job_posts(organization_id: int, limit: int | None = None) -> tupl
     jobs = data.get("jobs")
     credits = int(data.get("credits_used") or 0)
     return (jobs if isinstance(jobs, list) else [], credits)
-
 def find_best_matching_job_post(organization_id: int, jd_title: str, company: str) -> tuple[int | None, int]:
     """Find Sumble job post for org whose title best matches cached JD (title sim + company)."""
     if not jd_title:
@@ -35,12 +29,10 @@ def find_best_matching_job_post(organization_id: int, jd_title: str, company: st
         jobs, search_credits = search_org_job_posts(organization_id)
     except (httpx.HTTPError, ServiceFailingError):
         return None, 0
-
     best_id: int | None = None
     best_score = 0.0
     jd_l = jd_title.lower()
     comp_l = (company or "").lower()
-
     for j in jobs:
         if not isinstance(j, dict):
             continue
@@ -64,11 +56,9 @@ def find_best_matching_job_post(organization_id: int, jd_title: str, company: st
         if score > best_score:
             best_score = score
             best_id = int(jid)
-
     if best_score >= 0.28 and best_id is not None:
         return best_id, search_credits
     return None, search_credits
-
 def get_related_people_for_job(
     sumble_job_id: int, limit: int | None = None
 ) -> tuple[list[sumble_client.SumblePerson], int]:

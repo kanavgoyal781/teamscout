@@ -17,6 +17,7 @@ export type DetailKey =
   | "retrieve"
   | "dense"
   | "rrf"
+  | "cross_encoder"
   | "llm_rerank"
   | "fuse"
   | "mmr"
@@ -156,28 +157,35 @@ export const DETAILS: Record<Exclude<DetailKey, null>, Detail> = {
   rrf: {
     title: "3 · RRF fuse",
     why: "Reciprocal Rank Fusion merges rankings without requiring calibrated scores across systems.",
-    how: "For 0-based index i: add 1/(RRF_K+i+1) (K default 60). Min-max normalize → rrf_normalized in [0,1]. Top RERANK_TOP_N (30) advance to LLM.",
+    how: "For 0-based index i: add 1/(RRF_K+i+1) (K default 60). Min-max normalize → rrf_normalized in [0,1]. Top pool advances to optional cross-encoder then LLM.",
     tradeoff: "RRF ignores magnitude of gaps between neighbors; later stages reintroduce absolute fit judgment.",
     color: "#e8b84a",
   },
+  cross_encoder: {
+    title: "4 · Cross-encoder (experiment)",
+    why: "A dedicated reranker scores query–document pairs more faithfully than bi-encoder cosine alone.",
+    how: "When RANKING_USE_CROSS_ENCODER: RRF top CROSS_ENCODER_POOL (50) → DeepInfra Qwen3-Reranker-4B one batched request → min-max normalize scores per slate → top LLM_RERANK_TOP_N (15). Default off until a recorded experiment win; weight rebalance only via experiment configs.",
+    tradeoff: "Extra latency/cost; hard-fails if enabled without EMBEDDINGS_API_KEY. Raw logits are never fused unnormalized.",
+    color: "#a78bfa",
+  },
   llm_rerank: {
-    title: "4 · LLM rerank (top 30, batched)",
+    title: "5 · LLM rerank (listwise-ready)",
     why: "Cheap retrieval is imperfect; a language model judges JD–resume fit — including seniority and hard requirements.",
-    how: "Top RERANK_TOP_N by RRF, scored in batches of 6 with short job aliases; retry then explicit heuristic fill for omitted IDs. Versioned prompt (years, must-haves, over/under-qualified penalties).",
-    tradeoff: "Cost and latency. Daily ceiling and max_tokens budgets bound spend; missing LLM → fail loud, not silent 0.",
+    how: "Default pointwise (prompt rerank_pointwise v3, batches of 6). Listwise mode (rerank v4): one call returns a true id permutation + one-line reasons; invalid permutations retry once; position→0–100 for fusion. Skills chips stay heuristic so net tokens do not rise.",
+    tradeoff: "Listwise default off until experiment beats baselines on NDCG@10/MRR. Missing LLM → fail loud, not silent 0.",
     color: "#c084fc",
   },
   fuse: {
-    title: "5 · Final weighted score",
+    title: "6 · Final weighted score",
     why: "Keyword title overlap alone promotes senior roles. Operators need YOE, requirements, and skills in the number.",
-    how: `final = 100 × (${SCORE_WEIGHTS.llm}·llm/100 + ${SCORE_WEIGHTS.rrf}·rrf + ${SCORE_WEIGHTS.skills}·skills + ${SCORE_WEIGHTS.experience}·experience + ${SCORE_WEIGHTS.requirements}·requirements + ${SCORE_WEIGHTS.recency}·recency). Weights validated at startup.`,
-    tradeoff: "Weights are product policy. Tuning must keep eval floors green (NDCG/MRR + fit-signal suite).",
+    how: `final = 100 × (${SCORE_WEIGHTS.llm}·llm/100 + ${SCORE_WEIGHTS.rrf}·rrf + ${SCORE_WEIGHTS.skills}·skills + ${SCORE_WEIGHTS.experience}·experience + ${SCORE_WEIGHTS.requirements}·requirements + ${SCORE_WEIGHTS.recency}·recency + optional cross_encoder·ce_normalized). Default CE weight is 0 until an experiment promote. Weights validated at startup. Learned weights/Platt calibration are proposal-only (fit_weights.py → experiment harness); never auto-ship.`,
+    tradeoff: "Weights are product policy. Position bias: shown_rank is logged with feedback as a covariate, not a fusion weight.",
     color: "#3dd68c",
   },
   mmr: {
-    title: "6 · MMR diversify → top 10",
+    title: "7 · MMR diversify → top 10",
     why: "Without diversity, the top 10 can collapse to one company and near-duplicate titles.",
-    how: "Maximal Marginal Relevance over ranked results (DEFAULT_MMR_LAMBDA=0.75) plus per-company soft cap. SEARCH_RESULTS_TOP_N=10 returned to the UI.",
+    how: "Maximal Marginal Relevance over ranked results (DEFAULT_MMR_LAMBDA=0.75) plus per-company soft cap. SEARCH_RESULTS_TOP_N=10 returned to the UI. Optional match likelihood when Platt calibration has ≥50 labels.",
     tradeoff: "Diversity can demote a slightly better near-dupe. Tradeoff is intentional for operator scan-ability.",
     color: "#fb923c",
   },
@@ -290,8 +298,9 @@ export const FUNNEL_STEPS: {
   { key: "retrieve", title: "Retrieve", short: "150+ multi-source", hue: "#5b8def" },
   { key: "dense", title: "Dense + BM25", short: "Two rankings", hue: "#22d3ee" },
   { key: "rrf", title: "RRF fuse", short: "k = 60", hue: "#e8b84a" },
-  { key: "llm_rerank", title: "LLM rerank", short: "Top 30 · batch 6", hue: "#c084fc" },
-  { key: "fuse", title: "Final score", short: "Six signals", hue: "#3dd68c" },
+  { key: "cross_encoder", title: "Cross-enc", short: "RRF50→CE→15", hue: "#a78bfa" },
+  { key: "llm_rerank", title: "LLM rerank", short: "Listwise-ready", hue: "#c084fc" },
+  { key: "fuse", title: "Final score", short: "Weighted fuse", hue: "#3dd68c" },
   { key: "mmr", title: "MMR top 10", short: "λ = 0.75", hue: "#fb923c" },
 ];
 

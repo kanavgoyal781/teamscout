@@ -1,32 +1,26 @@
 import re
 from dataclasses import dataclass
-
 import httpx
-
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.http_timeouts import default_timeout, drive_download_timeout
 from app.errors import ServiceFailingError, ServiceNotConfiguredError, ValidationError
-
 _DRIVE_FOLDER_RE = re.compile(r"/folders/([a-zA-Z0-9_-]+)")
 _DRIVE_API = "https://www.googleapis.com/drive/v3"
 _ALLOWED_MIME = {
     "application/pdf": ".pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
 }
-
 @dataclass(frozen=True)
 class DriveFile:
     file_id: str
     name: str
     mime_type: str
     modified_time: str
-
 @dataclass(frozen=True)
 class FolderListResult:
     supported_files: list[DriveFile]
     files_ignored: int
-
 def parse_folder_id(folder_url: str) -> str:
     url = folder_url.strip()
     if not url:
@@ -38,7 +32,6 @@ def parse_folder_id(folder_url: str) -> str:
             details={"folder_url": folder_url},
         )
     return match.group(1)
-
 def _require_drive_config() -> None:
     if is_set(settings.GOOGLE_DRIVE_API_KEY):
         return
@@ -53,7 +46,6 @@ def _require_drive_config() -> None:
         "Google Drive",
         "GOOGLE_DRIVE_API_KEY (public folder) or GOOGLE_DRIVE_CLIENT_ID/SECRET/REFRESH_TOKEN",
     )
-
 def _oauth_access_token() -> str:
     _require_drive_config()
     if not all(
@@ -65,7 +57,6 @@ def _oauth_access_token() -> str:
         )
     ):
         raise ServiceNotConfiguredError("Google Drive", "GOOGLE_DRIVE_CLIENT_ID/SECRET/REFRESH_TOKEN")
-
     payload = {
         "client_id": settings.GOOGLE_DRIVE_CLIENT_ID,
         "client_secret": settings.GOOGLE_DRIVE_CLIENT_SECRET,
@@ -79,29 +70,24 @@ def _oauth_access_token() -> str:
             data = response.json()
     except httpx.HTTPError as exc:
         raise ServiceFailingError("Google Drive", f"OAuth token refresh failed: {exc}") from exc
-
     token = data.get("access_token")
     if not token:
         raise ServiceFailingError("Google Drive", "OAuth token refresh returned no access_token")
     return str(token)
-
 def _auth_params() -> dict[str, str]:
     if is_set(settings.GOOGLE_DRIVE_API_KEY):
         return {"key": settings.GOOGLE_DRIVE_API_KEY or ""}
     return {}
-
 def _auth_headers() -> dict[str, str]:
     if is_set(settings.GOOGLE_DRIVE_API_KEY):
         return {}
     return {"Authorization": f"Bearer {_oauth_access_token()}"}
-
 def list_folder_files(folder_id: str) -> FolderListResult:
     _require_drive_config()
     query = f"'{folder_id}' in parents and trashed=false"
     supported: list[DriveFile] = []
     ignored = 0
     page_token: str | None = None
-
     try:
         with httpx.Client(timeout=default_timeout()) as client:
             while True:
@@ -120,11 +106,9 @@ def list_folder_files(folder_id: str) -> FolderListResult:
                 )
                 response.raise_for_status()
                 payload = response.json()
-
                 raw_files = payload.get("files")
                 if not isinstance(raw_files, list):
                     raise ServiceFailingError("Google Drive", "unexpected files response")
-
                 for item in raw_files:
                     if not isinstance(item, dict):
                         continue
@@ -144,15 +128,12 @@ def list_folder_files(folder_id: str) -> FolderListResult:
                                 modified_time=modified_time,
                             )
                         )
-
                 page_token = payload.get("nextPageToken")
                 if not page_token:
                     break
     except httpx.HTTPError as exc:
         raise ServiceFailingError("Google Drive", str(exc)) from exc
-
     return FolderListResult(supported_files=supported, files_ignored=ignored)
-
 def download_file(file_id: str) -> bytes:
     _require_drive_config()
     params = {"alt": "media", **_auth_params()}

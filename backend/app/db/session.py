@@ -1,18 +1,15 @@
 from collections.abc import Generator
 from pathlib import Path
 from threading import Lock
-
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
-
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.db import models as _models  # noqa: F401
 from app.db.base import Base
 from app.schemas.jobs import Job
-
 # Resolve relative sqlite:/// paths against backend/ so scripts run from the
 # repo root and `cd backend && uvicorn` share the same database file.
 # session.py lives at backend/app/db/session.py → parents[2] == backend/
@@ -55,6 +52,12 @@ def _migrate_schema() -> None:
         "feedback",
         "ranking_config_hash",
         "ALTER TABLE feedback ADD COLUMN ranking_config_hash VARCHAR(64)",
+    )
+    _ensure_column("feedback", "shown_rank", "ALTER TABLE feedback ADD COLUMN shown_rank INTEGER")
+    _ensure_column(
+        "feedback",
+        "score_components_json",
+        "ALTER TABLE feedback ADD COLUMN score_components_json TEXT",
     )
     _ensure_column("resumes", "in_library", "ALTER TABLE resumes ADD COLUMN in_library BOOLEAN DEFAULT 0")
     _ensure_column("resumes", "source", "ALTER TABLE resumes ADD COLUMN source VARCHAR(32) DEFAULT 'upload'")

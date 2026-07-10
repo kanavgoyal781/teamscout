@@ -1,5 +1,5 @@
 {
-  "name": "no_mmr",
+  "name": "listwise_llm",
   "weights": {
     "llm": 0.38,
     "rrf": 0.2,
@@ -10,15 +10,15 @@
     "cross_encoder": 0.0
   },
   "rrf_k": 60,
-  "mmr_lambda": 1.0,
-  "use_mmr": false,
+  "mmr_lambda": 0.75,
+  "use_mmr": true,
   "expansion": true,
   "tournament_threshold": 0.05,
   "recency_half_life_days": 7,
-  "rerank_top_n": 30,
+  "rerank_top_n": 15,
   "search_results_top_n": 10,
   "use_cross_encoder": false,
-  "llm_listwise": false,
+  "llm_listwise": true,
   "cross_encoder_pool": 50,
   "llm_rerank_top_n": 15,
   "cross_encoder_shortlist": false

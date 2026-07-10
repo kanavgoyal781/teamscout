@@ -1,21 +1,16 @@
 import hashlib
 import re
 import uuid
-
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-
 from app.db.models import JobCache
 from app.errors import NotFoundError, ValidationError
 from app.schemas.jobs import Job
-
 _SKILL_STOP = frozenset({
     "tracking", "written", "verbal", "strong", "ability", "working", "using", "including", "related", "tools", "stack", "role", "team", "work", "build", "built", "develop", "developing", "knowledge", "familiarity", "proficient", "proficiency",
-
     "communication", "teamwork", "ownership", "skills", "deliverables",
     "experience", "years", "year", "plus", "strong", "excellent", "ability",
     "requirements", "qualifications", "responsibilities", "preferred",
-
     "and", "or", "the", "with", "from", "for", "to", "of",
     "in", "on", "at", "a", "an", "experience", "years", "year",
     "plus", "must", "have", "has", "strong", "preferred", "required", "requirement",
@@ -26,7 +21,6 @@ _SKILL_STOP = frozenset({
     "such", "as", "well", "also", "will", "can", "should", "need",
     "needs",
 })
-
 _TECH_ALLOW = frozenset({
     "python", "java", "javascript", "typescript", "golang", "go", "rust", "ruby", "scala", "kotlin",
     "c++", "c#", "swift", "php", "r", "sql", "nosql", "postgresql", "mysql", "mongodb", "redis",
@@ -37,11 +31,9 @@ _TECH_ALLOW = frozenset({
     "ci/cd", "graphql", "rest", "grpc", "hadoop", "hive", "snowflake", "databricks",
     "prometheus", "grafana", "elasticsearch", "opensearch", "helm",
 })
-
 def extract_skills_from_jd_text(description: str, title: str = "") -> list[str]:
     """High-precision skill list for pasted JDs (allowlist + JD-derived tech tokens)."""
     from app.services.ranking_math import extract_requirement_terms
-
     blob = f"{title}\n{description}" if title else (description or "")
     lowered = blob.lower()
     out: list[str] = []
@@ -69,13 +61,11 @@ def extract_skills_from_jd_text(description: str, title: str = "") -> list[str]:
         if len(out) >= 16:
             break
     return out
-
 def resolve_job(job_id: str, db: Session) -> Job:
     row = db.query(JobCache).filter(JobCache.job_id == job_id).one_or_none()
     if row is None or not row.payload_json:
         raise NotFoundError("job", job_id)
     return Job.model_validate_json(row.payload_json)
-
 def cache_pasted_job(
     *,
     description: str,
@@ -91,16 +81,13 @@ def cache_pasted_job(
         raise ValidationError(
             "Job description is too short — paste the full posting (at least ~40 characters)"
         )
-
     title_clean = (title or "").strip() or "Pasted job"
     company_clean = (company or "").strip() or "Unknown company"
     location_clean = (location or "").strip() or ""
     apply_clean = (apply_url or "").strip() or "https://www.linkedin.com/jobs/view/pasted"
-
     content_hash = hashlib.sha256(desc.encode("utf-8")).hexdigest()[:32]
     source_job_id = f"paste-{content_hash}"
     skills = extract_skills_from_jd_text(desc, title_clean)
-
     existing = (
         db.query(JobCache)
         .filter(JobCache.source == "paste", JobCache.source_job_id == source_job_id)
@@ -125,7 +112,6 @@ def cache_pasted_job(
         db.add(existing)
         db.commit()
         return updated
-
     job = Job(
         id=str(uuid.uuid4()),
         source="paste",

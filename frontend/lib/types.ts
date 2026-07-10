@@ -32,12 +32,15 @@ export type ScoreBreakdown = {
   recency: number;
   experience_fit?: number | null;
   requirements_met?: number | null;
+  cross_encoder?: number;
   required_years?: number | null;
   soft_boost?: number;
   final_score: number;
   matched_skills: string[];
   missing_skills: string[];
   rationale: string;
+  /** 0–1 calibrated P(good match) when backend has Platt fit with ≥50 labels; else null. */
+  match_likelihood?: number | null;
 };
 
 export type Job = {
@@ -330,6 +333,8 @@ export type FeedbackCreate = {
   profile_hash?: string | null;
   jd_hash?: string | null;
   score_shown?: number | null;
+  shown_rank?: number | null;
+  score_components?: Record<string, number> | null;
 };
 
 export type FeedbackResponse = {

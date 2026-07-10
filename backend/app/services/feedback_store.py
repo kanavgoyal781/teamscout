@@ -1,26 +1,18 @@
 """Persist ranking feedback + aggregate counts for ops (no auto weight mutation)."""
-
 from __future__ import annotations
-
 import json
 from collections import Counter
 from pathlib import Path
 from typing import Any
-
 from sqlalchemy.orm import Session
-
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.db.models import Feedback
 from app.prompts import prompt_versions
 from app.schemas.feedback import FeedbackCreate
-
-
 def current_ranking_config_hash() -> str:
     from app.services.ranking_config import ranking_config_hash
-
     return ranking_config_hash()
-
 def resolve_evals_root() -> Path:
     """Locate directory that contains evals/ (monorepo, Docker /app, /data, EVALS_DIR)."""
     if is_set(getattr(settings, "EVALS_DIR", None)):
@@ -35,8 +27,10 @@ def resolve_evals_root() -> Path:
         if (candidate / "evals").is_dir():
             return candidate.resolve()
     return Path.cwd().resolve()
-
 def record_feedback(db: Session, payload: FeedbackCreate) -> Feedback:
+    components_json = None
+    if payload.score_components:
+        components_json = json.dumps(payload.score_components, sort_keys=True)
     row = Feedback(
         kind=payload.kind,
         target_type=payload.target_type,
@@ -45,6 +39,8 @@ def record_feedback(db: Session, payload: FeedbackCreate) -> Feedback:
         profile_hash=payload.profile_hash,
         jd_hash=payload.jd_hash,
         score_shown=payload.score_shown,
+        shown_rank=payload.shown_rank,
+        score_components_json=components_json,
         prompt_versions_json=json.dumps(prompt_versions(), sort_keys=True),
         model=settings.LLM_MODEL,
         embeddings_model=settings.EMBEDDINGS_MODEL,
@@ -55,7 +51,6 @@ def record_feedback(db: Session, payload: FeedbackCreate) -> Feedback:
     db.commit()
     db.refresh(row)
     return row
-
 def feedback_label_counts(db: Session) -> dict[str, int]:
     rows = db.query(Feedback.kind).all()
     counts = Counter(str(r[0]) for r in rows)
@@ -66,7 +61,6 @@ def feedback_label_counts(db: Session) -> dict[str, int]:
         "apply_click": counts.get("apply_click", 0),
         "find_team_click": counts.get("find_team_click", 0),
     }
-
 def learning_file_stats(repo_root: Path | str | None = None) -> dict[str, Any]:
     """Latest eval metrics, trends, last experiments from evals/ on disk."""
     root = Path(repo_root) if repo_root is not None else resolve_evals_root()
@@ -82,7 +76,6 @@ def learning_file_stats(repo_root: Path | str | None = None) -> dict[str, Any]:
             except json.JSONDecodeError:
                 continue
             by_suite.setdefault(str(row.get("suite") or "unknown"), []).append(row)
-
     latest: list[dict[str, Any]] = []
     for suite, rows in sorted(by_suite.items()):
         if not rows:
@@ -104,7 +97,6 @@ def learning_file_stats(repo_root: Path | str | None = None) -> dict[str, Any]:
         latest.append(
             {"suite": suite, "ts": last.get("ts"), "git_sha": last.get("git_sha"), "metrics": metrics, "trend": trends}
         )
-
     exp_rows: list[dict[str, Any]] = []
     experiments = root / "evals" / "experiments.jsonl"
     if experiments.is_file():

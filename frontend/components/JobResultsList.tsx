@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { ExternalLink, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import type { Contact, RankedJob } from "../lib/types";
+import type { Contact, RankedJob, ScoreBreakdown } from "../lib/types";
 import type { JobTeamState } from "../hooks/useJobTeam";
 import { formatPostedAgo } from "../lib/format";
 import { cardHover, easeOut, shouldSkipEntrance, staggerContainer, staggerItem } from "../lib/motion";
@@ -14,6 +14,18 @@ import ScoreBars from "./ui/ScoreBars";
 import ScoreRing from "./ui/ScoreRing";
 import FeedbackButtons, { trackImplicitFeedback } from "./FeedbackButtons";
 import TeamDiscoveryPanel from "./TeamDiscoveryPanel";
+
+function feedbackComponents(b: ScoreBreakdown): Record<string, number> {
+  return {
+    llm: b.llm_fit,
+    rrf: b.rrf_normalized,
+    skills: b.skill_jaccard,
+    recency: b.recency,
+    experience: b.experience_fit ?? 0,
+    requirements: b.requirements_met ?? 0,
+    cross_encoder: b.cross_encoder ?? 0,
+  };
+}
 
 type JobResultsListProps = {
   results: RankedJob[];
@@ -126,7 +138,10 @@ export default function JobResultsList({
                     ) : null}
                   </div>
                 </div>
-                <ScoreRing score={item.match_score} />
+                <ScoreRing
+                  score={item.match_score}
+                  matchLikelihood={item.score_breakdown.match_likelihood}
+                />
               </div>
 
               <p className="job-description">
@@ -169,6 +184,8 @@ export default function JobResultsList({
                       targetId: item.job.id,
                       profileHash,
                       scoreShown: item.match_score,
+                      shownRank: index,
+                      scoreComponents: feedbackComponents(item.score_breakdown),
                     })
                   }
                 >
@@ -186,6 +203,8 @@ export default function JobResultsList({
                         targetId: item.job.id,
                         profileHash,
                         scoreShown: item.match_score,
+                        shownRank: index,
+                        scoreComponents: feedbackComponents(item.score_breakdown),
                       });
                     }
                   }}
@@ -202,6 +221,8 @@ export default function JobResultsList({
                   targetId={item.job.id}
                   profileHash={profileHash}
                   scoreShown={item.match_score}
+                  shownRank={index}
+                  scoreComponents={feedbackComponents(item.score_breakdown)}
                   testIdPrefix={`job-feedback-${index}`}
                 />
                 <span className="meta font-num" style={{ margin: 0 }}>

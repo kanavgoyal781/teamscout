@@ -1,11 +1,7 @@
 """Requirement-level resume ranking: MaxSim coverage + optional pairwise tournament."""
-
 from __future__ import annotations
-
 from collections import defaultdict
-
 from sqlalchemy.orm import Session
-
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.schemas.jobs import Job, ScoreBreakdown
@@ -39,18 +35,15 @@ from app.services.resume_justify import (
     rationale_references_resume,
 )
 from app.services.resume_units import ensure_candidate_units
-
 # Back-compat re-exports for tests
 _rationale_cites_units = rationale_cites_units
 _rationale_references_resume = rationale_references_resume
 _llm_justify = llm_justify
 _llm_rerank = llm_justify
 _ = (_ResumeRerankItem, _ResumeRerankResponse)
-
 def _whole_doc_baseline_order(job: Job, candidates: list[ResumeCandidate]) -> list[str]:
     """Whole-document dense cosine order (no unit MaxSim, no keyword requirements)."""
     from app.services.ranking_math import cosine_similarity
-
     query = "\n".join(
         p for p in [job.title, job.company, ", ".join(job.skills), job.description[:2000]] if p
     )
@@ -63,11 +56,9 @@ def _whole_doc_baseline_order(job: Job, candidates: list[ResumeCandidate]) -> li
     ]
     scored.sort(key=lambda item: (-item[1], item[0]))
     return [resume_id for resume_id, _ in scored]
-
 def recluster_library(db: Session) -> dict[str, str]:
     """Recompute near-dup clusters for all library resumes; persist cluster_id."""
     from app.db.models import Resume
-
     rows = db.query(Resume).filter(Resume.in_library.is_(True)).all()
     if not rows:
         return {}
@@ -86,7 +77,6 @@ def recluster_library(db: Session) -> dict[str, str]:
         db.add(row)
     db.commit()
     return mapping
-
 def rank_resumes_for_job(
     job: Job,
     candidates: list[ResumeCandidate],
@@ -96,13 +86,11 @@ def rank_resumes_for_job(
 ) -> list[RankedResumeRecommendation]:
     if not candidates:
         return []
-
     by_id = {c.resume_id: c for c in candidates}
     requirements = decompose_jd(job, use_llm=use_llm, db=db)
     req_texts = [r.text for r in requirements]
     weights = [r.weight for r in requirements]
     req_embs = embeddings.embed_batch(req_texts)
-
     units_by_id: dict[str, list] = {}
     whole_texts: list[str] = []
     whole_ids: list[str] = []
@@ -111,7 +99,6 @@ def rank_resumes_for_job(
         units_by_id[c.resume_id] = units
         whole_ids.append(c.resume_id)
         whole_texts.append(c.profile.search_text() or c.filename)
-
     whole_vecs = embeddings.embed_batch(whole_texts)
     cluster_map = single_linkage_clusters(whole_ids, whole_vecs)
     members: dict[str, list[str]] = defaultdict(list)
@@ -119,17 +106,14 @@ def rank_resumes_for_job(
         members[cid].append(rid)
     for cid in members:
         members[cid].sort()
-
     if db is not None:
         from app.db.models import Resume
-
         for rid, cid in cluster_map.items():
             row = db.query(Resume).filter(Resume.id == rid).one_or_none()
             if row is not None:
                 row.cluster_id = cid
                 db.add(row)
         db.commit()
-
     coverage_by_id: dict[str, float] = {}
     alignment_by_id: dict[str, list[dict]] = {}
     for c in candidates:
@@ -139,7 +123,6 @@ def rank_resumes_for_job(
         unit_sections = [u.section for u in units if u.embedding is not None]
         if len(unit_embs) != len([u for u in units if u.embedding is not None]) or not unit_embs:
             from app.services.resume_units import embed_units, extract_units
-
             fresh = embed_units(extract_units(c.profile))
             unit_embs = [u.embedding for u in fresh if u.embedding is not None]
             unit_texts = [u.unit_text for u in fresh if u.embedding is not None]
@@ -160,7 +143,6 @@ def rank_resumes_for_job(
                 row["category"] = requirements[i].category
         coverage_by_id[c.resume_id] = cov
         alignment_by_id[c.resume_id] = rows
-
     ordered_ids = sorted(coverage_by_id.keys(), key=lambda i: (-coverage_by_id[i], i))
     evidences = [
         AlignmentEvidence(
@@ -171,11 +153,9 @@ def rank_resumes_for_job(
         )
         for rid in ordered_ids
     ]
-
     tournament = maybe_run_tournament(job, requirements, evidences, use_llm=use_llm, db=db)
     final_ids = tournament.ordered_ids
     top_n = min(settings.RESUME_RECOMMEND_TOP_N, len(final_ids))
-
     justify_lookup = {}
     if use_llm and top_n > 0:
         justify_lookup = llm_justify(
@@ -184,7 +164,6 @@ def rank_resumes_for_job(
             alignment_by_id,
             requirements,
         )
-
     ranked: list[RankedResumeRecommendation] = []
     for rid in final_ids[:top_n]:
         c = by_id[rid]
@@ -202,7 +181,6 @@ def rank_resumes_for_job(
         llm_fit = float(item.fit_score) if item else cov * 100.0
         skill = skill_jaccard(c.profile.skills, job.skills)
         from app.services.ranking_math import experience_fit_score
-
         exp = experience_fit_score(
             c.profile.years_of_experience,
             title=job.title,
@@ -212,7 +190,6 @@ def rank_resumes_for_job(
         match_score = cov * 100.0
         if tournament.ran and rid in tournament.contested_ids and tournament.ordered_ids[:1] == [rid]:
             match_score = min(100.0, match_score + 1.0)
-
         cid = cluster_map.get(rid, rid)
         mlist = members.get(cid, [rid])
         cov_rows = [
@@ -221,7 +198,6 @@ def rank_resumes_for_job(
             )
             for r in rows
         ]
-
         ranked.append(
             RankedResumeRecommendation(
                 resume_id=c.resume_id,

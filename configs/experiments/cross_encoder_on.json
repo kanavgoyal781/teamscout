@@ -1,13 +1,13 @@
 {
-  "name": "defaults",
+  "name": "cross_encoder_on",
   "weights": {
-    "llm": 0.38,
-    "rrf": 0.2,
-    "skills": 0.12,
+    "llm": 0.30,
+    "rrf": 0.14,
+    "skills": 0.10,
     "recency": 0.08,
     "experience": 0.12,
-    "requirements": 0.1,
-    "cross_encoder": 0.0
+    "requirements": 0.10,
+    "cross_encoder": 0.16
   },
   "rrf_k": 60,
   "mmr_lambda": 0.75,
@@ -15,11 +15,11 @@
   "expansion": true,
   "tournament_threshold": 0.05,
   "recency_half_life_days": 7,
-  "rerank_top_n": 30,
+  "rerank_top_n": 15,
   "search_results_top_n": 10,
-  "use_cross_encoder": false,
+  "use_cross_encoder": true,
+  "cross_encoder_shortlist": true,
   "llm_listwise": false,
   "cross_encoder_pool": 50,
-  "llm_rerank_top_n": 15,
-  "cross_encoder_shortlist": false
+  "llm_rerank_top_n": 15
 }

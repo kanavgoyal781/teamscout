@@ -37,7 +37,9 @@ Upload PDF/DOCX
   → optional LLM query expand (3–5 variants) + SearchParams hard/soft filters
   → multi-source job fetch (JSearch multi-query + optional Remotive/Arbeitnow)
   → annotate + hard filters + exact/embedding dedupe
-  → dense + BM25 → RRF → LLM rerank (batched) → weighted fuse
+  → dense + BM25 → RRF
+  → optional cross-encoder (RRF top 50 → CE → top 15; flag RANKING_USE_CROSS_ENCODER, default off until experiment win)
+  → LLM rerank (pointwise default; listwise when RANKING_LLM_LISTWISE) → weighted fuse
   → soft preference boosts → MMR diversify + company soft-cap
   → top SEARCH_RESULTS_TOP_N (default 10) with score_breakdown, facets, dropped_counts
   → team extract (prompt team_extract) → Sumble find → email reveal
@@ -55,8 +57,11 @@ Feature 2 inverts ranking: library resumes are candidates; JD is the query
 3. **Dense rank:** embed query + candidates (`embeddings`), cosine similarity order (vectors L2-normalized so dot product = cosine). Content-hash cache in `embedding_cache`.
 4. **Lexical rank:** BM25 over tokenized title/skills/description (`rank_bm25`).
 5. **RRF merge:** for 0-based index `i` in each ranking, add `1 / (RRF_K + i + 1)`; `RRF_K` default 60; then min-max normalize → `rrf_normalized` ∈ [0,1].
-6. **LLM rerank** on top `RERANK_TOP_N` (default 30): batched (`_RERANK_BATCH_SIZE = 6` in `ranking.py`) so JSON responses stay complete; omitted job_ids get an explicit **heuristic fill** (not silent success). Versioned prompt `rerank` (YOE / must-haves / over-under qualification).
-7. **Fuse** (`fuse_final_score`), returned as 0–100. Defaults from `RANKING_WEIGHT_*` in `app/core/config.py` (must sum to ~1.0 via `validate_ranking_weights` at startup):
+6. **Cross-encoder (optional, experiment-gated):** when `RANKING_USE_CROSS_ENCODER`, take RRF top `CROSS_ENCODER_POOL` (50) → DeepInfra `POST .../v1/inference/{RERANKER_MODEL}` with `{"queries":[q],"documents":[...]}` in **one** request (`op=cross_encode`, reuses `EMBEDDINGS_API_KEY`) → raw scores **min-max normalized per slate** before fusion → top `LLM_RERANK_TOP_N` (15) advance to LLM. Default **off** until a recorded experiment beats baselines; `RANKING_WEIGHT_CROSS_ENCODER` default 0.0 (rebalance only via experiment JSON).
+7. **LLM rerank:**
+   - **Pointwise (default):** prompt `rerank_pointwise` v3 on top shortlist; batched (`_RERANK_BATCH_SIZE = 6`); omitted ids → explicit heuristic fill.
+   - **Listwise (`RANKING_LLM_LISTWISE`):** prompt `rerank` v4 — single call returns a true permutation of short aliases + one-line reason; invalid permutation retries once; position → 0–100 fit for fusion; skills chips stay heuristic so net token budget does not increase vs legacy pointwise cascade.
+8. **Fuse** (`fuse_final_score`), returned as 0–100. Defaults from `RANKING_WEIGHT_*` in `app/core/config.py` (must sum to ~1.0 via `validate_ranking_weights` at startup; includes optional `cross_encoder` weight):
 
 ```
 final = 100 * (
@@ -66,12 +71,21 @@ final = 100 * (
 + RANKING_WEIGHT_EXPERIENCE   * experience_fit    # default 0.12
 + RANKING_WEIGHT_REQUIREMENTS * requirements_met  # default 0.10  (token-aware; no substring FP)
 + RANKING_WEIGHT_RECENCY      * recency_half_life # default 0.08
++ RANKING_WEIGHT_CROSS_ENCODER * ce_normalized    # default 0.00 until experiment
 )
 ```
 
 Soft prefs add up to +5 pts each (clamped to 100) via `soft_boost_score`. Then MMR (λ=0.75, relevance normalized to unit scale) + company soft-cap (max 3 in top 10 when ≥10 companies) when embeddings are configured.
 
-Top `SEARCH_RESULTS_TOP_N` (default 10) returned with transparent `score_breakdown` (includes `soft_boost`).
+Top `SEARCH_RESULTS_TOP_N` (default 10) returned with transparent `score_breakdown` (includes `soft_boost`, `cross_encoder`, optional `match_likelihood`).
+
+### Learned weights + calibration (human-gated)
+
+- `scripts/fit_weights.py`: **pure-Python** logistic GD (stdlib only; no numpy) on feedback component vectors; continuous features **z-scored with train-split stats only**; softplus maps coefs → **non-negative** fusion weights (intentional product constraint). **`shown_rank` is a bias-control covariate only** (not a fusion weight). Refuses below 30 labels. Writes **`configs/experiments/learned_weights.json` only** — never mutates live settings/`defaults.json`.
+- Same script fits **Platt scaling** (`services/calibration.py`) into SQLite `score_calibration` (a, b, n_labels, holdout AUC). Fitting is explicit-script only. **UI match likelihood stays off** until a human sets `RANKING_USE_CALIBRATION=true` **and** the stored fit has `n_labels ≥ 50` — no silent auto-apply from a fit run alone. When on, the ScoreRing keeps **raw score primary** and shows likelihood as a secondary label.
+- Listwise why-panels intentionally use **listwise one-line reasons + heuristic skill chips** (no second pointwise explain pass) so net LLM tokens do not exceed the legacy pointwise cascade. Listwise failure falls back to **retrieval order + heuristic** (no full pointwise LLM cascade). When `RANKING_LLM_LISTWISE`, the LLM shortlist is clamped to `LLM_RERANK_TOP_N` (15).
+- CE shortlist shrink (RRF top-50 → top-15 for LLM) applies only when `RANKING_USE_CROSS_ENCODER` and (`RANKING_WEIGHT_CROSS_ENCODER > 0` or `CROSS_ENCODER_SHORTLIST=true`). Flag-on with weight 0 does not silently change the LLM pool. CE cost is estimated with the embeddings $/1M rate as an intentional approximation (same DeepInfra token meter).
+- Promotion path: proposal → `scripts/experiment.py` → `evals/experiments.jsonl` → human flip of env/defaults with recorded NDCG@10/MRR.
 
 **Resume pick** — `resume_ranking` + `ranking_math_align` + `jd_decompose` + `pairwise_tournament`:
 
@@ -179,7 +193,9 @@ usage (UI)
 | Stage | What | Where |
 |---|---|---|
 | Capture | Thumbs up/down on job cards + resume picks; implicit apply / find-team clicks | Frontend `FeedbackButtons`; `POST /feedback` |
-| Store | kind, target ids, profile/jd hash, score_shown, prompt_versions, model, ranking_config_hash, git_sha, ts | SQLite `feedback` (no extra PII) |
+| Store | kind, target ids, profile/jd hash, score_shown, **shown_rank**, **score_components**, prompt_versions, model, ranking_config_hash, git_sha, ts | SQLite `feedback` (no extra PII) |
+| Weight proposal | Logistic GD on component vectors + rank covariate; never live-mutates | `scripts/fit_weights.py` → `configs/experiments/learned_weights.json` |
+| Calibration | Platt a,b in SQLite; UI likelihood only if n≥50 | `services/calibration.py` / `score_calibration` table |
 | Eval set | thumbs_up=relevant, thumbs_down=irrelevant, apply_click=strong positive (+ provenance) | `evals/feedback_set.jsonl` (built offline from DB) |
 | Feedback suite | **Label volume + mean score_shown separation** between historical positives/negatives — *not* offline re-rank NDCG until pairs can be rehydrated | `eval_ranking.py --suite feedback` |
 | Experiments | Offline: weights/rrf/recency/rerank via settings; `use_mmr`/`mmr_lambda` via diversity (and persona diversify when embeddings on). `expansion`/`tournament_threshold` hashed for provenance (LLM paths; not exercised offline). | `configs/experiments/*.json` → `scripts/experiment.py` |

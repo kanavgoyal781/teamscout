@@ -1,25 +1,18 @@
 """Optional free job boards (no API key). Best-effort enrichment only."""
-
 from __future__ import annotations
-
 import re
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
-
 import httpx
-
 from app.core.http_timeouts import default_timeout
 from app.core.logging import get_logger
 from app.schemas.jobs import Job
 from app.schemas.resume import ResumeProfile
 from app.services.jobs import extract_skills_from_description
-
 logger = get_logger(__name__)
-
 REMOTIVE_URL = "https://remotive.com/api/remote-jobs"
 ARBEITNOW_URL = "https://www.arbeitnow.com/api/job-board-api"
-
 _STOP = frozenset(
     {
         "a",
@@ -53,7 +46,6 @@ _STOP = frozenset(
         "contract",
     }
 )
-
 def _tokens_from_profile(profile: ResumeProfile) -> list[str]:
     raw: list[str] = []
     if profile.title:
@@ -70,7 +62,6 @@ def _tokens_from_profile(profile: ResumeProfile) -> list[str]:
         seen.add(token)
         out.append(token)
     return out
-
 def _matches_profile(title: str, description: str, profile: ResumeProfile) -> bool:
     """Require at least one meaningful profile token in title or description."""
     tokens = _tokens_from_profile(profile)
@@ -85,7 +76,6 @@ def _matches_profile(title: str, description: str, profile: ResumeProfile) -> bo
         if len(token) >= 3 and token in hay:
             return True
     return False
-
 def _parse_iso(value: object) -> datetime | None:
     if value is None:
         return None
@@ -105,12 +95,10 @@ def _parse_iso(value: object) -> datetime | None:
     if posted.tzinfo is None:
         posted = posted.replace(tzinfo=UTC)
     return posted.astimezone(UTC)
-
 def _search_query(profile: ResumeProfile) -> str:
     title = profile.title.strip() or "software engineer"
     skill = next((s.strip() for s in profile.skills if s.strip()), "")
     return f"{title} {skill}".strip()
-
 def fetch_remotive(profile: ResumeProfile, *, limit: int = 50) -> list[Job]:
     params = {"search": _search_query(profile), "limit": str(limit)}
     with httpx.Client(timeout=default_timeout()) as client:
@@ -120,7 +108,6 @@ def fetch_remotive(profile: ResumeProfile, *, limit: int = 50) -> list[Job]:
     jobs_raw = payload.get("jobs") if isinstance(payload, dict) else None
     if not isinstance(jobs_raw, list):
         return []
-
     out: list[Job] = []
     for item in jobs_raw:
         if not isinstance(item, dict):
@@ -158,7 +145,6 @@ def fetch_remotive(profile: ResumeProfile, *, limit: int = 50) -> list[Job]:
             )
         )
     return out
-
 def fetch_arbeitnow(profile: ResumeProfile, *, pages: int = 2) -> list[Job]:
     out: list[Job] = []
     with httpx.Client(timeout=default_timeout()) as client:
@@ -204,7 +190,6 @@ def fetch_arbeitnow(profile: ResumeProfile, *, pages: int = 2) -> list[Job]:
                     )
                 )
     return out
-
 def fetch_optional_boards(profile: ResumeProfile) -> list[Job]:
     """Fetch free boards; never raise — optional enrichment only."""
     sources: list[tuple[str, Callable[[ResumeProfile], list[Job]]]] = [

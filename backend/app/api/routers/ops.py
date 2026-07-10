@@ -1,23 +1,17 @@
 """Minimal ops dashboard: token-gated HTML of trace + learning stats (no chart libs)."""
-
 from __future__ import annotations
-
 import hmac
 import html
 from typing import Any
-
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
-
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.db.session import get_db
 from app.errors import OpsAuthError
 from app.services import feedback_store, observability
-
 router = APIRouter(tags=["ops"])
-
 def _extract_token(request: Request, token: str | None) -> str | None:
     auth = request.headers.get("authorization") or ""
     if auth.lower().startswith("bearer "):
@@ -31,7 +25,6 @@ def _extract_token(request: Request, token: str | None) -> str | None:
     if env not in {"prod", "production"} and token and token.strip():
         return token.strip()
     return None
-
 def require_ops_token(
     request: Request,
     token: str | None = Query(
@@ -45,13 +38,11 @@ def require_ops_token(
     provided = _extract_token(request, token)
     if not provided or not _tokens_match(provided, expected or ""):
         raise OpsAuthError("Ops access denied — missing or invalid token")
-
 def _tokens_match(provided: str, expected: str) -> bool:
     try:
         return hmac.compare_digest(provided, expected)
     except (TypeError, ValueError):
         return False
-
 def _table(headers: list[str], rows: list[list[Any]]) -> str:
     th = "".join(f"<th>{html.escape(str(h))}</th>" for h in headers)
     body_rows = []
@@ -62,14 +53,12 @@ def _table(headers: list[str], rows: list[list[Any]]) -> str:
         "<table border='1' cellpadding='4' cellspacing='0'>"
         f"<thead><tr>{th}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
     )
-
 def _ops_payload(db: Session) -> dict[str, Any]:
     stats = observability.ops_stats(db)
     learning = feedback_store.learning_file_stats()
     learning["feedback_counts"] = feedback_store.feedback_label_counts(db)
     stats["learning"] = learning
     return stats
-
 def _render_html(stats: dict[str, Any]) -> str:
     lat_rows = [
         [op, v["count"], v["p50_ms"], v["p95_ms"]] for op, v in (stats.get("latency_by_operation") or {}).items()
@@ -179,14 +168,12 @@ th {{ background: #eee; text-align: left; }}
         )
     }
 </body></html>"""
-
 @router.get("/ops", response_class=HTMLResponse)
 def ops_dashboard(
     _auth: None = Depends(require_ops_token),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     return HTMLResponse(content=_render_html(_ops_payload(db)))
-
 @router.get("/ops/json")
 def ops_json(
     _auth: None = Depends(require_ops_token),

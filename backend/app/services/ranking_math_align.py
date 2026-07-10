@@ -1,17 +1,12 @@
 """Pure MaxSim, coverage, clustering, Borda (no I/O). L2-cos; MaxSim=max; token-aware lexical floor."""
-
 from __future__ import annotations
-
 import re
-
 from app.services.ranking_config import DEFAULT_TOURNAMENT_THRESHOLD
 from app.services.ranking_math import cosine_similarity
-
 SKILL_MATCH_BONUS = 0.15
 NEAR_DUP_COSINE_THRESHOLD = 0.95
 TOURNAMENT_GAP = DEFAULT_TOURNAMENT_THRESHOLD
 TOURNAMENT_TOP_K = 5
-
 def _alias_map(groups: list[set[str]]) -> dict[str, frozenset[str]]:
     out: dict[str, frozenset[str]] = {}
     for g in groups:
@@ -19,7 +14,6 @@ def _alias_map(groups: list[set[str]]) -> dict[str, frozenset[str]]:
         for t in g:
             out[t] = fs
     return out
-
 _SKILL_ALIASES = _alias_map(
     [
         {"go", "golang"},
@@ -32,7 +26,6 @@ _SKILL_ALIASES = _alias_map(
         {"react", "reactjs", "react.js"},
     ]
 )
-
 def tokenize_tech(text: str) -> list[str]:
     if not text:
         return []
@@ -40,7 +33,6 @@ def tokenize_tech(text: str) -> list[str]:
         r"c\+\+|c#|node\.js|react\.js|[a-z0-9]+(?:\.[a-z0-9]+)*|\bc\b|\br\b",
         text.lower(),
     )
-
 def _canonical_forms(token: str) -> frozenset[str]:
     t = token.strip().lower()
     if not t:
@@ -48,7 +40,6 @@ def _canonical_forms(token: str) -> frozenset[str]:
     if t in _SKILL_ALIASES:
         return _SKILL_ALIASES[t]
     return frozenset({t})
-
 def tokens_match(req_token: str, hay_token: str) -> bool:
     """Whole-token equality with explicit aliases only (java ≠ javascript)."""
     a, b = req_token.strip().lower(), hay_token.strip().lower()
@@ -57,9 +48,7 @@ def tokens_match(req_token: str, hay_token: str) -> bool:
     if a == b:
         return True
     return bool(_canonical_forms(a) & _canonical_forms(b))
-
 _SINGLE_CHAR_SKILLS = frozenset({"c", "r"})
-
 def phrase_in_text(phrase: str, text: str) -> bool:
     """Whole-token phrase match; single-char only for C/R allowlist."""
     req = (phrase or "").strip().lower()
@@ -82,7 +71,6 @@ def phrase_in_text(phrase: str, text: str) -> bool:
         if all(tokens_match(req_tokens[j], hay_tokens[i + j]) for j in range(n)):
             return True
     return False
-
 def skill_equals(req: str, skill: str) -> bool:
     """Whole skill equality (aliases allowed)."""
     req_t = tokenize_tech(req)
@@ -94,12 +82,9 @@ def skill_equals(req: str, skill: str) -> bool:
     if len(req_t) != len(skill_t):
         return False
     return all(tokens_match(a, b) for a, b in zip(req_t, skill_t, strict=True))
-
 _SECTION_RANK = {"experience": 0, "summary": 1, "skills": 2, "title": 3}
-
 def section_rank(section: str | None) -> int:
     return _SECTION_RANK.get((section or "").strip().lower(), 9)
-
 def unit_evidence_score(
     requirement_emb: list[float],
     unit_emb: list[float],
@@ -115,7 +100,6 @@ def unit_evidence_score(
     if phrase_in_text(requirement_text, unit_text):
         score = max(score, lexical_hit)
     return max(0.0, min(1.0, score))
-
 def _better_unit(
     score: float,
     section: str | None,
@@ -132,7 +116,6 @@ def _better_unit(
     if sr != br:
         return sr < br
     return len(text or "") > len(best_text or "")
-
 def maxsim_best_unit_index(
     requirement_emb: list[float],
     unit_embs: list[list[float]],
@@ -170,7 +153,6 @@ def maxsim_best_unit_index(
     if resume_has_skill(requirement_text, skills or []):
         best_s = min(1.0, best_s + skill_bonus)
     return best_i, float(best_s)
-
 def maxsim_evidence(
     requirement_emb: list[float],
     unit_embs: list[list[float]],
@@ -192,7 +174,6 @@ def maxsim_evidence(
         skill_bonus=skill_bonus,
     )
     return score
-
 def coverage_from_evidence(weights: list[float], evidences: list[float]) -> float:
     """Weighted mean of per-requirement evidence scores in [0, 1]."""
     if not weights or not evidences:
@@ -205,7 +186,6 @@ def coverage_from_evidence(weights: list[float], evidences: list[float]) -> floa
     num = sum(float(w) * float(e) for w, e in zip(weights, evidences, strict=True))
     score = num / total_w
     return max(0.0, min(1.0, score))
-
 def resume_has_skill(requirement_text: str, skills: list[str]) -> bool:
     """True when requirement matches a listed profile skill (token-aware)."""
     req = (requirement_text or "").strip()
@@ -214,7 +194,6 @@ def resume_has_skill(requirement_text: str, skills: list[str]) -> bool:
     if len(req) < 2 and req.lower() not in _SINGLE_CHAR_SKILLS:
         return False
     return any(skill and skill_equals(req, skill) for skill in skills)
-
 def skill_match_bonus_applies(
     requirement_text: str,
     *,
@@ -227,7 +206,6 @@ def skill_match_bonus_applies(
     if len(req) < 2 or not unit_text:
         return False
     return phrase_in_text(req, unit_text)
-
 def align_resume(
     requirement_embs: list[list[float]],
     requirement_texts: list[str],
@@ -246,7 +224,6 @@ def align_resume(
         raise ValueError("unit arrays length mismatch")
     if unit_sections is not None and len(unit_sections) != len(unit_texts):
         raise ValueError("unit_sections length mismatch")
-
     evidences: list[float] = []
     rows: list[dict] = []
     for req_emb, req_text, weight in zip(requirement_embs, requirement_texts, weights, strict=True):
@@ -272,7 +249,6 @@ def align_resume(
             }
         )
     return coverage_from_evidence(weights, evidences), rows
-
 def single_linkage_clusters(
     ids: list[str],
     embeddings: list[list[float]],
@@ -285,13 +261,11 @@ def single_linkage_clusters(
     if n == 0:
         return {}
     parent = list(range(n))
-
     def find(x: int) -> int:
         while parent[x] != x:
             parent[x] = parent[parent[x]]
             x = parent[x]
         return x
-
     def union(a: int, b: int) -> None:
         ra, rb = find(a), find(b)
         if ra == rb:
@@ -300,24 +274,20 @@ def single_linkage_clusters(
             parent[rb] = ra
         else:
             parent[ra] = rb
-
     for i in range(n):
         for j in range(i + 1, n):
             if cosine_similarity(embeddings[i], embeddings[j]) >= threshold:
                 union(i, j)
-
     components: dict[int, list[str]] = {}
     for i, item_id in enumerate(ids):
         root = find(i)
         components.setdefault(root, []).append(item_id)
-
     id_to_cluster: dict[str, str] = {}
     for members in components.values():
         label = min(members)
         for m in members:
             id_to_cluster[m] = label
     return id_to_cluster
-
 def cluster_variant_label(
     resume_id: str,
     cluster_id: str,
@@ -330,7 +300,6 @@ def cluster_variant_label(
         idx = 1
     base = cluster_id[:8] if cluster_id else "?"
     return f"variant {idx} of base version {base}"
-
 def borda_order(
     contested_ids: list[str],
     pairwise_wins: dict[tuple[str, str], str],
@@ -347,7 +316,6 @@ def borda_order(
         contested_ids,
         key=lambda i: (-scores.get(i, 0), -tb.get(i, 0.0), i),
     )
-
 def close_call_band(
     ordered_by_coverage: list[tuple[str, float]],
     *,
@@ -362,7 +330,6 @@ def close_call_band(
     if leader_cov - head[1][1] >= gap:
         return []
     return [rid for rid, cov in head if leader_cov - cov < gap]
-
 def merge_tournament_order(
     full_ids_by_coverage: list[str],
     contested_ordered: list[str],
@@ -381,7 +348,6 @@ def merge_tournament_order(
         return list(contested_ordered) + full_ids_by_coverage[prefix_len:]
     t_iter = iter(contested_ordered)
     return [next(t_iter) if rid in contested else rid for rid in full_ids_by_coverage]
-
 def order_normalized_pair(hash_a: str, hash_b: str) -> tuple[str, str]:
     """Symmetric pair key components (sorted)."""
     return (hash_a, hash_b) if hash_a <= hash_b else (hash_b, hash_a)

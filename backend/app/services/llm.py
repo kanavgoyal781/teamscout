@@ -1,31 +1,25 @@
 import json
 import re
 from typing import Any, TypeVar
-
 import httpx
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
-
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.http_timeouts import default_timeout
 from app.errors import ServiceFailingError, ServiceNotConfiguredError
 from app.prompts import PromptTemplate
 from app.services import observability
-
 T = TypeVar("T", bound=BaseModel)
-
 def _require_llm_config() -> None:
     if not is_set(settings.LLM_API_KEY):
         raise ServiceNotConfiguredError("LLM", "LLM_API_KEY")
     if not is_set(settings.LLM_API_BASE):
         raise ServiceNotConfiguredError("LLM", "LLM_API_BASE")
-
 def _extract_message_text(message: object) -> str:
     """Pull assistant text from OpenAI-compatible chat payloads."""
     if not isinstance(message, dict):
         raise ServiceFailingError("LLM", "unexpected response format")
-
     content = message.get("content")
     if isinstance(content, str) and content.strip():
         return content
@@ -40,14 +34,11 @@ def _extract_message_text(message: object) -> str:
                     parts.append(text)
         if parts:
             return "".join(parts)
-
     for key in ("reasoning_content", "reasoning", "text"):
         val = message.get(key)
         if isinstance(val, str) and val.strip():
             return val
-
     raise ServiceFailingError("LLM", "unexpected response format: empty message content")
-
 def complete(
     prompt: str,
     *,
@@ -58,12 +49,10 @@ def complete(
     prompt_meta: PromptTemplate | None = None,
 ) -> str:
     _require_llm_config()
-
     messages: list[dict[str, str]] = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
-
     headers = {
         "Authorization": f"Bearer {settings.LLM_API_KEY}",
         "Content-Type": "application/json",
@@ -74,7 +63,6 @@ def complete(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-
     est_in = observability.approx_token_count((system or "") + prompt)
     with observability.traced_call(
         operation,
@@ -98,13 +86,11 @@ def complete(
                 data = response.json()
         except httpx.HTTPError as exc:
             raise ServiceFailingError("LLM", "upstream request failed") from exc
-
         try:
             message = data["choices"][0]["message"]
             content = _extract_message_text(message)
         except (KeyError, IndexError, TypeError) as exc:
             raise ServiceFailingError("LLM", "unexpected response format") from exc
-
         usage = data.get("usage") if isinstance(data, dict) else None
         if isinstance(usage, dict):
             trace.input_tokens = int(usage.get("prompt_tokens") or est_in)
@@ -120,7 +106,6 @@ def complete(
             output_tokens=trace.output_tokens,
         )
         return content
-
 def _extract_json(raw: str) -> str:
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
@@ -135,10 +120,8 @@ def _extract_json(raw: str) -> str:
     if start != -1 and end != -1 and end > start:
         return text[start : end + 1]
     return text
-
 def _strip_trailing_commas(text: str) -> str:
     return re.sub(r",\s*([}\]])", r"\1", text)
-
 def _scan_balanced_objects(blob: str) -> list[str]:
     """Extract complete top-level {...} objects from a blob (handles strings)."""
     objects: list[str] = []
@@ -176,7 +159,6 @@ def _scan_balanced_objects(blob: str) -> list[str]:
         else:
             break  # truncated object — stop
     return objects
-
 def _salvage_results_json(raw: str) -> str | None:
     """Rebuild {\"results\":[...]} from a truncated or messy LLM payload."""
     text = _extract_json(raw)
@@ -190,7 +172,6 @@ def _salvage_results_json(raw: str) -> str | None:
     if not objects:
         return None
     return '{"results": [' + ",".join(objects) + "]}"
-
 def _loads_llm_json(raw: str) -> object:
     """Parse LLM JSON with repair for trailing commas and truncated results arrays."""
     candidates: list[str] = []
@@ -201,7 +182,6 @@ def _loads_llm_json(raw: str) -> object:
     if salvaged:
         candidates.append(salvaged)
         candidates.append(_strip_trailing_commas(salvaged))
-
     last_exc: Exception | None = None
     seen: set[str] = set()
     for candidate in candidates:
@@ -216,7 +196,6 @@ def _loads_llm_json(raw: str) -> object:
     if last_exc is not None:
         raise last_exc
     raise json.JSONDecodeError("empty LLM JSON", raw, 0)
-
 def complete_json(
     prompt: str,
     model: type[T],
@@ -232,7 +211,6 @@ def complete_json(
     budget = max_tokens if max_tokens is not None else settings.max_tokens_for_operation(operation)
     current_prompt = prompt
     last_error = "invalid JSON"
-
     for attempt in range(max_retries + 1):
         attempt_budget = budget if attempt == 0 else min(budget + 1500, max(budget, 8000))
         raw = complete(
@@ -255,5 +233,4 @@ def complete_json(
                 "Return COMPLETE valid JSON only — compact fields, short strings, "
                 "no trailing commas, no markdown. Finish every object and array."
             )
-
     raise ServiceFailingError("LLM", f"invalid JSON schema: {last_error}")

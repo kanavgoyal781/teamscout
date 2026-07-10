@@ -43,6 +43,13 @@ def _row_to_label(row: Feedback) -> dict | None:
     if row.kind == "find_team_click":
         # implicit positive but not a primary label for binary eval unless paired
         pass
+    components = None
+    raw_comp = getattr(row, "score_components_json", None)
+    if raw_comp:
+        try:
+            components = json.loads(raw_comp)
+        except json.JSONDecodeError:
+            components = None
     return {
         "ts": row.created_at.isoformat() if row.created_at else datetime.now(UTC).isoformat(),
         "kind": row.kind,
@@ -53,6 +60,8 @@ def _row_to_label(row: Feedback) -> dict | None:
         "profile_hash": row.profile_hash,
         "jd_hash": row.jd_hash,
         "score_shown": row.score_shown,
+        "shown_rank": getattr(row, "shown_rank", None),
+        "score_components": components,
         "prompt_versions": json.loads(row.prompt_versions_json)
         if row.prompt_versions_json
         else {},

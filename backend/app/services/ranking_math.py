@@ -1,13 +1,10 @@
 import math
 import re
 from datetime import UTC, datetime
-
 from app.core.config import settings
 from app.errors import ValidationError
 from app.services.ranking_config import DEFAULT_MMR_LAMBDA
-
 _TOKEN_PATTERN = re.compile(r"[a-z0-9+#.]+")
-
 _YOE_PATTERNS = (
     re.compile(
         r"(?:minimum\s+(?:of\s+)?)?(\d{1,2})\s*(?:\+|plus)?\s*(?:-|to|–|—)\s*(\d{1,2})\s*\+?\s*"
@@ -23,7 +20,6 @@ _YOE_PATTERNS = (
         re.I,
     ),
 )
-
 _SENIORITY_RULES: list[tuple[str, re.Pattern[str], tuple[float, float]]] = [
     ("intern", re.compile(r"\b(intern|internship|apprentice)\b", re.I), (0.0, 1.5)),
     ("junior", re.compile(r"\b(junior|entry[-\s]?level|new\s*grad|associate)\b", re.I), (0.0, 3.0)),
@@ -34,22 +30,18 @@ _SENIORITY_RULES: list[tuple[str, re.Pattern[str], tuple[float, float]]] = [
     ("senior", re.compile(r"\b(senior|sr\.?)\b", re.I), (5.0, 12.0)),
     ("mid", re.compile(r"\b(mid[-\s]?level|intermediate)\b", re.I), (2.0, 6.0)),
 ]
-
 _REQ_SECTION = re.compile(
     r"(?:requirements?|qualifications?|must\s+have|what\s+you.?ll\s+need|"
     r"minimum\s+qualifications?)\s*[:\-]?\s*(.+?)(?=\n\s*\n|preferred|nice\s+to\s+have|responsibilities|$)",
     re.I | re.S,
 )
 _BULLET_SPLIT = re.compile(r"[\n•\-\*]+\s*")
-
 def tokenize(text: str) -> list[str]:
     return _TOKEN_PATTERN.findall(text.lower())
-
 def cosine_similarity(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
         raise ValueError("vector dimension mismatch")
     return sum(x * y for x, y in zip(a, b, strict=True))
-
 def reciprocal_rank_fusion(rankings: list[list[str]], k: int | None = None) -> dict[str, float]:
     rrf_k = k if k is not None else settings.RRF_K
     scores: dict[str, float] = {}
@@ -57,7 +49,6 @@ def reciprocal_rank_fusion(rankings: list[list[str]], k: int | None = None) -> d
         for rank, job_id in enumerate(ranking):
             scores[job_id] = scores.get(job_id, 0.0) + 1.0 / (rrf_k + rank + 1)
     return scores
-
 def normalize_scores(scores: dict[str, float]) -> dict[str, float]:
     if not scores:
         return {}
@@ -68,11 +59,9 @@ def normalize_scores(scores: dict[str, float]) -> dict[str, float]:
         return {key: 1.0 for key in scores}
     span = maximum - minimum
     return {key: (value - minimum) / span for key, value in scores.items()}
-
 def skill_jaccard(resume_skills: list[str], job_skills: list[str]) -> float:
     """Jaccard with token-aware equality (go≡golang; java≠javascript)."""
     from app.services.ranking_math_align import skill_equals
-
     resume = [s.strip() for s in resume_skills if s and s.strip()]
     job = [s.strip() for s in job_skills if s and s.strip()]
     if not resume or not job:
@@ -86,7 +75,6 @@ def skill_jaccard(resume_skills: list[str], job_skills: list[str]) -> float:
                 break
     union = len(resume) + len(job) - matched
     return matched / union if union else 0.0
-
 def recency_score(posted_at: datetime | None, *, half_life_days: int | None = None) -> float:
     if posted_at is None:
         return 0.5
@@ -95,7 +83,6 @@ def recency_score(posted_at: datetime | None, *, half_life_days: int | None = No
     posted = posted_at if posted_at.tzinfo else posted_at.replace(tzinfo=UTC)
     age_days = max((now - posted.astimezone(UTC)).total_seconds() / 86400.0, 0.0)
     return 0.5 ** (age_days / half_life)
-
 def parse_required_years(text: str) -> float | None:
     """Best-effort minimum years from JD/title text. Prefers range lows."""
     if not text:
@@ -117,14 +104,12 @@ def parse_required_years(text: str) -> float | None:
         except (TypeError, ValueError):
             continue
     return None
-
 def infer_seniority(title: str, description: str = "") -> str | None:
     blob = f"{title}\n{description[:800]}"
     for name, pattern, _band in _SENIORITY_RULES:
         if pattern.search(blob):
             return name
     return None
-
 def seniority_yoe_band(level: str | None) -> tuple[float, float] | None:
     if not level:
         return None
@@ -132,7 +117,6 @@ def seniority_yoe_band(level: str | None) -> tuple[float, float] | None:
         if name == level:
             return band
     return None
-
 def experience_fit_score(
     candidate_yoe: float,
     *,
@@ -144,7 +128,6 @@ def experience_fit_score(
     required = parse_required_years(f"{title}\n{description}")
     level = infer_seniority(title, description)
     band = seniority_yoe_band(level)
-
     if required is not None:
         if yoe >= required:
             overshoot = yoe - required
@@ -173,7 +156,6 @@ def experience_fit_score(
             elif yoe > hi + 3:
                 base = min(base, 0.45)
         return round(max(0.0, min(1.0, base)), 4)
-
     if band is not None:
         lo, hi = band
         if lo <= yoe <= hi:
@@ -184,16 +166,13 @@ def experience_fit_score(
         # Overqualified for junior/mid band
         gap = yoe - hi
         return round(max(0.15, 1.0 - gap * 0.14), 4)
-
     if yoe <= 0:
         return 0.45
     return 0.6
-
 def extract_requirement_terms(job_skills: list[str], description: str) -> list[str]:
     """Structured skills first, then JD requirement bullets as tech-ish tokens."""
     terms: list[str] = []
     seen: set[str] = set()
-
     def add(term: str) -> None:
         cleaned = term.strip().lower()
         if len(cleaned) < 2 or cleaned in seen:
@@ -203,10 +182,8 @@ def extract_requirement_terms(job_skills: list[str], description: str) -> list[s
             return
         seen.add(cleaned)
         terms.append(cleaned)
-
     for skill in job_skills:
         add(skill)
-
     section_match = _REQ_SECTION.search(description or "")
     section = section_match.group(1) if section_match else (description or "")[:1200]
     for chunk in _BULLET_SPLIT.split(section):
@@ -224,7 +201,6 @@ def extract_requirement_terms(job_skills: list[str], description: str) -> list[s
         if len(terms) >= 24:
             break
     return terms[:24]
-
 def requirements_met_score(
     *,
     profile_skills: list[str],
@@ -234,20 +210,16 @@ def requirements_met_score(
 ) -> float:
     """Fraction of requirements covered (token-aware phrase match; Java≠JS)."""
     from app.services.ranking_math_align import phrase_in_text
-
     terms = extract_requirement_terms(job_skills, job_description)
     if not terms:
         return 0.5
-
     skill_blob = " ".join(s for s in profile_skills if s)
     hay = f"{profile_text or ''}\n{skill_blob}"
-
     hits = 0
     for term in terms:
         if phrase_in_text(term, hay):
             hits += 1
     return round(hits / len(terms), 4)
-
 def validate_ranking_weights() -> None:
     total = (
         settings.RANKING_WEIGHT_LLM
@@ -256,6 +228,7 @@ def validate_ranking_weights() -> None:
         + settings.RANKING_WEIGHT_RECENCY
         + settings.RANKING_WEIGHT_EXPERIENCE
         + settings.RANKING_WEIGHT_REQUIREMENTS
+        + settings.RANKING_WEIGHT_CROSS_ENCODER
     )
     if not math.isclose(total, 1.0, abs_tol=0.01):
         raise ValidationError(
@@ -267,9 +240,9 @@ def validate_ranking_weights() -> None:
                 "recency": settings.RANKING_WEIGHT_RECENCY,
                 "experience": settings.RANKING_WEIGHT_EXPERIENCE,
                 "requirements": settings.RANKING_WEIGHT_REQUIREMENTS,
+                "cross_encoder": settings.RANKING_WEIGHT_CROSS_ENCODER,
             },
         )
-
 def fuse_final_score(
     *,
     llm_fit: float,
@@ -278,6 +251,7 @@ def fuse_final_score(
     recency: float,
     experience_fit: float = 0.5,
     requirements_met: float = 0.5,
+    cross_encoder: float = 0.0,
 ) -> float:
     validate_ranking_weights()
     return (
@@ -287,8 +261,8 @@ def fuse_final_score(
         + settings.RANKING_WEIGHT_RECENCY * recency
         + settings.RANKING_WEIGHT_EXPERIENCE * experience_fit
         + settings.RANKING_WEIGHT_REQUIREMENTS * requirements_met
+        + settings.RANKING_WEIGHT_CROSS_ENCODER * cross_encoder
     ) * 100.0
-
 def mmr(
     item_ids: list[str],
     relevance: dict[str, float],
@@ -310,7 +284,6 @@ def mmr(
     limit = len(candidates) if k is None else max(0, min(k, len(candidates)))
     if limit == 0:
         return []
-
     def sim(a: str, b: str) -> float:
         if a == b:
             return 1.0
@@ -319,11 +292,9 @@ def mmr(
         if (b, a) in pairwise_similarity:
             return pairwise_similarity[(b, a)]
         return 0.0
-
     by_rel = sorted(candidates, key=lambda i: (-relevance.get(i, 0.0), i))
     selected: list[str] = []
     remaining = set(candidates)
-
     while remaining and len(selected) < limit:
         if not selected:
             best = by_rel[0]
@@ -347,7 +318,6 @@ def mmr(
         selected.append(best_id)
         remaining.remove(best_id)
     return selected
-
 def apply_company_soft_cap(
     ordered_ids: list[str],
     company_by_id: dict[str, str],
@@ -367,7 +337,6 @@ def apply_company_soft_cap(
         pool_count = pool_company_count
     if pool_count < top_k:
         return list(ordered_ids)
-
     head: list[str] = []
     deferred: list[str] = []
     counts: dict[str, int] = {}
@@ -399,4 +368,3 @@ def apply_company_soft_cap(
         else:
             rest.append(item_id)
     return head + rest
-

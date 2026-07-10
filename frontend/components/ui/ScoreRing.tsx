@@ -10,16 +10,31 @@ type ScoreRingProps = {
   score: number;
   size?: number;
   label?: string;
+  /** 0–1 calibrated match likelihood; shown as secondary label when set. */
+  matchLikelihood?: number | null;
 };
 
-export default function ScoreRing({ score, size = 56, label = "Match" }: ScoreRingProps) {
+export default function ScoreRing({
+  score,
+  size = 56,
+  label = "Match",
+  matchLikelihood = null,
+}: ScoreRingProps) {
   const reduced = useReducedMotion();
+  const useLikelihood =
+    typeof matchLikelihood === "number" && Number.isFinite(matchLikelihood);
   const clamped = Math.min(100, Math.max(0, Number.isFinite(score) ? score : 0));
+  const likPct = useLikelihood
+    ? Math.min(100, Math.max(0, (matchLikelihood as number) * 100))
+    : null;
   const stroke = 5;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const offset = c - (clamped / 100) * c;
   const [shown, setShown] = useState(reduced ? clamped : 0);
+  const tip = useLikelihood
+    ? `${label} score ${formatScore(clamped)}. Match likelihood ${formatScore(likPct as number)}% (Platt-calibrated).`
+    : `${label} score ${formatScore(clamped)}`;
 
   useEffect(() => {
     if (reduced) {
@@ -41,7 +56,7 @@ export default function ScoreRing({ score, size = 56, label = "Match" }: ScoreRi
   }, [clamped, reduced]);
 
   return (
-    <div className="score-ring-wrap" aria-label={`${label} score ${formatScore(clamped)}`}>
+    <div className="score-ring-wrap" aria-label={tip} title={tip}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img">
         <circle
           cx={size / 2}
@@ -80,6 +95,11 @@ export default function ScoreRing({ score, size = 56, label = "Match" }: ScoreRi
         </text>
       </svg>
       <span className="score-ring-label">{label}</span>
+      {useLikelihood ? (
+        <span className="meta score-ring-likelihood font-num" style={{ fontSize: 11 }}>
+          ~{formatScore(likPct as number)}% likely
+        </span>
+      ) : null}
     </div>
   );
 }

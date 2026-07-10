@@ -137,6 +137,11 @@ def test_experiment_config_hash_covers_all_result_params() -> None:
         "recency_half_life_days": lambda v: {**v, "recency_half_life_days": 14},
         "rerank_top_n": lambda v: {**v, "rerank_top_n": 20},
         "search_results_top_n": lambda v: {**v, "search_results_top_n": 5},
+        "use_cross_encoder": lambda v: {**v, "use_cross_encoder": True},
+        "cross_encoder_shortlist": lambda v: {**v, "cross_encoder_shortlist": True},
+        "llm_listwise": lambda v: {**v, "llm_listwise": True},
+        "cross_encoder_pool": lambda v: {**v, "cross_encoder_pool": 40},
+        "llm_rerank_top_n": lambda v: {**v, "llm_rerank_top_n": 12},
     }
     for key in RESULT_PARAM_KEYS:
         mutated = mutators[key](base)

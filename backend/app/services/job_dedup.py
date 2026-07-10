@@ -1,16 +1,11 @@
 """Cross-post job deduplication: exact company+title key + embedding cosine."""
-
 from __future__ import annotations
-
 import re
 from datetime import UTC
-
 from app.schemas.jobs import DroppedCounts, Job
 from app.services import embeddings
 from app.services.ranking_math import cosine_similarity
-
 _WS = re.compile(r"\s+")
-
 def normalize_company(company: str) -> str:
     text = _WS.sub(" ", (company or "").lower()).strip()
     for suffix in (
@@ -29,20 +24,16 @@ def normalize_company(company: str) -> str:
         if text.endswith(suffix):
             text = text[: -len(suffix)].strip()
     return text
-
 def normalize_title(title: str) -> str:
     return _WS.sub(" ", (title or "").lower()).strip()
-
 def exact_dedupe_key(job: Job) -> str:
     return f"{normalize_company(job.company)}|{normalize_title(job.title)}"
-
 def _posted_sort_key(job: Job) -> tuple[int, float]:
     """Earlier posted sorts first; undated last among ties (keep earliest known)."""
     if job.posted_at is None:
         return (1, 0.0)
     posted = job.posted_at if job.posted_at.tzinfo else job.posted_at.replace(tzinfo=UTC)
     return (0, posted.astimezone(UTC).timestamp())
-
 def dedupe_exact(jobs: list[Job]) -> tuple[list[Job], DroppedCounts]:
     """Collapse exact company+title matches; keep earliest-posted; tally duplicates_count."""
     dropped = DroppedCounts()
@@ -54,7 +45,6 @@ def dedupe_exact(jobs: list[Job]) -> tuple[list[Job], DroppedCounts]:
             groups[key] = []
             order.append(key)
         groups[key].append(job)
-
     kept: list[Job] = []
     for key in order:
         group = groups[key]
@@ -63,9 +53,7 @@ def dedupe_exact(jobs: list[Job]) -> tuple[list[Job], DroppedCounts]:
         kept.append(winner)
         dropped.exact_duplicate += len(group) - 1
     return kept, dropped
-
 _CROSS_COMPANY_THRESHOLD = 0.99
-
 def _should_merge_embedding(
     job: Job,
     other: Job,
@@ -80,7 +68,6 @@ def _should_merge_embedding(
     if same_co:
         return True
     return sim > _CROSS_COMPANY_THRESHOLD
-
 def dedupe_embeddings(
     jobs: list[Job],
     *,
@@ -88,20 +75,16 @@ def dedupe_embeddings(
 ) -> tuple[list[Job], DroppedCounts]:
     """Merge near-duplicates via cosine on company+title+desc[:500]; keep earliest-posted."""
     from app.core.logging import get_logger
-
     logger = get_logger(__name__)
     dropped = DroppedCounts()
     if len(jobs) <= 1:
         return jobs, dropped
-
     ordered = sorted(jobs, key=_posted_sort_key)
     texts = [job.dedup_embedding_text() for job in ordered]
     vectors = embeddings.embed_batch(texts)
-
     kept_indices: list[int] = []
     kept_vectors: list[list[float]] = []
     duplicates_extra: dict[int, int] = {}  # index in ordered → extra dup count
-
     for idx, (job, vec) in enumerate(zip(ordered, vectors, strict=True)):
         merged_into: int | None = None
         for k_i, k_vec in zip(kept_indices, kept_vectors, strict=True):
@@ -124,7 +107,6 @@ def dedupe_embeddings(
         kept_indices.append(idx)
         kept_vectors.append(vec)
         duplicates_extra[idx] = 0
-
     result: list[Job] = []
     for idx in kept_indices:
         job = ordered[idx]
@@ -132,7 +114,6 @@ def dedupe_embeddings(
         total = job.duplicates_count + extra
         result.append(job.model_copy(update={"duplicates_count": total}))
     return result, dropped
-
 def dedupe_jobs(jobs: list[Job], *, use_embeddings: bool = True) -> tuple[list[Job], DroppedCounts]:
     """Exact then embedding dedup. embedding step skipped only when use_embeddings=False."""
     after_exact, dropped = dedupe_exact(jobs)

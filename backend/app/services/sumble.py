@@ -1,33 +1,24 @@
 """Sumble REST client — org lookup, people search, email reveal."""
-
 from __future__ import annotations
-
 from typing import Any
 from urllib.parse import urlparse
-
 import httpx
-
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.errors import ServiceFailingError
 from app.services import sumble_client, sumble_jobs
-
 EMAIL_REVEAL_COST = sumble_client.EMAIL_REVEAL_COST
 DEFAULT_LIMIT = sumble_client.DEFAULT_LIMIT
 SumbleOrganization = sumble_client.SumbleOrganization
 SumblePerson = sumble_client.SumblePerson
-
 search_org_job_posts = sumble_jobs.search_org_job_posts
 find_best_matching_job_post = sumble_jobs.find_best_matching_job_post
 get_related_people_for_job = sumble_jobs.get_related_people_for_job
-
 logger = get_logger(__name__)
-
 def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str]) -> tuple[list[str], list[str], int]:
     """Small mapping helper: department + titles -> (job_functions, job_levels)."""
     funcs: list[str] = []
     levels: list[str] = []
-
     dept = (department or "").strip()
     if dept:
         dlow = dept.lower()
@@ -43,11 +34,9 @@ def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str
             funcs.append("Sales")
         else:
             funcs.append(dept)
-
     titles = [t.strip() for t in (likely_hiring_titles or []) if t and t.strip()]
     if not titles:
         return ([f for f in funcs if f], levels, 0)
-
     title_credits = 0
     try:
         data = sumble_client.post(
@@ -84,9 +73,7 @@ def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str
         for t in titles[:5]:
             if t not in funcs:
                 funcs.append(t)
-
     return ([f for f in funcs if f], levels, title_credits)
-
 def build_people_query(
     *,
     department: str,
@@ -109,7 +96,6 @@ def build_people_query(
             clauses.append(f"({ors})")
     query = " AND ".join(clauses) if clauses else None
     return query, title_credits
-
 def _derive_domain(company_name: str, apply_url: str | None = None) -> str | None:
     """Heuristic to derive domain for org resolve-by-url (per docs preference for url/domain)."""
     if apply_url:
@@ -148,19 +134,16 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
     if slug:
         return f"{slug}.com"
     return None
-
 def lookup_organization(company_name: str, apply_url: str | None = None) -> tuple[SumbleOrganization, int]:
     """Resolve org using documented /v6/organizations. Prefer url/domain per docs."""
     company_name = (company_name or "").strip()
     if not company_name:
         raise ServiceFailingError("Hiring team lookup", "company name is required for organization lookup")
-
     orgs_inputs: list[dict[str, str]] = []
     dom = _derive_domain(company_name, apply_url)
     if dom:
         orgs_inputs.append({"name": company_name, "url": dom})
     orgs_inputs.append({"name": company_name})
-
     sumble_client.require_sumble_config()  # fail fast with correct error before any calls
     for inp in orgs_inputs:
         try:
@@ -185,12 +168,10 @@ def lookup_organization(company_name: str, apply_url: str | None = None) -> tupl
                         return org, credits
         except ServiceFailingError:
             continue
-
     raise ServiceFailingError(
         "Sumble",
         f"organization could not be resolved for {company_name!r} (tried name and domain {dom!r}); provide better company/apply_url",
     )
-
 def search_people(
     *,
     organization_id: int,
@@ -205,7 +186,6 @@ def search_people(
     query, title_credits = build_people_query(department=department, likely_hiring_titles=titles)
     if query:
         filter_body["query"] = {"query": query}
-
     data = sumble_client.post(
         "/v6/people",
         {
@@ -215,11 +195,9 @@ def search_people(
         },
         credit_costing=True,
     )
-
     people_rows = data.get("people")
     if not isinstance(people_rows, list):
         raise ServiceFailingError("Hiring team lookup", "missing people array")
-
     results: list[SumblePerson] = []
     for row in people_rows:
         if not isinstance(row, dict):
@@ -238,11 +216,9 @@ def search_people(
                 job_function=attrs.get("job_function"),
             )
         )
-
     people_credits = int(data.get("credits_used") or 0)
     total_credits = people_credits + title_credits
     return results, total_credits
-
 def find_hiring_team(
     *,
     organization_id: int,
@@ -255,7 +231,6 @@ def find_hiring_team(
     """Primary path: org job-posts match -> find-related-people."""
     lim = getattr(settings, "SUMBLE_SEARCH_LIMIT", sumble_client.DEFAULT_LIMIT)
     total_credits = 0
-
     # Preferred: job post match
     if jd_title:
         try:
@@ -275,7 +250,6 @@ def find_hiring_team(
                     return people, total_credits, path_label
         except (httpx.HTTPError, ServiceFailingError) as exc:
             logger.info("sumble.job_related_fallback", reason=str(exc)[:200])
-
     # Fallback
     people, search_credits = search_people(
         organization_id=organization_id,
@@ -287,7 +261,6 @@ def find_hiring_team(
     path_label = "Matched by role filters"
     logger.info("sumble.team_path", path=path_label, count=len(people))
     return people, total_credits, path_label
-
 def reveal_email(person_id: int) -> tuple[str | None, int]:
     """Documented list-mode enrich for email (people list + email attr)."""
     data = sumble_client.post(
@@ -308,6 +281,5 @@ def reveal_email(person_id: int) -> tuple[str | None, int]:
             raw_email = attrs.get("email")
             if isinstance(raw_email, str) and raw_email.strip():
                 email = raw_email.strip()
-
     credits_used = int(data.get("credits_used") or 0)
     return email, credits_used

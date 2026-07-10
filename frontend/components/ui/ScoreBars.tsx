@@ -21,6 +21,7 @@ type Row = { key: keyof ScoreBreakdown; label: string; isPercent: boolean };
 
 const JOB_ROWS: Row[] = [
   { key: "llm_fit", label: "LLM fit", isPercent: true },
+  { key: "cross_encoder", label: "Cross-enc", isPercent: false },
   { key: "rrf_normalized", label: "RRF", isPercent: false },
   { key: "skill_jaccard", label: "Skill", isPercent: false },
   { key: "experience_fit", label: "Experience", isPercent: false },
@@ -80,6 +81,8 @@ export default function ScoreBars({ breakdown, variant, coverageScore }: ScoreBa
       {rows.map((row) => {
         const raw = breakdown[row.key];
         if (raw == null && row.key !== "llm_fit" && row.key !== "skill_jaccard") return null;
+        // Hide unused cross-encoder bar when CE stage is off / score is zero
+        if (row.key === "cross_encoder" && (raw == null || raw === 0)) return null;
         // Always show skill on resume cards (0 is a real miss when JD lists skills)
         const value = typeof raw === "number" ? raw : 0;
         const pct = toPercent(value, row.isPercent);

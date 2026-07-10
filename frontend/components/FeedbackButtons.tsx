@@ -13,6 +13,8 @@ type FeedbackButtonsProps = {
   profileHash?: string | null;
   jdHash?: string | null;
   scoreShown?: number | null;
+  shownRank?: number | null;
+  scoreComponents?: Record<string, number> | null;
   testIdPrefix?: string;
 };
 
@@ -23,6 +25,8 @@ export default function FeedbackButtons({
   profileHash = null,
   jdHash = null,
   scoreShown = null,
+  shownRank = null,
+  scoreComponents = null,
   testIdPrefix = "feedback",
 }: FeedbackButtonsProps) {
   const [sent, setSent] = useState<"up" | "down" | null>(null);
@@ -42,6 +46,8 @@ export default function FeedbackButtons({
         profile_hash: profileHash,
         jd_hash: jdHash,
         score_shown: scoreShown,
+        shown_rank: shownRank,
+        score_components: scoreComponents,
       });
       setSent(which);
     } catch {
@@ -94,6 +100,8 @@ export function trackImplicitFeedback(payload: {
   profileHash?: string | null;
   jdHash?: string | null;
   scoreShown?: number | null;
+  shownRank?: number | null;
+  scoreComponents?: Record<string, number> | null;
 }): void {
   void postFeedback({
     kind: payload.kind,
@@ -103,6 +111,8 @@ export function trackImplicitFeedback(payload: {
     profile_hash: payload.profileHash ?? null,
     jd_hash: payload.jdHash ?? null,
     score_shown: payload.scoreShown ?? null,
+    shown_rank: payload.shownRank ?? null,
+    score_components: payload.scoreComponents ?? null,
   }).catch(() => {
     /* ignore */
   });

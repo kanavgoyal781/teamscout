@@ -19,6 +19,7 @@ export default function RankingFunnelDiagram({ selected, onSelect }: Props) {
 + ${SCORE_WEIGHTS.experience.toFixed(2)} × experience_fit
 + ${SCORE_WEIGHTS.requirements.toFixed(2)} × requirements_met
 + ${SCORE_WEIGHTS.recency.toFixed(2)} × recency
++ optional cross_encoder × ce_normalized  // default weight 0
 )`;
 
   return (
@@ -38,7 +39,7 @@ export default function RankingFunnelDiagram({ selected, onSelect }: Props) {
           strokeWidth="1"
         />
         <text x="40" y="66" fill="#eceef4" fontSize="12" fontFamily="var(--font-mono)">
-          150+ → hybrid → LLM top 30 → fuse → MMR top 10
+          150+ → RRF → CE(opt) → LLM → fuse → MMR top 10
         </text>
       </svg>
 

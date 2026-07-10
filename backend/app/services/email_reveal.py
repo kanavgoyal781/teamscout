@@ -1,23 +1,16 @@
 """Atomic email reveal with SQLite billing lock and terminal cache."""
-
 from __future__ import annotations
-
 from datetime import UTC, datetime
-
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-
 from app.db.models import Contact, EmailReveal
 from app.errors import ValidationError
 from app.schemas.team import EmailRevealResponse
 from app.services import sumble
-
 TERMINAL_STATUSES = frozenset({"revealed", "not_found"})
-
 def is_terminal(reveal: EmailReveal) -> bool:
     return reveal.status in TERMINAL_STATUSES
-
 def _begin_immediate(db: Session) -> None:
     bind = db.get_bind()
     if bind.dialect.name != "sqlite":
@@ -25,7 +18,6 @@ def _begin_immediate(db: Session) -> None:
     if db.in_transaction():
         db.rollback()
     db.execute(text("BEGIN IMMEDIATE"))
-
 def _terminal_response(contact_id: str, reveal: EmailReveal) -> EmailRevealResponse:
     if reveal.status == "revealed" and reveal.email:
         return EmailRevealResponse(
@@ -42,7 +34,6 @@ def _terminal_response(contact_id: str, reveal: EmailReveal) -> EmailRevealRespo
         cost_credits=reveal.cost_credits,
         status=reveal.status,
     )
-
 def _cached_not_found_error(contact_id: str, reveal: EmailReveal) -> ValidationError:
     return ValidationError(
         "Email already attempted for this contact — no email found (cached)",
@@ -53,19 +44,16 @@ def _cached_not_found_error(contact_id: str, reveal: EmailReveal) -> ValidationE
             "cached": True,
         },
     )
-
 def preview_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
     existing = db.query(EmailReveal).filter(EmailReveal.contact_id == contact.id).one_or_none()
     if existing is not None and is_terminal(existing):
         return _terminal_response(contact.id, existing)
-
     return EmailRevealResponse(
         contact_id=contact.id,
         cost_credits=sumble.EMAIL_REVEAL_COST,
         cached=False,
         status="preview",
     )
-
 def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
     _begin_immediate(db)
     not_found_err: ValidationError | None = None
@@ -76,14 +64,12 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
             if existing.status == "not_found":
                 raise _cached_not_found_error(contact.id, existing)
             return _terminal_response(contact.id, existing)
-
         if existing is not None and existing.status == "pending":
             db.rollback()
             raise ValidationError(
                 "Email reveal already in progress for this contact",
                 details={"contact_id": contact.id, "status": existing.status},
             )
-
         if existing is None:
             existing = EmailReveal(
                 contact_id=contact.id,
@@ -105,7 +91,6 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
                     "Email reveal already in progress for this contact",
                     details={"contact_id": contact.id, "status": existing.status},
                 )
-
         email, credits_used = sumble.reveal_email(int(contact.sumble_person_id))
         now = datetime.now(UTC)
         existing.email = email
@@ -116,7 +101,6 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
         db.add(existing)
         db.commit()
         db.refresh(existing)
-
         if not email:
             not_found_err = ValidationError(
                 "No email found for this contact",
@@ -139,7 +123,6 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
     except Exception:
         db.rollback()
         raise
-
     if not_found_err is not None:
         raise not_found_err
     raise RuntimeError("unexpected reveal state")
