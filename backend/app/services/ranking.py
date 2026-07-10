@@ -1,7 +1,5 @@
 import re
-
 from pydantic import BaseModel, Field
-
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.errors import ServiceFailingError
@@ -22,7 +20,6 @@ from app.services.ranking_math import (
     requirements_met_score,
     skill_jaccard,
 )
-
 logger = get_logger(__name__)
 class _RerankItem(BaseModel):
     job_id: str
@@ -38,7 +35,6 @@ def _job_to_rankable(job: Job) -> Rankable:
         dense_text=job.embedding_text(),
         lexical_text=job.lexical_text(),
     )
-
 _RERANK_BATCH_SIZE = 6
 _RERANK_DESC_CHARS = 220
 def _alias_jobs(jobs: list[Job]) -> tuple[list[tuple[str, Job]], dict[str, str]]:
@@ -169,18 +165,14 @@ def _llm_rerank_batch(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _Rer
     """One (or two) LLM JSON calls for a small job batch with alias ids + recovery."""
     if not jobs:
         return {}
-
     alias_jobs, alias_to_real = _alias_jobs(jobs)
     jobs_by_id = {job.id: job for job in jobs}
     expected = set(jobs_by_id)
-
     response = _call_rerank_llm(profile, alias_jobs)
     if not response.results:
         raise ServiceFailingError("LLM", "rerank returned no results")
-
     mapped = _map_alias_results(response, alias_to_real)
     missing_ids = sorted(expected - set(mapped))
-
     if missing_ids:
         retry_jobs = [jobs_by_id[mid] for mid in missing_ids]
         retry_pairs, retry_alias = _alias_jobs(retry_jobs)
@@ -190,18 +182,15 @@ def _llm_rerank_batch(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _Rer
             mapped.update(_map_alias_results(retry_resp, retry_alias))
         except ServiceFailingError as exc:
             logger.warning("jobs.rerank_retry_failed", error=str(exc))
-
     still_missing = sorted(expected - set(mapped))
     for mid in still_missing:
         logger.warning("jobs.rerank_heuristic_fill", job_id=mid)
         mapped[mid] = _heuristic_rerank_item(profile, jobs_by_id[mid])
-
     return mapped
 def _llm_rerank(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _RerankItem]:
     """Rerank in batches so large top-N shortlists don't truncate mid-JSON."""
     if not jobs:
         return {}
-
     merged: dict[str, _RerankItem] = {}
     for offset in range(0, len(jobs), _RERANK_BATCH_SIZE):
         batch = jobs[offset : offset + _RERANK_BATCH_SIZE]
@@ -217,7 +206,6 @@ def _diversify_ranked(
     if len(ranked) <= 1:
         return ranked
     from app.services import embeddings
-
     ids = [item.job.id for item in ranked]
     by_id = {item.job.id: item for item in ranked}
     raw_scores = [item.match_score for item in ranked]
@@ -254,15 +242,12 @@ def rank_jobs(
 ) -> list[RankedJob]:
     if not jobs:
         return []
-
     params = params or SearchParams()
     result_n = top_n if top_n is not None else settings.SEARCH_RESULTS_TOP_N
     score_n = max(result_n, min(len(jobs), max(settings.RERANK_TOP_N, result_n * 3)))
-
     jobs_by_id = {job.id: job for job in jobs}
     rankables = [_job_to_rankable(job) for job in jobs]
     profile_text = profile.search_text()
-
     def rerank_fn(candidates: list[Rankable]) -> dict[str, RerankResult]:
         rerank_jobs_list = [jobs_by_id[candidate.id] for candidate in candidates]
         lookup = _llm_rerank(profile, rerank_jobs_list)
@@ -275,7 +260,6 @@ def rank_jobs(
             )
             for job_id, item in lookup.items()
         }
-
     def experience_fn(rankable: Rankable) -> float:
         job = jobs_by_id[rankable.id]
         return experience_fit_score(
@@ -283,7 +267,6 @@ def rank_jobs(
             title=job.title,
             description=job.description,
         )
-
     def requirements_fn(rankable: Rankable) -> float:
         job = jobs_by_id[rankable.id]
         return requirements_met_score(
@@ -292,7 +275,6 @@ def rank_jobs(
             job_skills=job.skills,
             job_description=job.description,
         )
-
     scored = hybrid_rank(
         profile_text,
         profile_text,
@@ -306,7 +288,6 @@ def rank_jobs(
         score_pool="rerank_top_n",
         top_n=score_n,
     )
-
     ranked: list[RankedJob] = []
     for item in scored:
         job = jobs_by_id[item.id]
@@ -335,17 +316,14 @@ def rank_jobs(
             )
         )
     ranked.sort(key=lambda r: r.match_score, reverse=True)
-
     if diversify and len(ranked) > 1:
         from app.core.env_utils import is_set
         from app.services.embeddings import embeddings_endpoint
-
         if is_set(settings.EMBEDDINGS_API_KEY) and embeddings_endpoint():
             ranked = _diversify_ranked(ranked, lambda_=DEFAULT_MMR_LAMBDA, top_n=result_n)
     return ranked[:result_n]
 def rank_jobs_dense_only(profile: ResumeProfile, jobs: list[Job]) -> list[RankedJob]:
     from app.services.hybrid_rank import dense_ranking
-
     if not jobs:
         return []
     rankables = [_job_to_rankable(job) for job in jobs]

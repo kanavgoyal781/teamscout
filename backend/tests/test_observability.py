@@ -50,7 +50,7 @@ def test_load_prompt_returns_metadata_and_hash() -> None:
 
 
 def test_load_prompt_rerank_justify_team() -> None:
-    for name in ("rerank", "justify", "team_extract"):
+    for name in ("rerank", "justify", "team_extract", "outreach_draft"):
         tmpl = load_prompt(name)
         assert tmpl.name == name
         assert tmpl.version

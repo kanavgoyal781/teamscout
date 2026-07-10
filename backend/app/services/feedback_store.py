@@ -61,6 +61,7 @@ def feedback_label_counts(db: Session) -> dict[str, int]:
         "thumbs_down": counts.get("thumbs_down", 0),
         "apply_click": counts.get("apply_click", 0),
         "find_team_click": counts.get("find_team_click", 0),
+        "compose_opened": counts.get("compose_opened", 0),
     }
 def learning_file_stats(repo_root: Path | str | None = None) -> dict[str, Any]:
     """Latest eval metrics, trends, last experiments from evals/ on disk."""

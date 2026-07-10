@@ -894,6 +894,102 @@ details.why-match[open] summary {
   gap: 8px;
 }
 
+/* Per-contact Email split-button + compose modal (deep-links only) */
+.contact-email-compose {
+  flex-shrink: 0;
+}
+
+.email-split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: var(--radius-sm);
+}
+
+.email-split-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+.email-split-caret {
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-left: 1px solid color-mix(in srgb, white 25%, transparent) !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+
+.email-split-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 180px;
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px color-mix(in srgb, black 12%, transparent);
+}
+
+.email-split-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 8px 12px !important;
+  font-size: 0.88rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.email-split-menu button:hover {
+  background: var(--bg-muted) !important;
+}
+
+.contact-compose-modal {
+  position: fixed;
+  inset: auto;
+  left: 50%;
+  top: 10vh;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px));
+  max-height: 80vh;
+  overflow: auto;
+  z-index: 50;
+  box-shadow: 0 16px 48px color-mix(in srgb, black 18%, transparent);
+}
+
+.compose-modal-actions,
+.compose-open-actions {
+  flex-wrap: wrap;
+}
+
+.compose-trunc-hint {
+  color: var(--warning, #b45309);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .copy-btn {
   border: 1px solid var(--border) !important;
   background: var(--bg-muted) !important;

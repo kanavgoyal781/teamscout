@@ -1,7 +1,5 @@
 """LLM/embed/hiring-team/JSearch tracing, ceilings, optional OTLP."""
-
 from __future__ import annotations
-
 import statistics
 import time
 from collections.abc import Generator
@@ -10,13 +8,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
-
 import httpx
 import structlog
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.http_timeouts import default_timeout
@@ -24,9 +20,7 @@ from app.core.logging import get_logger
 from app.db.models import Trace
 from app.db.session import SessionLocal
 from app.errors import CostCeilingExceededError
-
 logger = get_logger(__name__)
-
 LLM_OPERATIONS = frozenset({"parse_resume", "rerank", "team_extract", "justify", "embed"})
 FEATURE1_OPS = frozenset(
     {
@@ -303,7 +297,6 @@ def ops_stats(db: Session) -> dict[str, Any]:
     start = _today_start_naive()
     recent = db.query(Trace).order_by(Trace.created_at.desc()).limit(100).all()
     today = db.query(Trace).filter(Trace.created_at >= start).all()
-
     latency_by_op: dict[str, list[float]] = {}
     errors_by_svc: dict[str, list[int]] = {}
     for row in today:
@@ -314,7 +307,6 @@ def ops_stats(db: Session) -> dict[str, Any]:
             bucket[0] += 1
         if row.latency_ms is not None:
             latency_by_op.setdefault(row.operation, []).append(float(row.latency_ms))
-
     latency_summary = {
         op: {
             "count": len(v),
@@ -323,14 +315,12 @@ def ops_stats(db: Session) -> dict[str, Any]:
         }
         for op, v in sorted(latency_by_op.items())
     }
-
     f1_rids = {r.request_id for r in today if r.request_id and r.operation in FEATURE1_OPS}
     f2_rids = {r.request_id for r in today if r.request_id and r.operation in FEATURE2_OPS}
     f1_costs = [sum(float(x.cost_usd or 0) for x in today if x.request_id == rid) for rid in f1_rids]
     f2_costs = [sum(float(x.cost_usd or 0) for x in today if x.request_id == rid) for rid in f2_rids]
     embeds = [r for r in today if r.operation == "embed"]
     hits = sum(1 for r in embeds if r.cache_hit)
-
     return {
         "recent_traces": [
             {

@@ -85,9 +85,9 @@ export default function FeedbackButtons({
   );
 }
 
-/** Fire-and-forget implicit signals (apply / find-team). */
+/** Fire-and-forget implicit signals (apply / find-team / compose). */
 export function trackImplicitFeedback(payload: {
-  kind: "apply_click" | "find_team_click";
+  kind: "apply_click" | "find_team_click" | "compose_opened";
   targetType: FeedbackTargetType;
   targetId: string;
   secondaryId?: string | null;

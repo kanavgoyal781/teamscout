@@ -1,15 +1,12 @@
 """JSearch multi-query fetch, normalize, filter, dedupe."""
 from __future__ import annotations
-
 import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-
 import httpx
 from sqlalchemy.orm import Session
-
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.http_timeouts import default_timeout
@@ -21,9 +18,7 @@ from app.schemas.library import IntentProfile
 from app.schemas.resume import ResumeProfile
 from app.services.job_dedup import dedupe_jobs, exact_dedupe_key
 from app.services.job_filters import annotate_job, apply_hard_filters, jsearch_params_from_search
-
 logger = get_logger(__name__)
-
 _JSEARCH_CONCURRENCY = 3
 @dataclass
 class JobFetchResult:
@@ -53,7 +48,6 @@ def extract_skills_from_description(description: str, profile_skills: list[str])
     if not description:
         return []
     from app.services.ranking_math_align import phrase_in_text
-
     found: list[str] = []
     for skill in profile_skills:
         token = skill.strip()
@@ -85,13 +79,11 @@ def _normalize_job(item: dict, profile: ResumeProfile, *, job_id: str | None = N
     description = (item.get("job_description") or "").strip()
     if not title or not description:
         return None
-
     source_job_id = str(item.get("job_id") or item.get("job_google_link") or uuid.uuid4())
     apply_url = item.get("job_apply_link") or item.get("job_google_link") or ""
     apply_url = str(apply_url).strip()
     if not apply_url:
         return None
-
     posted_at = _parse_posted_at(item.get("job_posted_at_datetime_utc"))
     skills = item.get("job_required_skills") or item.get("job_highlights", {}).get("Qualifications", [])
     if not isinstance(skills, list):
@@ -99,13 +91,11 @@ def _normalize_job(item: dict, profile: ResumeProfile, *, job_id: str | None = N
     skills = [str(skill).strip() for skill in skills if str(skill).strip()]
     if not skills:
         skills = extract_skills_from_description(description, profile.skills)
-
     is_remote = item.get("job_is_remote")
     if isinstance(is_remote, str):
         is_remote = is_remote.strip().lower() in {"1", "true", "yes"}
     elif not isinstance(is_remote, bool):
         is_remote = None
-
     job = Job(
         id=job_id or str(uuid.uuid4()),
         source="jsearch",
@@ -207,14 +197,12 @@ def build_jsearch_queries(title: str, location: str, skills: list[str] | None = 
     skill_bits = [s.strip() for s in (skills or []) if s and s.strip()][:2]
     queries: list[str] = []
     seen: set[str] = set()
-
     def add(q: str) -> None:
         cleaned = re.sub(r"\s+", " ", q).strip()
         key = cleaned.lower()
         if cleaned and key not in seen:
             seen.add(key)
             queries.append(cleaned)
-
     add(f"{role} in {loc}")
     if skill_bits:
         add(f"{role} {' '.join(skill_bits)}")
@@ -228,10 +216,8 @@ def fetch_jsearch_raw(queries: list[str], *, base_params: dict[str, str]) -> lis
     merged: list[dict] = []
     seen_ids: set[str] = set()
     first_error: ServiceFailingError | None = None
-
     def one(query: str) -> tuple[str, list[dict]]:
         return query, _jsearch_get({**base_params, "query": query})
-
     with ThreadPoolExecutor(max_workers=_JSEARCH_CONCURRENCY) as pool:
         futures = [pool.submit(one, q) for q in queries]
         for fut in as_completed(futures):
@@ -250,7 +236,6 @@ def fetch_jsearch_raw(queries: list[str], *, base_params: dict[str, str]) -> lis
                 if sid:
                     seen_ids.add(sid)
                 merged.append(item)
-
     if not merged and first_error is not None:
         raise first_error
     return merged
@@ -318,44 +303,34 @@ def _merge_fetch(
     _require_jobs_config()
     from app.services import observability
     from app.services.job_boards import fetch_optional_boards
-
     params = params or SearchParams()
     base = jsearch_params_from_search(params)
     if remote_only:
         base = {**base, "remote_jobs_only": "true"}
-
     dropped = DroppedCounts()
-
     with observability.traced_call("jsearch.search", model="jsearch") as trace:
         raw_items = fetch_jsearch_raw(queries, base_params=base)
         if isinstance(raw_items, tuple):
             raw_items = raw_items[0]
         jsearch_jobs, norm_dropped = _normalize_raw_items(raw_items, profile, db)
         dropped = dropped.merge(norm_dropped)
-
         board_jobs: list[Job] = []
         if settings.JOBS_EXTRA_SOURCES_ENABLED:
             board_jobs = fetch_optional_boards(profile)
             board_jobs = _assign_stable_ids(db, board_jobs)
             board_jobs = [annotate_job(j) for j in board_jobs]
-
         combined = jsearch_jobs + board_jobs
         filtered, hard_dropped = apply_hard_filters(combined, params)
         dropped = dropped.merge(hard_dropped)
-
         from app.core.env_utils import is_set as _is_set
         from app.services.embeddings import embeddings_endpoint
-
         use_emb = _is_set(settings.EMBEDDINGS_API_KEY) and bool(embeddings_endpoint())
         deduped, dedup_dropped = dedupe_jobs(filtered, use_embeddings=use_emb)
         dropped = dropped.merge(dedup_dropped)
-
         def sort_key(j: Job) -> tuple:
             ts = j.posted_at.timestamp() if j.posted_at else 0.0
             return (-ts, j.title)
-
         deduped = sorted(deduped, key=sort_key)[: settings.JOBS_FETCH_TARGET]
-
         by_source: dict[str, int] = {}
         for job in deduped:
             by_source[job.source] = by_source.get(job.source, 0) + 1
@@ -369,13 +344,11 @@ def _merge_fetch(
             dropped=dropped.as_dict(),
             queries=queries,
         )
-
         if not deduped:
             raise ServiceFailingError(
                 "Jobs API",
                 f"no jobs matched filters (date_window={params.date_window})",
             )
-
         trace.input_tokens = len(raw_items) + len(board_jobs)
         trace.output_tokens = len(deduped)
         _cache_jobs(db, deduped)
@@ -389,7 +362,6 @@ def resolve_search_queries(
     params = params or SearchParams()
     if params.use_expand:
         from app.services.query_expand import expand_queries
-
         return expand_queries(profile, db, params=params)
     return build_jsearch_queries(profile.title, profile.location, profile.skills)
 def fetch_jobs(
