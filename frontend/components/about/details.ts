@@ -337,7 +337,8 @@ export const PRINCIPLE_LINKS = [
   {
     label: "Ranking service",
     path: "backend/app/services/ranking.py",
-    tip: "Hybrid + LLM rerank + MMR diversify",
+    // Short lines so auto-fill cards (~200px) do not wrap mid-phrase into the path.
+    tip: "Hybrid · LLM rerank · MMR",
   },
 ] as const;
 
