@@ -6,6 +6,7 @@ RemoteMode = Literal["remote", "hybrid", "onsite", "any"]
 EmploymentType = Literal["fulltime", "contractor", "any"]
 DateWindow = Literal["day", "3days", "week", "month"]
 SeniorityLevel = Literal["intern", "junior", "mid", "senior", "lead", "any"]
+SourceQuality = Literal["direct_ats", "aggregator", "feed"]
 class Job(BaseModel):
     id: str
     source: str
@@ -17,6 +18,7 @@ class Job(BaseModel):
     apply_url: str
     posted_at: datetime | None = None
     skills: list[str] = Field(default_factory=list)
+    source_quality: SourceQuality = "aggregator"
     # Structured annotations (filled during normalize / filter pass)
     seniority: str | None = None
     remote_mode: str | None = None  # remote|hybrid|onsite|unknown
@@ -78,6 +80,13 @@ class JobFacets(BaseModel):
     remote_mode: list[FacetBucket] = Field(default_factory=list)
     salary_bucket: list[FacetBucket] = Field(default_factory=list)
     posted_age: list[FacetBucket] = Field(default_factory=list)
+    source: list[FacetBucket] = Field(default_factory=list)
+class SourceCounts(BaseModel):
+    """Per-source fetch accounting (visible; never silent)."""
+    fetched: int = 0
+    kept_after_filters: int = 0
+    deduped_away: int = 0
+    errors: int = 0
 class DroppedCounts(BaseModel):
     """How many candidates were excluded, by cause. Zero keys may be omitted."""
     recency: int = 0

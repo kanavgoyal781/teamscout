@@ -1,0 +1,20 @@
+{
+  "results": [
+    {
+      "id": "123",
+      "title": "Machine Learning Engineer",
+      "company": {
+        "display_name": "AdzunaCo"
+      },
+      "location": {
+        "display_name": "San Francisco"
+      },
+      "description": "Python and ML systems.",
+      "redirect_url": "https://www.adzuna.com/details/123",
+      "created": "2026-07-01T12:00:00Z",
+      "salary_min": 150000,
+      "salary_max": 200000,
+      "contract_time": "full_time"
+    }
+  ]
+}

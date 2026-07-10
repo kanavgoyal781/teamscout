@@ -58,6 +58,21 @@ def _ops_payload(db: Session) -> dict[str, Any]:
     learning = feedback_store.learning_file_stats()
     learning["feedback_counts"] = feedback_store.feedback_label_counts(db)
     stats["learning"] = learning
+    # Job sources table: calls / latency / error rate for source.* ops
+    lat = stats.get("latency_by_operation") or {}
+    err = stats.get("error_rate_by_service") or {}
+    source_rows = []
+    for op, v in lat.items():
+        if not str(op).startswith("source."):
+            continue
+        name = str(op).split(".", 1)[-1]
+        svc = err.get("source") or err.get(name) or {}
+        source_rows.append({
+            "source": name, "calls": v.get("count"), "p50_ms": v.get("p50_ms"),
+            "p95_ms": v.get("p95_ms"), "error_rate": svc.get("error_rate"),
+        })
+    # Also surface error_rate_by_service keys that look like source names
+    stats["job_sources"] = source_rows
     return stats
 def _render_html(stats: dict[str, Any]) -> str:
     lat_rows = [
@@ -144,6 +159,8 @@ th {{ background: #eee; text-align: left; }}
             exp_rows or [["—", "", "", "", "no experiments"]],
         )
     }
+<h2>Job sources (source.* traces)</h2>
+{_table(["source", "calls", "p50_ms", "p95_ms", "error_rate"], [[s.get("source"), s.get("calls"), s.get("p50_ms"), s.get("p95_ms"), s.get("error_rate")] for s in (stats.get("job_sources") or [])] or [["—", "", "", "", "no source traces"]])}
 <h2>Latency by operation (p50 / p95 ms)</h2>
 {_table(["operation", "count", "p50_ms", "p95_ms"], lat_rows)}
 <h2>Error rate by service</h2>

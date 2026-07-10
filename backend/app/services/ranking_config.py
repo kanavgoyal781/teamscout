@@ -12,7 +12,7 @@ RESULT_PARAM_KEYS = (
     "weights", "rrf_k", "mmr_lambda", "use_mmr", "expansion", "tournament_threshold",
     "recency_half_life_days", "rerank_top_n", "search_results_top_n",
     "use_cross_encoder", "cross_encoder_shortlist", "llm_listwise",
-    "cross_encoder_pool", "llm_rerank_top_n",
+    "cross_encoder_pool", "llm_rerank_top_n", "direct_ats_boost",
 )
 def live_ranking_params() -> dict[str, Any]:
     return {
@@ -32,6 +32,7 @@ def live_ranking_params() -> dict[str, Any]:
         "llm_listwise": settings.RANKING_LLM_LISTWISE,
         "cross_encoder_pool": settings.CROSS_ENCODER_POOL,
         "llm_rerank_top_n": settings.LLM_RERANK_TOP_N,
+        "direct_ats_boost": float(settings.RANKING_DIRECT_ATS_BOOST),
     }
 def ranking_config_hash(params: dict[str, Any] | None = None) -> str:
     payload = params if params is not None else live_ranking_params()

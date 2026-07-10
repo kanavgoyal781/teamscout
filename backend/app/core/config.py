@@ -37,8 +37,16 @@ class Settings(BaseSettings):
     JOBS_API_KEY: str | None = None
     JOBS_API_BASE: str | None = "https://jsearch.p.rapidapi.com"
     JOBS_API_HOST: str = "jsearch.p.rapidapi.com"
-    # Free boards (Remotive, Arbeitnow) as optional enrichment; no keys required.
+    # Multi-source registry (free ATS/feeds); master flag + per-source toggles.
     JOBS_EXTRA_SOURCES_ENABLED: bool = True
+    JOBS_SOURCE_ATS_ENABLED: bool = True
+    JOBS_SOURCE_REMOTIVE_ENABLED: bool = True
+    JOBS_SOURCE_REMOTEOK_ENABLED: bool = True
+    # Optional Adzuna aggregator (unset → health "disabled", never "missing").
+    ADZUNA_APP_ID: str | None = None
+    ADZUNA_APP_KEY: str | None = None
+    # Soft rank boost for direct_ats; default 0 — enable only via experiment config.
+    RANKING_DIRECT_ATS_BOOST: float = 0.0
     # Must sum to 1.0 (validated). Experience + requirements curb pure keyword/seniority drift.
     # cross_encoder weight default 0 until an experiment rebalance is promoted.
     RANKING_WEIGHT_LLM: float = 0.38
@@ -130,6 +138,9 @@ class Settings(BaseSettings):
     @field_validator(
         "RATE_LIMIT_ENABLED",
         "JOBS_EXTRA_SOURCES_ENABLED",
+        "JOBS_SOURCE_ATS_ENABLED",
+        "JOBS_SOURCE_REMOTIVE_ENABLED",
+        "JOBS_SOURCE_REMOTEOK_ENABLED",
         "RANKING_USE_CROSS_ENCODER",
         "CROSS_ENCODER_SHORTLIST",
         "RANKING_LLM_LISTWISE",

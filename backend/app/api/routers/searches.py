@@ -20,6 +20,8 @@ class SearchResponse(BaseModel):
     results: list[RankedJob] = Field(default_factory=list)
     dropped_counts: dict[str, int] = Field(default_factory=dict)
     facets: JobFacets | None = None
+    per_source_counts: dict[str, dict[str, int]] = Field(default_factory=dict)
+    source_errors: list[str] = Field(default_factory=list)
 @router.post("", response_model=SearchResponse)
 @limiter.limit(search_limit)
 def create_search(
@@ -52,4 +54,13 @@ def create_search(
     db.add(search_row)
     db.commit()
     db.refresh(search_row)
-    return SearchResponse(search_id=search_row.id, resume_id=row.id, results=ranked, dropped_counts=dropped.as_dict() if hasattr(dropped, "as_dict") else dict(dropped or {}), facets=facets)
+    per_source = getattr(detailed, "per_source_counts", {}) or {}
+    per_source_out = {
+        k: (v.model_dump() if hasattr(v, "model_dump") else dict(v)) for k, v in per_source.items()
+    }
+    return SearchResponse(
+        search_id=search_row.id, resume_id=row.id, results=ranked,
+        dropped_counts=dropped.as_dict() if hasattr(dropped, "as_dict") else dict(dropped or {}),
+        facets=facets, per_source_counts=per_source_out,
+        source_errors=list(getattr(detailed, "source_errors", None) or []),
+    )

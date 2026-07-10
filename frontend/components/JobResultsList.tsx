@@ -118,6 +118,20 @@ export default function JobResultsList({
                     <span className="font-num">{formatPostedAgo(item.job.posted_at)}</span>
                   </p>
                   <div className="chip-row job-flags" style={{ marginTop: 6 }}>
+                    {item.job.source ? (
+                      <span
+                        className="chip chip-source"
+                        title={
+                          item.job.source_quality
+                            ? `Source quality: ${item.job.source_quality}`
+                            : "Job source"
+                        }
+                      >
+                        {item.job.source === "remoteok"
+                          ? "via RemoteOK"
+                          : item.job.source}
+                      </span>
+                    ) : null}
                     {(item.job.duplicates_count ?? 1) > 1 ? (
                       <span className="chip chip-dup" title="Cross-posted listing">
                         Posted on {item.job.duplicates_count} boards

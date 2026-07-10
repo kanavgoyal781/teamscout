@@ -1,0 +1,31 @@
+{
+  "jobs": [
+    {
+      "id": "05e14247-17c4-4e98-9a13-53828a4e2f13",
+      "title": "Outbound Business Development Representative, AMER",
+      "location": "New York, New York",
+      "publishedAt": "2026-04-02T21:00:55.755+00:00",
+      "isRemote": true,
+      "workplaceType": "Hybrid",
+      "jobUrl": "https://jobs.ashbyhq.com/notion/05e14247-17c4-4e98-9a13-53828a4e2f13",
+      "applyUrl": "https://jobs.ashbyhq.com/notion/05e14247-17c4-4e98-9a13-53828a4e2f13/application",
+      "descriptionPlain": "WHO WE ARE\n\nNotion is the collaborative AI workspace where teams and agents think together https://www.youtube.com/watch?v=vkpYpWfEK5s. We're building one place where your knowledge, projects, meetings, and AI tools live side by side, so work is faster, clearer, and less fragmented. Millions of individuals, small teams, and large companies run their work on Notion.\n\n\n\nNotinos (our employees) are customer zero in bringing this future of work to life. We care about craft, building things that last, and the belief that great work is still fundamentally human. Our goal isn\u2019t to ship the next feature. Each and every team of Notinos is working to set the standard for how humans work together in the AI era. From building a business\u2019s system of record to making and managing AI agents to automating",
+      "employmentType": "FullTime",
+      "department": "Early Career"
+    },
+    {
+      "id": "6ad34426-b980-436b-80c4-3634c00094ad",
+      "title": "Solutions Engineer, EMEA",
+      "location": "Dublin, Ireland",
+      "publishedAt": "2025-09-04T10:01:06.598+00:00",
+      "isRemote": null,
+      "workplaceType": null,
+      "jobUrl": "https://jobs.ashbyhq.com/notion/6ad34426-b980-436b-80c4-3634c00094ad",
+      "applyUrl": "https://jobs.ashbyhq.com/notion/6ad34426-b980-436b-80c4-3634c00094ad/application",
+      "descriptionPlain": "WHO WE ARE\n\nNotion is the collaborative AI workspace where teams and agents think together https://www.youtube.com/watch?v=vkpYpWfEK5s. We're building one place where your knowledge, projects, meetings, and AI tools live side by side, so work is faster, clearer, and less fragmented. Millions of individuals, small teams, and large companies run their work on Notion.\n\n\n\nNotinos (our employees) are customer zero in bringing this future of work to life. We care about craft, building things that last, and the belief that great work is still fundamentally human. Our goal isn\u2019t to ship the next feature. Each and every team of Notinos is working to set the standard for how humans work together in the AI era. From building a business\u2019s system of record to making and managing AI agents to automating",
+      "employmentType": "FullTime",
+      "department": "Sales"
+    }
+  ],
+  "apiVersion": "1"
+}

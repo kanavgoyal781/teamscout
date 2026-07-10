@@ -1,5 +1,5 @@
 {
-  "name": "defaults",
+  "name": "direct_ats_boost",
   "weights": {
     "llm": 0.38,
     "rrf": 0.2,
@@ -22,5 +22,5 @@
   "cross_encoder_pool": 50,
   "llm_rerank_top_n": 15,
   "cross_encoder_shortlist": false,
-  "direct_ats_boost": 0.0
+  "direct_ats_boost": 3.0
 }

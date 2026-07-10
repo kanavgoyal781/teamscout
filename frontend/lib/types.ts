@@ -54,6 +54,7 @@ export type Job = {
   apply_url: string;
   posted_at: string | null;
   skills: string[];
+  source_quality?: "direct_ats" | "aggregator" | "feed";
   seniority?: string | null;
   remote_mode?: string | null;
   employment_type?: string | null;
@@ -100,6 +101,14 @@ export type JobFacets = {
   remote_mode: FacetBucket[];
   salary_bucket: FacetBucket[];
   posted_age: FacetBucket[];
+  source?: FacetBucket[];
+};
+
+export type SourceCounts = {
+  fetched: number;
+  kept_after_filters: number;
+  deduped_away: number;
+  errors: number;
 };
 
 export type SearchResponse = {
@@ -109,6 +118,8 @@ export type SearchResponse = {
   facets?: JobFacets;
   dropped_counts?: Record<string, number>;
   queries?: string[];
+  per_source_counts?: Record<string, SourceCounts>;
+  source_errors?: string[];
 };
 
 export type ApiErrorBody = {

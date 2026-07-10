@@ -98,6 +98,7 @@ def normalize_variant(raw: dict[str, Any]) -> dict[str, Any]:
         "llm_listwise": bool(raw.get("llm_listwise", settings.RANKING_LLM_LISTWISE)),
         "cross_encoder_pool": int(raw.get("cross_encoder_pool", settings.CROSS_ENCODER_POOL)),
         "llm_rerank_top_n": int(raw.get("llm_rerank_top_n", settings.LLM_RERANK_TOP_N)),
+        "direct_ats_boost": float(raw.get("direct_ats_boost", settings.RANKING_DIRECT_ATS_BOOST)),
     }
 
 
@@ -125,6 +126,7 @@ def apply_variant(variant: dict[str, Any]) -> dict[str, Any]:
         "RANKING_LLM_LISTWISE": settings.RANKING_LLM_LISTWISE,
         "CROSS_ENCODER_POOL": settings.CROSS_ENCODER_POOL,
         "LLM_RERANK_TOP_N": settings.LLM_RERANK_TOP_N,
+        "RANKING_DIRECT_ATS_BOOST": settings.RANKING_DIRECT_ATS_BOOST,
     }
     settings.RANKING_WEIGHT_LLM = w["llm"]
     settings.RANKING_WEIGHT_RRF = w["rrf"]
@@ -142,6 +144,7 @@ def apply_variant(variant: dict[str, Any]) -> dict[str, Any]:
     settings.RANKING_LLM_LISTWISE = bool(variant.get("llm_listwise", False))
     settings.CROSS_ENCODER_POOL = int(variant.get("cross_encoder_pool", settings.CROSS_ENCODER_POOL))
     settings.LLM_RERANK_TOP_N = int(variant.get("llm_rerank_top_n", settings.LLM_RERANK_TOP_N))
+    settings.RANKING_DIRECT_ATS_BOOST = float(variant.get("direct_ats_boost", 0.0))
     return prev
 
 

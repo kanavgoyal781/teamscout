@@ -106,10 +106,10 @@ export const DETAILS: Record<Exclude<DetailKey, null>, Detail> = {
     color: "#22d3ee",
   },
   jsearch: {
-    title: "Live jobs (multi-source)",
-    why: "Feature 1 needs fresh market jobs, not a static fixture corpus.",
-    how: "Primary: RapidAPI JSearch /search-v2 with multi-query broadening. Optional free boards (Remotive, Arbeitnow) merge + dedupe into jobs_cache with stable job_id.",
-    tradeoff: "JSearch is required (key). Free boards are best-effort enrichment — failures log and continue. Paste-job paths still work without boards.",
+    title: "Live jobs (provider registry)",
+    why: "Feature 1 needs fresh market jobs from multiple official APIs — never HTML scraping.",
+    how: "JobSource registry fans out (concurrency 4): JSearch + free ATS boards (Greenhouse/Lever/Ashby via configs/ats_companies.json) + Remotive/RemoteOK feeds when remote/any + optional Adzuna. Post-fetch title/location/recency filters; 6h board cache; prefer direct_ats on dedupe.",
+    tradeoff: "One source failing is counted in per_source_counts and never kills the search. Adzuna unset → health disabled (not missing). No scraping rule is absolute.",
     color: "#f472b6",
   },
   sumble: {
@@ -143,8 +143,8 @@ export const DETAILS: Record<Exclude<DetailKey, null>, Detail> = {
   retrieve: {
     title: "1 · Retrieve",
     why: "Ranking needs a candidate set large enough for fusion but small enough for LLM cost.",
-    how: "Optional LLM query expand (3–5 variants) → multi-query JSearch + optional Remotive/Arbeitnow; hard filters from SearchParams.date_window and prefs; exact/embedding dedupe; require apply URL; cache rows; expose dropped_counts. Target pool ~150+ (JOBS_FETCH_TARGET).",
-    tradeoff: "Broader pool costs more JSearch pages. Soft prefs never exclude. Empty after filters fails loud — no mock jobs.",
+    how: "Optional LLM query expand → registry parallel fetch (JSearch + ATS boards + remote feeds + optional Adzuna). Official APIs only (no HTML scraping). Post-fetch criteria filter; hard SearchParams filters; exact/embedding dedupe preferring direct_ats; jobs_cache; per_source_counts + dropped_counts. Target ~JOBS_FETCH_TARGET.",
+    tradeoff: "Broader pool costs more aggregator pages; ATS boards are keyless but cold cache is slower. Soft prefs never exclude. Empty after filters fails loud — no mock jobs.",
     color: "#5b8def",
   },
   dense: {

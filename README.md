@@ -123,7 +123,7 @@ python3 scripts/smoke_sumble.py
 
 **Jobs (Feature 1)** — see [ARCHITECTURE.md](./ARCHITECTURE.md) for the full funnel:
 
-1. Multi-source fetch (~150): optional LLM query expand → JSearch multi-query + optional Remotive/Arbeitnow; recency via `SearchParams.date_window` (default **month**); hard/soft prefs; exact/embedding dedupe; SQLite `jobs_cache`
+1. Multi-source fetch (~150): optional LLM query expand → job_sources registry (JSearch + free ATS boards + Remotive/RemoteOK + optional Adzuna); recency via `SearchParams.date_window` (default **month**); hard/soft prefs; exact/embedding dedupe (prefer direct_ats); SQLite `jobs_cache`
 2. Dense cosine similarity + BM25 lexical retrieval
 3. Reciprocal Rank Fusion (`k=60`)
 4. LLM rerank top 30 in batches of **6** (retry + labeled heuristic fill for omitted ids)

@@ -57,7 +57,12 @@ def test_health_ok_when_fully_configured(monkeypatch: pytest.MonkeyPatch, client
     assert response.status_code == 200
     payload = response.json()
     assert payload["ok"] is True
-    assert all(status == "configured" for status in payload["checks"].values())
+    for name, status in payload["checks"].items():
+        if name == "adzuna":
+            assert status in {"configured", "disabled"}
+        else:
+            assert status == "configured"
+    assert "job_sources" in payload
 
 
 def test_health_reports_db_failure(monkeypatch: pytest.MonkeyPatch, client: TestClient) -> None:

@@ -224,6 +224,7 @@ def apply_hard_filters(
     return kept, dropped
 def soft_boost_score(job: Job, params: SearchParams, base_score: float) -> float:
     """Reorder preference via additive boosts; does not exclude."""
+    from app.core.config import settings
     score = float(base_score)
     if params.remote_mode != "any" and params.remote_mode_pref == "soft":
         if (job.remote_mode or "").lower() == params.remote_mode:
@@ -237,6 +238,10 @@ def soft_boost_score(job: Job, params: SearchParams, base_score: float) -> float
     if params.min_salary is not None and params.min_salary_pref == "soft":
         if not job.salary_unknown and job.salary_min is not None and job.salary_min >= float(params.min_salary):
             score += SOFT_BOOST_POINTS
+    # Experiment-only direct ATS boost (default 0.0 — never hand-flipped on).
+    boost = float(getattr(settings, "RANKING_DIRECT_ATS_BOOST", 0.0) or 0.0)
+    if boost > 0 and getattr(job, "source_quality", None) == "direct_ats":
+        score += boost
     return min(100.0, round(score, 1))
 def jsearch_params_from_search(params: SearchParams) -> dict[str, str]:
     """Map structured search params → JSearch query string params."""

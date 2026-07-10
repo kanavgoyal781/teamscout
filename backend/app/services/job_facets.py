@@ -65,6 +65,7 @@ def compute_facets(jobs: list[Job], *, now: datetime | None = None) -> JobFacets
     remotes: Counter[str] = Counter()
     salaries: Counter[str] = Counter()
     ages: Counter[str] = Counter()
+    sources: Counter[str] = Counter()
 
     for job in jobs:
         companies[job.company or "Unknown"] += 1
@@ -72,6 +73,7 @@ def compute_facets(jobs: list[Job], *, now: datetime | None = None) -> JobFacets
         remotes[job.remote_mode or "unknown"] += 1
         salaries[_salary_bucket(job)] += 1
         ages[_posted_age_bucket(job, now=now)] += 1
+        sources[job.source or "unknown"] += 1
 
     return JobFacets(
         company=_to_buckets(companies),
@@ -79,4 +81,5 @@ def compute_facets(jobs: list[Job], *, now: datetime | None = None) -> JobFacets
         remote_mode=_to_buckets(remotes),
         salary_bucket=_to_buckets(salaries),
         posted_age=_to_buckets(ages),
+        source=_to_buckets(sources),
     )

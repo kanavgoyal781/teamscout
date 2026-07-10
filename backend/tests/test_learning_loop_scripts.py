@@ -142,6 +142,7 @@ def test_experiment_config_hash_covers_all_result_params() -> None:
         "llm_listwise": lambda v: {**v, "llm_listwise": True},
         "cross_encoder_pool": lambda v: {**v, "cross_encoder_pool": 40},
         "llm_rerank_top_n": lambda v: {**v, "llm_rerank_top_n": 12},
+        "direct_ats_boost": lambda v: {**v, "direct_ats_boost": 3.0},
     }
     for key in RESULT_PARAM_KEYS:
         mutated = mutators[key](base)

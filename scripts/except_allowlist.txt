@@ -13,3 +13,5 @@
 
 backend/app/services/email_reveal.py:except Exception  # rollback-and-reraise after BEGIN IMMEDIATE so terminal email cache is not left half-applied; error is never swallowed
 backend/app/services/observability.py:except BaseException  # re-record trace on any outbound failure then re-raise; never swallow
+backend/app/services/job_sources/registry.py:except Exception  # isolate source failures so one adapter never aborts multi-source search; error counted and surfaced
+backend/app/services/job_sources/sources.py:except Exception  # isolate per-slug ATS board failures; sibling slugs continue; error logged

@@ -60,6 +60,9 @@ export default function HomePage() {
       ) {
         return false;
       }
+      if (facetSelection.source && job.source !== facetSelection.source) {
+        return false;
+      }
       return true;
     });
   }, [results, facetSelection]);

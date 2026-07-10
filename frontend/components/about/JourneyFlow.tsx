@@ -42,8 +42,8 @@ const FEATURE1_STEPS: JourneyStep[] = [
     title: "Fetch jobs",
     product: "Pull a live market pool (~150+) and cache stable job rows.",
     underneath:
-      "jobs.py / jsearch_client multi-query; optional free boards merge + dedupe into jobs_cache.",
-    module: "services/jobs.py · jsearch_client.py",
+      "job_sources registry (JSearch + ATS + feeds); filter/dedupe; jobs_cache.",
+    module: "services/jobs.py · job_sources/",
   },
   {
     id: "rank",

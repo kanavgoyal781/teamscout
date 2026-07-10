@@ -1,12 +1,11 @@
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import httpx
 import pytest
 from app.errors import ServiceNotConfiguredError
 from app.schemas.jobs import Job
 from app.schemas.resume import ResumeProfile
-from app.services import job_boards, jobs
+from app.services import jobs
 
 
 def test_fetch_jobs_missing_key_raises() -> None:
@@ -211,151 +210,6 @@ def test_cache_jobs_preserves_job_id_from_payload_when_column_empty() -> None:
     assert existing.job_id == "payload-job-id"
 
 
-def test_matches_profile_requires_token() -> None:
-    profile = ResumeProfile(title="Data Scientist", skills=["Python", "PyTorch"], location="Remote")
-    assert job_boards._matches_profile("Senior Data Scientist", "Build models", profile) is True
-    assert job_boards._matches_profile("Barista", "Make coffee and latte art", profile) is False
-    assert job_boards._matches_profile("ML Engineer", "Must know Python and ML", profile) is True
-
-
-def test_fetch_optional_boards_swallows_http_errors() -> None:
-    profile = ResumeProfile(title="Engineer", skills=["Python"], location="Remote")
-
-    def boom(_profile: ResumeProfile) -> list[Job]:
-        raise httpx.ConnectError("offline")
-
-    with (
-        patch.object(job_boards, "fetch_remotive", side_effect=boom),
-        patch.object(job_boards, "fetch_arbeitnow", return_value=[]),
-    ):
-        result = job_boards.fetch_optional_boards(profile)
-    assert result == []
-
-
-def test_normalize_remotive_item_via_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
-    profile = ResumeProfile(title="Python Developer", skills=["Python"], location="Remote")
-    payload = {
-        "jobs": [
-            {
-                "id": 99,
-                "url": "https://remotive.com/remote-jobs/software-dev/99",
-                "title": "Python Developer",
-                "company_name": "RemotiveCo",
-                "description": "We need Python developers for backend work.",
-                "candidate_required_location": "Worldwide",
-                "publication_date": "2026-07-01T00:00:00",
-                "tags": ["python", "django"],
-            },
-            {
-                "id": 100,
-                "url": "https://remotive.com/remote-jobs/other/100",
-                "title": "Barista",
-                "company_name": "Cafe",
-                "description": "Coffee only",
-                "candidate_required_location": "US",
-                "publication_date": "2026-07-01T00:00:00",
-                "tags": [],
-            },
-        ]
-    }
-
-    class FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict:
-            return payload
-
-    class FakeClient:
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            pass
-
-        def __enter__(self) -> "FakeClient":
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-        def get(self, *args: object, **kwargs: object) -> FakeResponse:
-            return FakeResponse()
-
-    monkeypatch.setattr(job_boards.httpx, "Client", FakeClient)
-    result = job_boards.fetch_remotive(profile)
-    assert len(result) == 1
-    assert result[0].source == "remotive"
-    assert result[0].company == "RemotiveCo"
-    assert "python" in [s.lower() for s in result[0].skills]
-
-
-def test_merge_fetch_includes_boards(monkeypatch: pytest.MonkeyPatch) -> None:
-    profile = ResumeProfile(title="Backend Engineer", skills=["Python"], location="Remote")
-    posted = (datetime.now(UTC) - timedelta(days=1)).isoformat().replace("+00:00", "Z")
-    jsearch_item = {
-        "job_id": "js-1",
-        "job_title": "Backend Engineer",
-        "job_description": "Python services",
-        "employer_name": "Acme",
-        "job_apply_link": "https://example.com/js",
-        "job_posted_at_datetime_utc": posted,
-        "job_city": "Remote",
-    }
-    board_job = Job(
-        id="board-1",
-        source="remotive",
-        source_job_id="rm-1",
-        title="Python Backend Engineer",
-        company="BoardCo",
-        location="Remote",
-        description="Python backend role",
-        apply_url="https://example.com/board",
-        posted_at=datetime.now(UTC) - timedelta(days=2),
-        skills=["Python"],
-    )
-    db = MagicMock()
-    db.query.return_value.filter.return_value.first.return_value = None
-    db.query.return_value.filter.return_value.one_or_none.return_value = None
-
-    monkeypatch.setattr(jobs.settings, "JOBS_API_KEY", "test-key")
-    monkeypatch.setattr(jobs.settings, "JOBS_API_BASE", "https://jsearch.example")
-    monkeypatch.setattr(jobs.settings, "JOBS_EXTRA_SOURCES_ENABLED", True)
-    monkeypatch.setattr(jobs.settings, "JOBS_FETCH_TARGET", 50)
-    monkeypatch.setattr(jobs, "fetch_jsearch_raw", lambda queries, base_params: ([jsearch_item], 0))
-    monkeypatch.setattr(
-        "app.services.job_boards.fetch_optional_boards",
-        lambda _p: [board_job],
-    )
-
-    class Trace:
-        input_tokens = 0
-        output_tokens = 0
-
-        def __enter__(self) -> "Trace":
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-    monkeypatch.setattr(
-        "app.services.observability.traced_call",
-        lambda *a, **k: Trace(),
-    )
-
-    from app.schemas.jobs import SearchParams
-
-    result = jobs.fetch_jobs(profile, db, params=SearchParams(use_expand=False))
-    sources = {j.source for j in result}
-    assert "jsearch" in sources
-    assert "remotive" in sources
-    db.commit.assert_called()
-
-
-def test_jsearch_source_job_id_uses_apply_url() -> None:
-    from app.services.jsearch_client import jsearch_source_job_id
-
-    assert jsearch_source_job_id({"job_apply_link": "https://x.com/a"}) == "https://x.com/a"
-    assert jsearch_source_job_id({"job_id": "id1", "job_apply_link": "https://x.com/a"}) == "id1"
-
-
 def test_cache_jobs_returns_stable_ids_on_existing() -> None:
     """Returned list must match DB stable id for team flow."""
     db = MagicMock()
@@ -376,3 +230,10 @@ def test_cache_jobs_returns_stable_ids_on_existing() -> None:
     )
     out = jobs._cache_jobs(db, [job])
     assert out[0].id == "stable-A"
+
+
+def test_jsearch_source_job_id_uses_apply_url() -> None:
+    from app.services.jsearch_client import jsearch_source_job_id
+
+    assert jsearch_source_job_id({"job_apply_link": "https://x.com/a"}) == "https://x.com/a"
+    assert jsearch_source_job_id({"job_id": "id1", "job_apply_link": "https://x.com/a"}) == "id1"

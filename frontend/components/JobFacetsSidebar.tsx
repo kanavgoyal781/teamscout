@@ -8,6 +8,7 @@ export type FacetSelection = {
   remote_mode: string | null;
   salary_bucket: string | null;
   posted_age: string | null;
+  source: string | null;
 };
 
 export const EMPTY_FACET_SELECTION: FacetSelection = {
@@ -16,6 +17,7 @@ export const EMPTY_FACET_SELECTION: FacetSelection = {
   remote_mode: null,
   salary_bucket: null,
   posted_age: null,
+  source: null,
 };
 
 type Props = {
@@ -107,6 +109,12 @@ export default function JobFacetsSidebar({ facets, selection, onChange, droppedC
         buckets={facets.posted_age}
         selected={selection.posted_age}
         onSelect={(v) => onChange({ ...selection, posted_age: v })}
+      />
+      <FacetGroup
+        title="Source"
+        buckets={facets.source ?? []}
+        selected={selection.source}
+        onSelect={(v) => onChange({ ...selection, source: v })}
       />
       {droppedEntries.length > 0 ? (
         <div className="dropped-counts" data-testid="dropped-counts">

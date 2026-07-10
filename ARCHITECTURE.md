@@ -11,7 +11,7 @@ flowchart LR
   SQLite[(SQLite file)]
   LLM[LLM OpenAI-compatible]
   Emb[Embeddings API]
-  Jobs[JSearch + optional boards]
+  Jobs[JobSource registry]
   Sumble[Sumble REST]
   Drive[Google Drive API]
 
@@ -35,8 +35,8 @@ Upload PDF/DOCX
   → parser (LLM complete_json, prompt resume_schema)
   → confirm profile fields
   → optional LLM query expand (3–5 variants) + SearchParams hard/soft filters
-  → multi-source job fetch (JSearch multi-query + optional Remotive/Arbeitnow)
-  → annotate + hard filters + exact/embedding dedupe
+  → multi-source job fetch via provider registry (JSearch + free ATS boards + remote feeds + optional Adzuna)
+  → annotate + hard filters + exact/embedding dedupe (prefer direct_ats)
   → dense + BM25 → RRF
   → optional cross-encoder (RRF top 50 → CE → top 15; flag RANKING_USE_CROSS_ENCODER, default off until experiment win)
   → LLM rerank (pointwise default; listwise when RANKING_LLM_LISTWISE) → weighted fuse
@@ -50,10 +50,10 @@ Feature 2 inverts ranking: library resumes are candidates; JD is the query
 
 ## Retrieve → rank funnel
 
-**Jobs (resume search / intent search)** — `app.services.jobs` + `job_boards` + `job_filters` + `ranking` + `hybrid_rank` + `ranking_math`:
+**Jobs (resume search / intent search)** — `app.services.jobs` + `job_sources` + `job_filters` + `ranking` + `hybrid_rank` + `ranking_math`:
 
-1. **Retrieve:** When `use_expand` (default true), LLM expands the profile into 3–5 JSearch queries (`query_expand`, cached by content hash + prompt version). Otherwise `build_jsearch_queries`. Multi-query JSearch up to `JOBS_FETCH_TARGET` (default 150). When `JOBS_EXTRA_SOURCES_ENABLED` (default true), merge optional free boards (Remotive, Arbeitnow) via `job_boards.fetch_optional_boards` — board failures log and continue.
-2. **Normalize / filter / dedupe:** Require title, description, apply URL. Annotate seniority / remote / employment / salary. **Hard** prefs exclude known mismatches (unknown kept). Recency uses `SearchParams.date_window` (`day|3days|week|month`), not the unused `JOBS_RECENCY_DAYS` setting. Exact + optional embedding near-dup merge (`job_dedup`). Cache in SQLite `jobs_cache` with stable `job_id`. Response includes `dropped_counts` and **facet buckets over the filtered fetch pool** (not the ranked top-N).
+1. **Retrieve (provider registry):** When `use_expand` (default true), LLM expands the profile into 3–5 query variants (`query_expand`). Otherwise `build_jsearch_queries`. `job_sources.registry` fans out (concurrency 4) to enabled adapters: **JSearch** (key required), **Greenhouse/Lever/Ashby** board APIs (keyless; slugs in `configs/ats_companies.json`; 6h board cache in `jobs_cache`), **Remotive/RemoteOK** feeds when `remote_mode` is `remote` or `any`, optional **Adzuna** when `ADZUNA_APP_ID`/`ADZUNA_APP_KEY` set. Each call traced as `op=source.<name>`. **One failing source never kills search** — errors counted in `per_source_counts` / `source_errors`. **No HTML scraping** — official public APIs only. ATS boards return full postings; **post-fetch filter** applies title keywords (incl. expansion terms), location/remote, and recency before merge.
+2. **Normalize / filter / dedupe:** Require title, description, apply URL. Annotate seniority / remote / employment / salary; set `source` + `source_quality` (`direct_ats` | `aggregator` | `feed`). **Hard** prefs exclude known mismatches (unknown kept). Recency uses `SearchParams.date_window`. Exact + optional embedding near-dup merge (`job_dedup`) **prefers direct_ats over aggregator/feed** on collision. Soft rank boost for `direct_ats` only via experiment `direct_ats_boost` (default 0). Cache in SQLite `jobs_cache` with stable `job_id`. Response includes `dropped_counts`, `per_source_counts`, source facets, and **facet buckets over the filtered fetch pool** (not the ranked top-N).
 3. **Dense rank:** embed query + candidates (`embeddings`), cosine similarity order (vectors L2-normalized so dot product = cosine). Content-hash cache in `embedding_cache`.
 4. **Lexical rank:** BM25 over tokenized title/skills/description (`rank_bm25`).
 5. **RRF merge:** for 0-based index `i` in each ranking, add `1 / (RRF_K + i + 1)`; `RRF_K` default 60; then min-max normalize → `rrf_normalized` ∈ [0,1].
