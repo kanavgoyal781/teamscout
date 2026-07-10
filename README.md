@@ -1,184 +1,121 @@
 # TeamScout
 
-[![CI](https://github.com/OWNER/teamscout/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/teamscout/actions/workflows/ci.yml)
+[![CI](https://github.com/kanavgoyal781/teamscout/actions/workflows/ci.yml/badge.svg)](https://github.com/kanavgoyal781/teamscout/actions/workflows/ci.yml)
 
-Recruiting intelligence — resume→jobs→team and library→best-resume, with production hardening (containers, CI, rate limits, request IDs). See [ARCHITECTURE.md](./ARCHITECTURE.md).
-
-> Replace `OWNER/teamscout` in the badge URL with your GitHub org/repo.
+Recruiting intelligence for a single operator: parse one resume, rank live job postings with a transparent multi-signal score, then extract a hiring team and optionally reveal emails; or load a resume library, paste a JD, and pick the best resume via MaxSim coverage (not hybrid RRF) with an optional close-call tournament. FastAPI + Next.js + SQLite; external calls fail closed when unconfigured. See [ARCHITECTURE.md](./ARCHITECTURE.md) and [CONSTRAINTS.md](./CONSTRAINTS.md).
 
 ![About TeamScout](./frontend/public/screenshots/07-about.png)
 
-## 3-minute demo (JobRight / Sumble)
+## Features
 
-### Prerequisites
+**Feature 1 — Resume → jobs → hiring team.** Upload a PDF/DOCX (`POST /resumes/upload`), confirm the parsed profile, search (`POST /searches`) for a hybrid-ranked top 10 with per-card **Why this match** score breakdown (LLM fit, RRF, skill, experience, requirements, recency), then on a job: **Find the team** → extract hiring-team signals from the JD → **Confirm & find hiring team** → **Reveal email — preview cost** (`POST /jobs/{id}/extract-team`, `find-team`, `POST /contacts/{id}/reveal-email`). Product copy says “hiring team”; Sumble is the backend people/email provider.
 
-- Python 3.12+
-- Node.js 20+
-- [pnpm](https://pnpm.io/installation) 9+
+**Feature 2 — Resume library → best resume.** Upload many PDF/DOCX/ZIP files (or optional public Drive sync) into a content-hash-deduped library, paste a full job description, and rank library resumes with JD requirement decomposition + MaxSim unit coverage, optional close-call pairwise tournament, and a top-3 comparison showing **Coverage** % vs **Overall match** (`POST /library/upload`, `POST /library/recommend-from-jd`). When coverage scores are close and the tournament reorders the list, the UI shows a **Ranked by close-call tournament** badge. This path does not run the Feature 1 job-board search.
 
-### 1. Configure and start
+## Eval metrics
+
+Latest recorded run per suite from [`evals/history.jsonl`](./evals/history.jsonl) (append-only; regenerate with `make eval` / `make eval-fit` / `python3 scripts/eval_resume_pick.py` / `python3 scripts/experiment.py`). Threshold floors live in [`evals/thresholds.json`](./evals/thresholds.json). Trends: `make eval-report`.
+
+| Suite | Metric | Latest value | Recorded (UTC) | `git_sha` |
+|---|---|---:|---|---|
+| `ranking` | hybrid NDCG@10 | **0.9917** | 2026-07-09 | `b27a953` |
+| `ranking` | hybrid MRR | **1.0000** | 2026-07-09 | `b27a953` |
+| `ranking` | dense NDCG@10 | **0.9848** | 2026-07-09 | `b27a953` |
+| `fit_signals` | experience order accuracy | **0.980** | 2026-07-09 | — |
+| `fit_signals` | requirements order accuracy | **1.000** | 2026-07-09 | — |
+| `fit_signals` | overqualified penalty rate | **1.000** | 2026-07-09 | — |
+| `resume_pick` | win rate (MaxSim path) | **1.000** (8/8) | 2026-07-09 | `b27a953` |
+| `resume_pick` | whole-doc baseline win rate | **0.875** (7/8) | 2026-07-09 | `b27a953` |
+| `diversity` | MMR companies @ top 10 | **9** (rel-only: 3) | 2026-07-09 | `b27a953` |
+| `diversity` | MMR NDCG@10 drop vs rel-only | **0.0175** | 2026-07-09 | `b27a953` |
+| `feedback` | labeled pairs / score separation (ordered fixture) | 30 / **+46.0** | 2026-07-10 | `6125b8d` |
+| `experiment:defaults` | hybrid NDCG@10 (config A/B) | **0.9920** | 2026-07-10 | `b27a953` |
+| Live Sumble E2E | people + reveal smoke | *placeholder — not written to history.jsonl; use `python3 scripts/smoke_sumble.py` when `SUMBLE_API_KEY` is set* | — | — |
+| Public deploy gate | `make demo-check` | *placeholder — requires `DEMO_API_BASE` pointing at a deployed API; local health is `GET /health`* | — | — |
+
+Models on the ranking / resume_pick / diversity rows above: LLM `MiniMaxAI/MiniMax-M2.5`, embeddings `BAAI/bge-m3` (from the history record). Latest `feedback` ordered-fixture row used model `gpt-4o-mini` at sha `6125b8d`. These are fixture/eval numbers, not production traffic quality guarantees. History also logs inverted feedback control batches (negative separation) for gate checks — not used as the headline metric above.
 
 ```bash
-cd /path/to/teamscout
+make eval-report   # trend dump from history.jsonl
+```
+
+## Screenshots
+
+Playwright e2e artifacts under [`frontend/public/screenshots/`](./frontend/public/screenshots/) (`cd frontend && pnpm test:e2e`). Route-mocked API — not live production captures. Relative paths so they render on GitHub. `06-resume-comparison.png` is regenerated with the Feature 2 fixture that sets `tournament_ran` / `overrode_coverage` so **Ranked by close-call tournament**, **Coverage**, and **Overall match** are visible; live demos only show the badge when coverage scores are close enough for an override.
+
+| What | File |
+|---|---|
+| About | [`07-about.png`](./frontend/public/screenshots/07-about.png) |
+| Job match card with **Why this match** score breakdown open | [`03-job-matches.png`](./frontend/public/screenshots/03-job-matches.png) |
+| Resume comparison (Coverage / Overall match + tournament badge when override runs) | [`06-resume-comparison.png`](./frontend/public/screenshots/06-resume-comparison.png) |
+
+![About](./frontend/public/screenshots/07-about.png)
+
+![Job matches — score breakdown open](./frontend/public/screenshots/03-job-matches.png)
+
+![Resume comparison — post-PR-1 Coverage / Overall match](./frontend/public/screenshots/06-resume-comparison.png)
+
+Additional frames (upload, confirm, team panel, library ingest): `01`–`05` in the same directory.
+
+## Live URLs
+
+This repo ships deploy config + CI + `make demo-check`. A public URL exists only after an operator deploys (see [DEPLOYMENT.md](./DEPLOYMENT.md)). Do not treat the names below as always-up SLAs.
+
+| Surface | URL | How to verify |
+|---|---|---|
+| Local UI | http://localhost:3000 | `make dev` |
+| Local API | http://localhost:8000 | `curl -s localhost:8000/health` → `ok: true` for required checks |
+| Deployed API (Fly app name in `fly.toml`) | `https://teamscout-api.fly.dev` | `DEMO_API_BASE=https://teamscout-api.fly.dev make demo-check` |
+| Deployed UI (Vercel) | *operator-linked project; set `NEXT_PUBLIC_API_BASE` to the Fly origin* | `make deploy-status` |
+
+Operator-owned: run `make deploy-status` and `demo-check` before claiming a public URL in a pitch. Config-only PRs do not imply a live deployment.
+
+## 5-minute quickstart
+
+```bash
+# Prerequisites: Python 3.12+, Node 20+, pnpm 9+
 cp .env.example .env
-# Fill LLM_API_KEY, EMBEDDINGS_API_KEY, JOBS_API_KEY, SUMBLE_API_KEY
+# Required for full Feature 1: LLM_API_KEY, EMBEDDINGS_API_KEY, JOBS_API_KEY, SUMBLE_API_KEY
+# (and matching *_API_BASE / model names). Unconfigured services return typed 503 JSON — no silent mocks.
 make install
 make dev
+# Backend http://localhost:8000  ·  Frontend http://localhost:3000
+curl -s http://localhost:8000/health | python3 -m json.tool
 ```
 
-Optional frontend: `NEXT_PUBLIC_GITHUB_BASE=https://github.com/<org>/<repo>/blob/main` for About page repo links.
+1. Open http://localhost:3000 (sidebar **Feature 1** / “Resume → Jobs → Team”).
+2. Upload [`samples/sample_resume.pdf`](./samples/sample_resume.pdf) → **Upload & parse** → **Confirm profile** → **Search jobs**.
+3. Expand **Why this match** on a card; optional **Find the team** → **Extract team from description** → **Confirm & find hiring team** → **Reveal email — preview cost** (confirm only if credits allow).
+4. Sidebar **Feature 2** → **Upload files or ZIP** (≥1 distinct PDF) → paste a JD → **Find best resume for this job**. Look for **Coverage** % vs **Overall match**; if scores were close and reordered, the **Ranked by close-call tournament** badge appears.
 
+Timed walkthrough: [DEMO.md](./DEMO.md).
 
-- Backend: http://localhost:8000
-- Frontend: http://localhost:3000
-
-### 2. Feature 1 — Resume → Jobs → Sumble team
-
-1. Open http://localhost:3000 (sidebar: **Resume → Jobs → Team**)
-2. Upload `samples/sample_resume.pdf`
-3. Confirm title, location, and skills
-4. Click **Search jobs** → review top 10 ranked matches
-5. On a job, click **Extract team from description** → **Confirm & search Sumble**
-6. Preview then confirm **Reveal email** per contact
-
-### 3. Feature 2 — Resume library + best resume
-
-1. Open http://localhost:3000/library (sidebar: **Resume Library**)
-2. Upload multiple PDF/DOCX files or a ZIP of resumes (or sync a public Drive folder — see below)
-3. Fill the intent form (role, years, location, remote preference) → **Search jobs by intent**
-4. Click **Pick best resume** on a job
-5. Review top 3 resumes with score breakdown, JD coverage table, and LLM justification
-
-### Google Drive sync (optional)
-
-Public shared-folder approach (recommended):
-
-1. Create a Google Cloud project and enable **Google Drive API**
-2. Create an API key and set `GOOGLE_DRIVE_API_KEY` in `.env`
-3. Share the Drive folder as **Anyone with the link**
-4. Paste the folder URL in the library UI → **Sync Drive folder**
-
-Without `GOOGLE_DRIVE_API_KEY` (or OAuth client credentials), Drive sync hard-fails with a clear 503 error.
-
-
-## Docker (production-style local)
-
-```bash
-cp .env.example .env
-# Fill LLM_*, EMBEDDINGS_*, JOBS_*, SUMBLE_* (and optional Drive keys)
-docker compose up --build
-```
-
-- API: http://localhost:8000  (`GET /health` includes `version`; `GET /livez` is process liveness)
-- UI: http://localhost:3000
-- SQLite + uploads persist in named volumes `teamscout-data` / `teamscout-uploads`
-- Set `NEXT_PUBLIC_API_BASE=http://localhost:8000` (browser → host-mapped backend)
-- Required env vars are documented in `.env.example` (compose uses `env_file: .env`)
-
-## Public deploy (Fly.io + Vercel)
-
-See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for zero→live commands (`fly.toml`, secrets, Vercel `NEXT_PUBLIC_API_BASE`, Litestream/volume backups, CI deploy job, cost notes).
-
-```bash
-make deploy-status         # CLIs + auth + app status (no mutations)
-make deploy-api            # flyctl deploy (requires fly auth + secrets)
-make deploy-web            # vercel --prod (requires vercel auth + project link)
-# After the API is live and secrets are set on the server:
-DEMO_API_BASE=https://YOUR-APP.fly.dev make demo-check
-```
-
-Config-only PRs do not imply a public URL is already live — the runbook is the operator path.
-## Development
-
-```bash
-make test
-make pipeline              # scope → backend unit tests → fit-signal eval (+ ranking/resume-pick if embeddings in .env; + demo-check if DEMO_API_BASE)
-make pipeline-offline      # scope → backend unit tests → fit-signal eval only
-make eval-fit              # YOE + requirements order (no embeddings)
-make eval                  # hybrid ranking NDCG/MRR (needs embeddings; LLM optional)
-make eval-report           # trends from evals/history.jsonl
-cd backend && pytest -q
-cd frontend && pnpm build && pnpm test
-python3 scripts/smoke_sumble.py
-```
-## API (M4)
-
-| Endpoint | Description |
-|---|---|
-| `GET /health` | Config presence for all integrations |
-| `POST /resumes/upload` | Parse PDF/DOCX → `ResumeProfile` |
-| `PUT /resumes/{id}/confirm` | Confirm editable profile fields |
-| `POST /searches` | Fetch jobs, hybrid rank, return top 10 |
-| `POST /jobs/{job_id}/extract-team` | LLM team extraction from cached job JD |
-| `POST /jobs/{job_id}/find-team` | Sumble people search with confirmed extraction |
-| `GET /jobs/{job_id}/team` | List cached contacts for a job |
-| `POST /contacts/{id}/reveal-email` | Preview or confirm email reveal (`?confirm=true`) |
-| `POST /library/drive/sync` | Sync PDF/DOCX from public Drive folder |
-| `POST /library/upload` | Upload multi-file or ZIP into resume library |
-| `GET /library/resumes` | List library resumes (hash-deduped) |
-| `POST /library/intent/search` | Fetch + rank jobs for intent form |
-| `POST /library/jobs/{job_id}/recommend-resumes` | Top 3 library resumes for a job |
-
-## Ranking pipeline
-
-**Jobs (Feature 1)** — see [ARCHITECTURE.md](./ARCHITECTURE.md) for the full funnel:
-
-1. Multi-source fetch (~150): optional LLM query expand → JSearch multi-query + optional Remotive/Arbeitnow; recency via `SearchParams.date_window` (default **month**); hard/soft prefs; exact/embedding dedupe; SQLite `jobs_cache`
-2. Dense cosine similarity + BM25 lexical retrieval
-3. Reciprocal Rank Fusion (`k=60`)
-4. LLM rerank top 30 in batches of **6** (retry + labeled heuristic fill for omitted ids)
-5. Final score (defaults): `0.38·LLM + 0.20·RRF + 0.12·skills + 0.12·experience + 0.10·requirements + 0.08·recency`, then soft-pref boosts + MMR diversify
-
-**Resume pick (Feature 2):** JD → atomic requirements → MaxSim unit coverage → optional close-call pairwise tournament → top 3 with alignment + justification. Not hybrid RRF.
-
-**Deploy model:** single-operator demo. No multi-user auth; protect public deploys with network gates / secrets and daily cost ceilings (see DEPLOYMENT.md).
-
-## UI screenshots (M10)
-
-Generated by Playwright e2e (`cd frontend && pnpm test:e2e`) with a route-mocked API — not live production captures.
-
-| Screen | File |
-|---|---|
-| Wizard upload | `frontend/public/screenshots/01-wizard-upload.png` |
-| Profile confirm | `frontend/public/screenshots/02-profile-confirm.png` |
-| Job matches | `frontend/public/screenshots/03-job-matches.png` |
-| Team discovery | `frontend/public/screenshots/04-team-discovery.png` |
-| Resume library | `frontend/public/screenshots/05-library.png` |
-| Top-3 comparison | `frontend/public/screenshots/06-resume-comparison.png` |
-
-Embed after a local e2e run:
-
-![Wizard upload](./frontend/public/screenshots/01-wizard-upload.png)
-![Job matches](./frontend/public/screenshots/03-job-matches.png)
-![Top-3 comparison](./frontend/public/screenshots/06-resume-comparison.png)
-
-### Frontend elevation notes
-
-- Dark-first theme + light toggle (cookie class strategy (no browser storage APIs))
-- `@tanstack/react-query` for server data; credit mutations use `retry: false`
-- Sonner toasts surface backend `message` and request id when present
-- Lighthouse scores were **not** measured in this milestone; manual targets remain Perf ≥85 / A11y ≥95 / BP ≥95 if you run a local audit
-
-## Architecture
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the ranking funnel, credit-safety, and deploy surface.
-
-## Stack
+## Stack & docs
 
 | Layer | Choice |
 |---|---|
 | Backend | FastAPI, Python 3.12, Pydantic v2 |
 | Frontend | Next.js, pnpm, Tailwind |
-| Database | SQLite via SQLAlchemy |
+| Database | SQLite via SQLAlchemy (no Postgres required) |
+| Ranking | In-process dense + BM25 + RRF + LLM rerank; MaxSim + optional tournament for resume pick |
 | Secrets | Repo-root `.env` only |
 
-## Milestone 4 scope
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — request paths, ranking funnel, credit-safety
+- [CONSTRAINTS.md](./CONSTRAINTS.md) — anti-bloat / honesty contract (`make check-scope`)
+- [DEPLOYMENT.md](./DEPLOYMENT.md) — Fly + Vercel operator runbook
+- [AGENTS.md](./AGENTS.md) — contributor product bounds
 
-- Google Drive + local/ZIP resume library with content-hash dedup
-- Intent form → ranked job list
-- Best-resume pick with coverage table + LLM justification
-- Sidebar navigation with disabled Beta tabs (tooltip: "Coming soon")
-- `scripts/eval_resume_pick.py` + pytest coverage
-- M3 structural debt: decomposed frontend, indexed job lookup, `team_search` service
+## Development gates
 
-Not implemented: outreach, applications tracker, auto-submit.
+```bash
+make check-scope           # anti-bloat
+make test                  # backend pytest + frontend unit
+make pipeline-offline      # scope + unit + fit_signals
+make pipeline              # + ranking/resume_pick when embeddings configured; + demo-check if DEMO_API_BASE set
+make eval-report
+python3 scripts/smoke_sumble.py   # when SUMBLE_API_KEY set
+```
+
+## Not in product scope
+
+Outreach automation, applications tracker, multi-tenant auth, Kubernetes/Terraform/Kafka/feature stores. Beta sidebar tabs are disabled stubs (“Coming soon”).

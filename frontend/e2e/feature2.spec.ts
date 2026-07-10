@@ -29,6 +29,13 @@ test.describe("Feature 2 — library → paste JD → best resume", () => {
     await expect(page.getByText("Best match")).toBeVisible();
     await expect(page.getByText("✓").first()).toBeVisible();
     await expect(page.getByText("Experience").first()).toBeVisible();
+    // Post-PR-1: Coverage label, Overall match ring, tournament badge when override ran.
+    await expect(page.getByTestId("coverage-label-0")).toContainText(/Coverage/i);
+    await expect(page.getByText("Overall match").first()).toBeVisible();
+    await expect(page.getByTestId("tournament-override-badge")).toContainText(
+      /Ranked by close-call tournament/i,
+    );
+    await expect(page.getByTestId("tournament-cost")).toContainText(/Close-call tournament/i);
     await waitForOpacityOne(page, "recommendation-0");
     await waitForOpacityOne(page, "recommendation-1");
     await waitForOpacityOne(page, "recommendation-2");

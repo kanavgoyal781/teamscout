@@ -60,7 +60,8 @@ export const rankedJob = {
     dense_rank_score: 0.7,
     skill_jaccard: 0.66,
     recency: 0.9,
-    experience_fit: null,
+    experience_fit: 0.8,
+    requirements_met: 0.75,
     final_score: 87,
     matched_skills: ["Python", "SQL"],
     missing_skills: ["Kubernetes"],
@@ -277,15 +278,32 @@ export async function mockApi(
       });
     }
 
+    // Post-PR-1 shape: Coverage % vs Overall match ring; optional close-call tournament.
+    // Tournament mock overrides pure coverage order (grace had higher coverage, ada wins).
     const recPayload = {
       job_id: "job-paste-1",
       job_title: "Staff Backend Engineer",
       job_company: "Acme Labs",
+      tournament_ran: true,
+      tournament_comparisons: 2,
       recommendations: [
         {
           resume_id: "lib-1",
           filename: "ada.pdf",
           match_score: 91,
+          coverage_score: 0.88,
+          content_hash: "h1",
+          tournament: {
+            ran: true,
+            comparisons: 2,
+            cache_hits: 0,
+            cost_usd: 0.002,
+            wins: 2,
+            contested: true,
+            overrode_coverage: true,
+            borda_score: 2.0,
+            reasons: ["ada.pdf beats grace.pdf on production Python API evidence"],
+          },
           score_breakdown: {
             ...rankedJob.score_breakdown,
             recency: 0,
@@ -303,12 +321,25 @@ export async function mockApi(
         {
           resume_id: "lib-2",
           filename: "grace.pdf",
-          match_score: 78,
+          match_score: 86,
+          coverage_score: 0.9,
+          content_hash: "h2",
+          tournament: {
+            ran: true,
+            comparisons: 2,
+            cache_hits: 0,
+            cost_usd: 0.002,
+            wins: 1,
+            contested: true,
+            overrode_coverage: true,
+            borda_score: 1.0,
+            reasons: ["grace.pdf loses to ada.pdf on production Python depth"],
+          },
           score_breakdown: {
             ...rankedJob.score_breakdown,
             recency: 0,
             experience_fit: 0.6,
-            final_score: 78,
+            final_score: 86,
             rationale: "Solid systems background with partial skill overlap.",
             matched_skills: ["Systems"],
             missing_skills: ["SQL"],
@@ -322,6 +353,19 @@ export async function mockApi(
           resume_id: "lib-3",
           filename: "alan.pdf",
           match_score: 70,
+          coverage_score: 0.55,
+          content_hash: "h3",
+          tournament: {
+            ran: true,
+            comparisons: 2,
+            cache_hits: 0,
+            cost_usd: 0.002,
+            wins: 0,
+            contested: false,
+            overrode_coverage: false,
+            borda_score: 0.0,
+            reasons: [],
+          },
           score_breakdown: {
             ...rankedJob.score_breakdown,
             recency: 0,

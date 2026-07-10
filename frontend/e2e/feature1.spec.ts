@@ -39,6 +39,10 @@ test.describe("Feature 1 — resume → jobs → team", () => {
     await waitForOpacityOne(page, "job-card-0");
     await waitForOpacityOne(page, "job-card-1");
 
+    // Open score breakdown on card #1 so README screenshot shows bars (LLM/RRF/Skill/…).
+    await page.getByTestId("job-card-0").getByText("Why this match").click();
+    await expect(page.getByTestId("job-card-0").getByText("LLM fit")).toBeVisible();
+
     await page.screenshot({
       path: "public/screenshots/03-job-matches.png",
       fullPage: true,
