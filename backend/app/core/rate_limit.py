@@ -9,7 +9,6 @@ from slowapi.util import get_remote_address
 
 from app.core.config import settings
 
-
 def _key_func(request: Request) -> str:
     return get_remote_address(request)
 

@@ -1,13 +1,10 @@
 """Requirement-level resume ranking: MaxSim coverage + optional pairwise tournament."""
-
 from __future__ import annotations
-
 from collections import defaultdict
-
 from sqlalchemy.orm import Session
-
 from app.core.config import settings
 from app.core.env_utils import is_set
+from app.core.logging import get_logger
 from app.schemas.jobs import Job, ScoreBreakdown
 from app.schemas.library import (
     AlignmentRow,
@@ -25,6 +22,7 @@ from app.services.ranking_math_align import (
     align_resume,
     cluster_variant_label,
     single_linkage_clusters,
+    under_segmented_units,
 )
 from app.services.resume_justify import (
     ResumeRerankItem as _ResumeRerankItem,
@@ -36,13 +34,14 @@ from app.services.resume_justify import (
     evidence_units_from_alignment,
     llm_justify,
     rationale_cites_units,
+    rationale_rank_consistent,
     rationale_references_resume,
 )
 from app.services.resume_units import ensure_candidate_units
-
-# Back-compat re-exports for tests
+logger = get_logger(__name__)
 _rationale_cites_units = rationale_cites_units
 _rationale_references_resume = rationale_references_resume
+_rationale_rank_consistent = rationale_rank_consistent
 _llm_justify = llm_justify
 _llm_rerank = llm_justify
 _ = (_ResumeRerankItem, _ResumeRerankResponse)
@@ -50,7 +49,6 @@ _ = (_ResumeRerankItem, _ResumeRerankResponse)
 def _whole_doc_baseline_order(job: Job, candidates: list[ResumeCandidate]) -> list[str]:
     """Whole-document dense cosine order (no unit MaxSim, no keyword requirements)."""
     from app.services.ranking_math import cosine_similarity
-
     query = "\n".join(
         p for p in [job.title, job.company, ", ".join(job.skills), job.description[:2000]] if p
     )
@@ -67,7 +65,6 @@ def _whole_doc_baseline_order(job: Job, candidates: list[ResumeCandidate]) -> li
 def recluster_library(db: Session) -> dict[str, str]:
     """Recompute near-dup clusters for all library resumes; persist cluster_id."""
     from app.db.models import Resume
-
     rows = db.query(Resume).filter(Resume.in_library.is_(True)).all()
     if not rows:
         return {}
@@ -96,13 +93,13 @@ def rank_resumes_for_job(
 ) -> list[RankedResumeRecommendation]:
     if not candidates:
         return []
-
     by_id = {c.resume_id: c for c in candidates}
     requirements = decompose_jd(job, use_llm=use_llm, db=db)
     req_texts = [r.text for r in requirements]
     weights = [r.weight for r in requirements]
+    categories = [r.category for r in requirements]
     req_embs = embeddings.embed_batch(req_texts)
-
+    evidence_floor = float(settings.EVIDENCE_FLOOR)
     units_by_id: dict[str, list] = {}
     whole_texts: list[str] = []
     whole_ids: list[str] = []
@@ -111,7 +108,6 @@ def rank_resumes_for_job(
         units_by_id[c.resume_id] = units
         whole_ids.append(c.resume_id)
         whole_texts.append(c.profile.search_text() or c.filename)
-
     whole_vecs = embeddings.embed_batch(whole_texts)
     cluster_map = single_linkage_clusters(whole_ids, whole_vecs)
     members: dict[str, list[str]] = defaultdict(list)
@@ -119,17 +115,14 @@ def rank_resumes_for_job(
         members[cid].append(rid)
     for cid in members:
         members[cid].sort()
-
     if db is not None:
         from app.db.models import Resume
-
         for rid, cid in cluster_map.items():
             row = db.query(Resume).filter(Resume.id == rid).one_or_none()
             if row is not None:
                 row.cluster_id = cid
                 db.add(row)
         db.commit()
-
     coverage_by_id: dict[str, float] = {}
     alignment_by_id: dict[str, list[dict]] = {}
     for c in candidates:
@@ -139,7 +132,6 @@ def rank_resumes_for_job(
         unit_sections = [u.section for u in units if u.embedding is not None]
         if len(unit_embs) != len([u for u in units if u.embedding is not None]) or not unit_embs:
             from app.services.resume_units import embed_units, extract_units
-
             fresh = embed_units(extract_units(c.profile))
             unit_embs = [u.embedding for u in fresh if u.embedding is not None]
             unit_texts = [u.unit_text for u in fresh if u.embedding is not None]
@@ -153,14 +145,23 @@ def rank_resumes_for_job(
             unit_texts,
             c.profile.skills,
             unit_sections=unit_sections,
+            evidence_floor=evidence_floor,
+            categories=categories,
         )
         for i, row in enumerate(rows):
             if i < len(requirements):
                 row["kind"] = requirements[i].kind
                 row["category"] = requirements[i].category
+        over_cited = under_segmented_units(rows)
+        if over_cited:
+            logger.warning(
+                "resume_units.under_segmented",
+                resume_id=c.resume_id,
+                units=over_cited[:5],
+                message="unit cited as best evidence for >3 requirements",
+            )
         coverage_by_id[c.resume_id] = cov
         alignment_by_id[c.resume_id] = rows
-
     ordered_ids = sorted(coverage_by_id.keys(), key=lambda i: (-coverage_by_id[i], i))
     evidences = [
         AlignmentEvidence(
@@ -168,25 +169,29 @@ def rank_resumes_for_job(
             content_hash=by_id[rid].content_hash or rid,
             coverage=coverage_by_id[rid],
             top_units=evidence_units_from_alignment(alignment_by_id[rid]),
+            alignment_rows=alignment_by_id[rid],
+            filename=by_id[rid].filename,
         )
         for rid in ordered_ids
     ]
-
     tournament = maybe_run_tournament(job, requirements, evidences, use_llm=use_llm, db=db)
     final_ids = tournament.ordered_ids
     top_n = min(settings.RESUME_RECOMMEND_TOP_N, len(final_ids))
-
     justify_lookup = {}
     if use_llm and top_n > 0:
+        top_candidates = [by_id[i] for i in final_ids[:top_n]]
+        rank_by_id = {rid: idx + 1 for idx, rid in enumerate(final_ids[:top_n])}
         justify_lookup = llm_justify(
             job,
-            [by_id[i] for i in final_ids[:top_n]],
+            top_candidates,
             alignment_by_id,
             requirements,
+            rank_by_id=rank_by_id,
+            tournament_wins=tournament.wins if tournament.ran else {},
+            contested_ids=set(tournament.contested_ids) if tournament.ran else set(),
         )
-
     ranked: list[RankedResumeRecommendation] = []
-    for rid in final_ids[:top_n]:
+    for rank_idx, rid in enumerate(final_ids[:top_n]):
         c = by_id[rid]
         cov = coverage_by_id[rid]
         rows = alignment_by_id[rid]
@@ -197,12 +202,19 @@ def rank_resumes_for_job(
             if item
             else f"Coverage {cov:.0%} on {len(requirements)} requirements; best evidence: {units_preview[0][:160]}"
         )
+        if not rationale_rank_consistent(rationale, final_rank=rank_idx + 1):
+            if rank_idx == 0:
+                pass
+            else:
+                rationale = (
+                    f"Rank #{rank_idx + 1} with {cov:.0%} requirement coverage; "
+                    f"evidence: {units_preview[0][:160]}"
+                )
         matched = item.matched_skills if item else [r["requirement"] for r in rows if r.get("status") == "hit"][:12]
         missing = item.missing_skills if item else [r["requirement"] for r in rows if r.get("status") == "miss"][:12]
         llm_fit = float(item.fit_score) if item else cov * 100.0
         skill = skill_jaccard(c.profile.skills, job.skills)
         from app.services.ranking_math import experience_fit_score
-
         exp = experience_fit_score(
             c.profile.years_of_experience,
             title=job.title,
@@ -212,7 +224,6 @@ def rank_resumes_for_job(
         match_score = cov * 100.0
         if tournament.ran and rid in tournament.contested_ids and tournament.ordered_ids[:1] == [rid]:
             match_score = min(100.0, match_score + 1.0)
-
         cid = cluster_map.get(rid, rid)
         mlist = members.get(cid, [rid])
         cov_rows = [
@@ -221,7 +232,6 @@ def rank_resumes_for_job(
             )
             for r in rows
         ]
-
         ranked.append(
             RankedResumeRecommendation(
                 resume_id=c.resume_id,
@@ -264,6 +274,7 @@ def rank_resumes_for_job(
                     cost_usd=tournament.cost_usd if tournament.ran else None,
                     wins=tournament.wins.get(rid, 0) if tournament.ran else 0,
                     contested=rid in tournament.contested_ids if tournament.ran else False,
+                    overrode_coverage=bool(tournament.overrode_coverage) if tournament.ran else False,
                     reasons=[
                         reason
                         for (a, b), reason in tournament.reasons.items()

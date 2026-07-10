@@ -14,7 +14,6 @@ from app.services.ranking_math import (
     tokenize,
 )
 
-
 @dataclass(frozen=True)
 class Rankable:
     id: str

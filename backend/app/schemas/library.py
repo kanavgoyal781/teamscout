@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 from app.schemas.jobs import RankedJob, ScoreBreakdown
 from app.schemas.resume import ResumeProfile
 
-
 class IntentProfile(BaseModel):
     role: str
     years_of_experience: float = 0
@@ -108,6 +107,7 @@ class TournamentRecord(BaseModel):
     cost_usd: float | None = None
     wins: int = 0
     contested: bool = False
+    overrode_coverage: bool = False
     reasons: list[str] = Field(default_factory=list)
 
 class RankedResumeRecommendation(BaseModel):

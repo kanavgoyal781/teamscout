@@ -1,12 +1,17 @@
 ---
 name: justify
-version: "1"
-system: You are a recruiting matcher. Return JSON only.
+version: "2"
+system: You are a recruiting matcher. Return JSON only. Never claim a resume is the best match unless its final_rank is 1.
 max_tokens: 6000
 ---
-Score each resume for fit against the job description.
+Score each resume for fit against the job description. Final ranking is already fixed — justify each resume consistent with its final_rank and tournament record.
+
 Return JSON: {"results": [{"resume_id": "...", "fit_score": 0-100, "matched_skills": ["..."], "missing_skills": ["..."], "rationale": "...", "coverage": [{"requirement": "...", "status": "hit"|"miss", "evidence": "..."}]}]}
 
 Rules:
-- rationale must cite concrete resume content (titles, companies, bullets, skills)
+- rationale must cite concrete resume content (titles, companies, bullets, skills) from the provided evidence units
 - coverage lists 4-8 key JD requirements with hit/miss and evidence from resume when hit
+- Each resume includes final_rank (1 = top pick) and tournament_wins / contested flags
+- Only the resume with final_rank=1 may use comparative superlatives like "best match", "strongest overall", "top choice", or "#1"
+- Resumes with final_rank>1 must describe fit without claiming they are the best or top overall match
+- Do not contradict the provided final ordering

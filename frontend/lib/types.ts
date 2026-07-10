@@ -239,6 +239,8 @@ export type TournamentRecord = {
   cost_usd: number | null;
   wins: number;
   contested: boolean;
+  /** True when tournament reordering differed from pure coverage order. */
+  overrode_coverage?: boolean;
   reasons: string[];
 };
 

@@ -7,8 +7,12 @@ import random
 
 import pytest
 from app.services.ranking_math_align import (
+    DEFAULT_EVIDENCE_FLOOR,
+    NO_CLEAR_EVIDENCE,
     align_resume,
+    apply_evidence_floor,
     borda_order,
+    borda_points_for_margin,
     close_call_band,
     coverage_from_evidence,
     maxsim_best_unit_index,
@@ -19,6 +23,9 @@ from app.services.ranking_math_align import (
     single_linkage_clusters,
     skill_equals,
     skill_match_bonus_applies,
+    skill_match_level,
+    skill_requirement_score,
+    under_segmented_units,
     unit_evidence_score,
 )
 
@@ -173,6 +180,34 @@ def test_coverage_bounds() -> None:
     assert coverage_from_evidence([0.0, 0.0], [0.5, 0.9]) == 0.0
 
 
+def test_apply_evidence_floor_rescale() -> None:
+    floor = DEFAULT_EVIDENCE_FLOOR
+    assert apply_evidence_floor(0.0, floor=floor) == 0.0
+    assert apply_evidence_floor(floor - 0.01, floor=floor) == 0.0
+    assert apply_evidence_floor(floor, floor=floor) == pytest.approx(0.0)
+    assert apply_evidence_floor(1.0, floor=floor) == pytest.approx(1.0)
+    mid = floor + (1.0 - floor) * 0.5
+    assert apply_evidence_floor(mid, floor=floor) == pytest.approx(0.5)
+
+
+def test_skill_requirement_exact_alias_semantic_cap() -> None:
+    assert skill_match_level("Python", "Python") == "exact"
+    assert skill_match_level("Go", "Golang") == "alias"
+    exact = skill_requirement_score(
+        "Python", skills=["Python"], unit_texts=["other work"], semantic_score=0.2
+    )
+    assert exact == pytest.approx(1.0)
+    alias = skill_requirement_score(
+        "Go", skills=["Golang"], unit_texts=[], semantic_score=0.95
+    )
+    assert alias == pytest.approx(0.9)
+    # No skill match: semantic capped at 0.6 even if raw MaxSim is high
+    soft = skill_requirement_score(
+        "Rust", skills=[], unit_texts=["systems programming"], semantic_score=0.92
+    )
+    assert soft == pytest.approx(0.6)
+
+
 def test_align_resume_rows_and_coverage() -> None:
     reqs = [_norm([1.0, 0.0, 0.0]), _norm([0.0, 1.0, 0.0])]
     units = [_norm([1.0, 0.0, 0.0]), _norm([0.0, 0.0, 1.0])]
@@ -181,7 +216,164 @@ def test_align_resume_rows_and_coverage() -> None:
     cov, rows = align_resume(reqs, texts, [2.0, 1.0], units, unit_texts, ["python"])
     assert 0.0 <= cov <= 1.0
     assert len(rows) == 2
+    assert rows[0]["status"] == "hit"
     assert rows[0]["evidence_unit"] == "Built python APIs"
+    # python skill exact → raw 1.0 → floor-rescaled 1.0
+    assert rows[0]["evidence_score"] == pytest.approx(1.0)
+
+
+def test_align_skill_vs_experience_paths() -> None:
+    """Skill category uses matcher; experience uses MaxSim (no 0.6 semantic cap)."""
+    req = _norm([1.0, 0.0, 0.0])
+    unit = _norm([0.9, 0.1, 0.0])  # high semantic
+    # skill without list match: capped then floored
+    cov_s, rows_s = align_resume(
+        [req],
+        ["obscure-framework"],
+        [2.0],
+        [unit],
+        ["related systems work with obscure-framework patterns"],
+        [],
+        categories=["skill"],
+        evidence_floor=0.55,
+    )
+    # phrase hit on unit → exact 1.0
+    assert rows_s[0]["status"] == "hit"
+
+    # experience category: high MaxSim can pass floor without skill list
+    strong = _norm([1.0, 0.0, 0.0])
+    cov_e, rows_e = align_resume(
+        [strong],
+        ["5+ years leading platform teams"],
+        [2.0],
+        [strong],
+        ["Led platform engineering for five years at scale"],
+        [],
+        categories=["experience"],
+        evidence_floor=0.55,
+    )
+    assert rows_e[0]["raw_evidence_score"] >= 0.55
+    assert rows_e[0]["status"] == "hit"
+    assert cov_e > 0
+
+
+def test_align_below_floor_is_no_clear_evidence() -> None:
+    req = _norm([1.0, 0.0, 0.0])
+    weak = _norm([0.0, 1.0, 0.0])  # orthogonal → cosine ~0
+    cov, rows = align_resume(
+        [req],
+        ["TotallyUnrelatedSkillXYZ"],
+        [2.0],
+        [weak],
+        ["Managed office supplies inventory"],
+        [],
+        categories=["skill"],
+        evidence_floor=0.55,
+    )
+    assert rows[0]["status"] == "miss"
+    assert rows[0]["evidence_score"] == 0.0
+    assert rows[0]["evidence_unit"] == NO_CLEAR_EVIDENCE
+    assert cov == 0.0
+
+
+def test_one_must_have_difference_coverage_gap_at_least_8_points() -> None:
+    """Two resumes differing in exactly one must-have → coverage gap ≥ 0.08 (0–1 scale).
+
+    Coverage is a weighted mean of floor-rescaled evidences in [0, 1]. An 8-point
+    gap means absolute difference ≥ 0.08 on that scale (equivalent to 8 percentage
+    points when displayed as percent).
+
+    Guarantee assumes a full hit vs miss on the differing must (exact skill list),
+    not a capped semantic near-miss (cap 0.6 → ~0.111 after floor).
+    """
+    # Abstract: four equal must-weights; only the first evidence differs.
+    weights = [2.0, 2.0, 2.0, 2.0]
+    shared = [1.0, 1.0, 1.0]
+    full = coverage_from_evidence(weights, [1.0, *shared])
+    missing = coverage_from_evidence(weights, [0.0, *shared])
+    gap = full - missing
+    assert gap >= 0.08, f"expected ≥0.08 coverage gap, got {gap}"
+    assert gap == pytest.approx(0.25)
+
+    # Production path: align_resume + evidence floor + kind-aware skill scoring
+    dim = 4
+    req_texts = ["Python", "FastAPI", "PostgreSQL", "AWS"]
+    req_embs = [_norm([1.0 if i == j else 0.0 for i in range(dim)]) for j in range(4)]
+    weights = [2.0, 2.0, 2.0, 2.0]
+    unit_embs = [_norm([0.25, 0.25, 0.25, 0.25])]
+    unit_texts = ["General platform engineering work"]
+    cov_full, rows_full = align_resume(
+        req_embs, req_texts, weights, unit_embs, unit_texts,
+        ["Python", "FastAPI", "PostgreSQL", "AWS"],
+        categories=["skill"] * 4, evidence_floor=0.55,
+    )
+    cov_miss, rows_miss = align_resume(
+        req_embs, req_texts, weights, unit_embs, unit_texts,
+        ["Python", "FastAPI", "PostgreSQL"],  # missing AWS
+        categories=["skill"] * 4, evidence_floor=0.55,
+    )
+    align_gap = cov_full - cov_miss
+    assert align_gap >= 0.08, f"align_resume gap {align_gap} < 0.08"
+    assert rows_full[3]["status"] == "hit"
+    assert rows_miss[3]["status"] == "miss"
+    assert rows_miss[3]["evidence_unit"] == NO_CLEAR_EVIDENCE
+
+
+def test_floor_equality_miss_clears_evidence_unit() -> None:
+    """raw == floor rescales to 0 → miss with No clear evidence (not a leftover unit)."""
+    assert apply_evidence_floor(0.55, floor=0.55) == pytest.approx(0.0)
+    # Alias skill score is 0.9; set floor=0.9 so raw == floor → rescaled 0 / miss.
+    req = _norm([1.0, 0.0, 0.0])
+    unit = _norm([0.0, 1.0, 0.0])
+    cov, rows = align_resume(
+        [req],
+        ["Go"],
+        [2.0],
+        [unit],
+        ["Wrote Golang microservices at scale"],  # unit mentions alias form
+        ["Golang"],
+        categories=["skill"],
+        evidence_floor=0.9,
+    )
+    assert rows[0]["raw_evidence_score"] == pytest.approx(0.9) or rows[0]["raw_evidence_score"] == pytest.approx(1.0)
+    # When raw is alias 0.9 or exact 1.0 via unit phrase:
+    # If exact (phrase): raw 1.0 → hit. Prefer unit without exact token form.
+    cov2, rows2 = align_resume(
+        [req],
+        ["Go"],
+        [2.0],
+        [unit],
+        ["Unrelated systems work only"],
+        ["Golang"],  # alias on skill list only → raw 0.9
+        categories=["skill"],
+        evidence_floor=0.9,
+    )
+    assert rows2[0]["raw_evidence_score"] == pytest.approx(0.9)
+    assert rows2[0]["evidence_score"] == pytest.approx(0.0)
+    assert rows2[0]["status"] == "miss"
+    assert rows2[0]["evidence_unit"] == NO_CLEAR_EVIDENCE
+
+
+def test_under_segmented_units_detects_over_citation() -> None:
+    rows = [
+        {"evidence_unit": "same bullet", "status": "hit"},
+        {"evidence_unit": "same bullet", "status": "hit"},
+        {"evidence_unit": "same bullet", "status": "hit"},
+        {"evidence_unit": "same bullet", "status": "hit"},
+        {"evidence_unit": "other", "status": "hit"},
+    ]
+    assert "same bullet" in under_segmented_units(rows, max_citations=3)
+
+
+def test_borda_margin_points() -> None:
+    assert borda_points_for_margin("decisive") == 1.0
+    assert borda_points_for_margin("slight") == 0.5
+    contested = ["r1", "r2", "r3"]
+    wins = {("r1", "r2"): "r2", ("r1", "r3"): "r1", ("r2", "r3"): "r2"}
+    # slight win for r2 over r1; decisive elsewhere — r2 still leads on points
+    margins = {("r1", "r2"): "slight", ("r1", "r3"): "decisive", ("r2", "r3"): "decisive"}
+    ordered = borda_order(contested, wins, pairwise_margins=margins)
+    assert ordered[0] == "r2"
 
 
 def test_single_linkage_near_dup_threshold() -> None:
@@ -278,3 +470,10 @@ def test_close_call_band_top_k_and_exact_gap() -> None:
     assert band == ["a", "b", "c"]
     # exact gap boundary → empty
     assert close_call_band([("a", 0.9), ("b", 0.9 - TOURNAMENT_GAP)], gap=TOURNAMENT_GAP) == []
+
+
+def test_evidence_floor_settings_matches_math_default() -> None:
+    from app.core.config import settings
+    from app.services.ranking_math_align import DEFAULT_EVIDENCE_FLOOR
+
+    assert settings.EVIDENCE_FLOOR == DEFAULT_EVIDENCE_FLOOR

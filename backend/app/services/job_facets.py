@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 
 from app.schemas.jobs import FacetBucket, Job, JobFacets
 
-
 def _salary_bucket(job: Job) -> str:
     if job.salary_unknown or job.salary_min is None:
         return "unknown"

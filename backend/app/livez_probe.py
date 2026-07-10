@@ -4,7 +4,6 @@ from __future__ import annotations
 import urllib.error
 import urllib.request
 
-
 def main() -> int:
     try:
         urllib.request.urlopen("http://127.0.0.1:8000/livez", timeout=3)

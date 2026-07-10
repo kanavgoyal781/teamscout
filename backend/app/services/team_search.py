@@ -7,7 +7,6 @@ from app.schemas.jobs import Job
 from app.schemas.team import ContactOut, FindTeamResponse, TeamExtraction
 from app.services import sumble
 
-
 def contact_to_out(contact: Contact, reveal_email: str | None = None) -> ContactOut:
     """Map a Contact ORM row (+ optional revealed email) to the public DTO."""
     return ContactOut(

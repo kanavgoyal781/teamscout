@@ -41,7 +41,10 @@ def test_load_prompt_returns_metadata_and_hash() -> None:
     assert tmpl.body
     assert len(tmpl.content_hash) == 16
     assert "Extract a structured resume profile" in tmpl.body
-    expected_hash = hashlib.sha256(tmpl.body.encode("utf-8")).hexdigest()[:16]
+    # content_hash folds version + system + body (prompt edits invalidate caches)
+    expected_hash = hashlib.sha256(
+        f"{tmpl.version}\n{tmpl.system or ''}\n{tmpl.body}".encode("utf-8")
+    ).hexdigest()[:16]
     assert tmpl.content_hash == expected_hash
     assert load_prompt("resume_schema").content_hash == tmpl.content_hash
 

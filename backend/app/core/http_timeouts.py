@@ -6,7 +6,6 @@ import httpx
 
 from app.core.config import settings
 
-
 def default_timeout() -> httpx.Timeout:
     return httpx.Timeout(settings.HTTP_TIMEOUT_DEFAULT)
 

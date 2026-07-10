@@ -15,7 +15,6 @@ from app.db.models import Feedback
 from app.prompts import prompt_versions
 from app.schemas.feedback import FeedbackCreate
 
-
 def current_ranking_config_hash() -> str:
     from app.services.ranking_config import ranking_config_hash
 

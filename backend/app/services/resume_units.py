@@ -1,21 +1,17 @@
 """Bullet-level resume unit extraction, embedding, and SQLite persistence."""
-
 from __future__ import annotations
-
 import hashlib
 import json
 import math
 import re
 from dataclasses import dataclass
-
 from sqlalchemy.orm import Session
-
 from app.db.models import Resume, ResumeUnit
 from app.schemas.resume import ResumeProfile
 from app.services import embeddings
-
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
-
+# Soft cap: long summary/profile paragraphs are chunked before embedding.
+MAX_UNIT_WORDS = 40
 @dataclass(frozen=True)
 class ResumeUnitData:
     unit_text: str
@@ -38,11 +34,40 @@ def _l2_normalize(vec: list[float]) -> list[float]:
     norm = math.sqrt(sum(x * x for x in vec)) or 1.0
     return [x / norm for x in vec]
 
+def split_into_sentences(text: str) -> list[str]:
+    """Split paragraphs into sentences (summary/profile path)."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return []
+    parts = [p.strip() for p in _SENTENCE_SPLIT.split(cleaned) if p and p.strip()]
+    return parts or [cleaned]
+
+def cap_unit_words(text: str, *, max_words: int = MAX_UNIT_WORDS) -> list[str]:
+    """Split text into chunks of at most ``max_words`` words (keeps short text intact)."""
+    cleaned = " ".join((text or "").split()).strip()
+    if not cleaned:
+        return []
+    words = cleaned.split()
+    if len(words) <= max_words:
+        return [cleaned]
+    chunks: list[str] = []
+    for i in range(0, len(words), max_words):
+        chunk = " ".join(words[i : i + max_words]).strip()
+        if chunk:
+            chunks.append(chunk)
+    return chunks
+
+def segment_text_units(text: str, *, max_words: int = MAX_UNIT_WORDS) -> list[str]:
+    """Sentence-split then word-cap — used for summary/profile paragraphs and long bullets."""
+    out: list[str] = []
+    for sentence in split_into_sentences(text):
+        out.extend(cap_unit_words(sentence, max_words=max_words))
+    return out
+
 def extract_units(profile: ResumeProfile) -> list[ResumeUnitData]:
-    """Split profile into atomic units: summary sentences, skills, bullets."""
+    """Atomic units: sentence-split summary, word-capped (~40) bullets; hash-gated re-embed."""
     units: list[ResumeUnitData] = []
     seen: set[str] = set()
-
     def add(section: str, text: str) -> None:
         cleaned = " ".join((text or "").split()).strip()
         if len(cleaned) < 2:
@@ -58,12 +83,13 @@ def extract_units(profile: ResumeProfile) -> list[ResumeUnitData]:
                 unit_hash=unit_hash(cleaned, section),
             )
         )
-
+    def add_segmented(section: str, text: str) -> None:
+        for part in segment_text_units(text):
+            add(section, part)
     if profile.title.strip():
         add("title", profile.title)
     if profile.summary.strip():
-        for part in _SENTENCE_SPLIT.split(profile.summary.strip()):
-            add("summary", part)
+        add_segmented("summary", profile.summary.strip())
     for skill in profile.skills:
         add("skills", skill)
     for role in profile.work_experience:
@@ -71,7 +97,9 @@ def extract_units(profile: ResumeProfile) -> list[ResumeUnitData]:
         if header_bits:
             add("experience", " at ".join(header_bits))
         for bullet in role.bullets:
-            add("experience", bullet)
+            # Long bullets: word-cap only (bullets are usually one sentence)
+            for part in cap_unit_words(bullet):
+                add("experience", part)
     return units
 
 def embed_units(units: list[ResumeUnitData]) -> list[ResumeUnitData]:

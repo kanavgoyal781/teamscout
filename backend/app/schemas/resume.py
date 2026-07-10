@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field
 
-
 class WorkExperience(BaseModel):
     title: str
     company: str

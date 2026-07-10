@@ -6,7 +6,6 @@ from structlog.stdlib import LoggerFactory
 
 from app.core.env_utils import is_set
 
-
 def configure_logging(level: str = "INFO", *, env: str = "dev") -> None:
     """Configure structlog: JSON in prod / non-dev, pretty console in dev."""
     log_level = getattr(logging, level.upper(), logging.INFO)

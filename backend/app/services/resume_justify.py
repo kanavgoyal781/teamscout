@@ -1,9 +1,7 @@
-"""LLM top-resume justify with evidence-unit grounding."""
-
+"""LLM top-resume justify with evidence-unit grounding + rank consistency."""
 from __future__ import annotations
-
+import re
 from pydantic import BaseModel, Field
-
 from app.core.config import settings
 from app.errors import ServiceFailingError
 from app.prompts import load_prompt
@@ -12,9 +10,20 @@ from app.schemas.library import RequirementCoverage, ResumeCandidate
 from app.schemas.resume import ResumeProfile
 from app.services import llm
 from app.services.jd_decompose import JdRequirement
-
 _MIN_CITE_SPAN = 16
 _MIN_CITE_RATIO = 0.35
+# Require real superlative complements — do not match bare "strongest evidence/depth/…".
+_RANK_SUPERLATIVE = re.compile(
+    r"\b("
+    r"best\s+match|best\s+fit|best\s+candidate|best\s+pick|best\s+resume|best\s+overall|"
+    r"strongest\s+(?:overall\s+)?(?:match|candidate|fit)|strongest\s+overall\b|"
+    r"top\s+choice|top\s+pick|preferred\s+choice|ideal\s+(?:candidate|match|pick)|"
+    r"number\s+one|#\s*1|rank\s*#?\s*1|"
+    r"the\s+best\s+(?:fit|candidate|pick|match|resume)|"
+    r"clearest\s+best|unambiguously\s+best"
+    r")\b",
+    re.IGNORECASE,
+)
 
 class ResumeRerankItem(BaseModel):
     resume_id: str
@@ -31,8 +40,9 @@ def evidence_units_from_alignment(rows: list[dict]) -> list[str]:
     units: list[str] = []
     for row in sorted(rows, key=lambda r: float(r.get("evidence_score") or 0), reverse=True):
         text = row.get("evidence_unit")
-        if text and text not in units:
-            units.append(str(text))
+        if not text or str(text) == "No clear evidence" or text in units:
+            continue
+        units.append(str(text))
         if len(units) >= 8:
             break
     return units
@@ -58,25 +68,28 @@ def rationale_cites_units(rationale: str, evidence_units: list[str]) -> bool:
     if not cleaned:
         return False
     long_units = [u for u in cleaned if len(u.strip()) >= _MIN_CITE_SPAN]
-    targets = long_units if long_units else cleaned
-    return any(_span_in_text(unit, text) for unit in targets)
+    return any(_span_in_text(unit, text) for unit in (long_units or cleaned))
 
 def rationale_references_resume(rationale: str, profile: ResumeProfile) -> bool:
     """Fallback when no alignment units: require span from bullets/summary/title."""
     units: list[str] = []
     if profile.title.strip():
         units.append(profile.title.strip())
-    for skill in profile.skills:
-        if skill.strip():
-            units.append(skill.strip())
+    units.extend(s.strip() for s in profile.skills if s.strip())
     for role in profile.work_experience:
         units.extend(b for b in role.bullets[:3] if b.strip())
     if profile.summary.strip():
         units.append(profile.summary.strip()[:200])
     return rationale_cites_units(rationale, units)
 
+def rationale_rank_consistent(rationale: str, *, final_rank: int) -> bool:
+    """Reject comparative-superlative claims that contradict final rank (enforced)."""
+    if final_rank <= 1:
+        return True
+    text = (rationale or "").strip()
+    return not text or _RANK_SUPERLATIVE.search(text) is None
+
 def evidence_in_units(evidence: str | None, units: list[str]) -> bool:
-    """True when LLM coverage evidence is a span of a provided unit."""
     if not evidence or not evidence.strip():
         return False
     ev = evidence.strip().lower()
@@ -84,30 +97,19 @@ def evidence_in_units(evidence: str | None, units: list[str]) -> bool:
         u = unit.strip().lower()
         if not u:
             continue
-        if ev in u or u in ev:
-            return True
-        if _span_in_text(unit, evidence) or _span_in_text(evidence, unit):
+        if ev in u or u in ev or _span_in_text(unit, evidence) or _span_in_text(evidence, unit):
             return True
     return False
 
 def filter_llm_coverage(
-    llm_coverage: list[RequirementCoverage],
-    units: list[str],
+    llm_coverage: list[RequirementCoverage], units: list[str]
 ) -> list[RequirementCoverage]:
-    """Keep LLM coverage only when hit evidence is grounded in provided units."""
     out: list[RequirementCoverage] = []
     for row in llm_coverage:
-        if row.status == "hit":
-            if not evidence_in_units(row.evidence, units):
-                out.append(
-                    RequirementCoverage(
-                        requirement=row.requirement,
-                        status="miss",
-                        evidence=None,
-                    )
-                )
-                continue
-        out.append(row)
+        if row.status == "hit" and not evidence_in_units(row.evidence, units):
+            out.append(RequirementCoverage(requirement=row.requirement, status="miss", evidence=None))
+        else:
+            out.append(row)
     return out
 
 def _build_justify_prompt(
@@ -116,31 +118,30 @@ def _build_justify_prompt(
     alignment_by_id: dict[str, list[dict]],
     requirements: list[JdRequirement],
     instructions: str,
+    *,
+    rank_by_id: dict[str, int] | None = None,
+    tournament_wins: dict[str, int] | None = None,
+    contested_ids: set[str] | None = None,
 ) -> str:
+    ranks, wins, contested = rank_by_id or {}, tournament_wins or {}, contested_ids or set()
     lines = [
-        instructions.strip(),
-        "",
-        f"Job title: {job.title}",
-        f"Company: {job.company}",
-        f"Location: {job.location}",
-        f"Required skills: {', '.join(job.skills)}",
-        f"Description: {job.description[:1200]}",
-        "",
-        "Atomic requirements:",
+        instructions.strip(), "",
+        f"Job title: {job.title}", f"Company: {job.company}", f"Location: {job.location}",
+        f"Required skills: {', '.join(job.skills)}", f"Description: {job.description[:1200]}",
+        "", "Atomic requirements:",
     ]
     for req in requirements[:14]:
-        lines.append(f"- [{req.kind}] {req.text} (weight={req.weight})")
-    lines.append("")
-    lines.append("Resumes with best-evidence units (cite these in rationale):")
+        lines.append(f"- [{req.kind}/{req.category}] {req.text}")
+    lines += ["", "Resumes (final ranking FIXED — only final_rank=1 may claim best match):"]
     for candidate in candidates:
         rows = alignment_by_id.get(candidate.resume_id, [])
-        units = evidence_units_from_alignment(rows)
-        profile = candidate.profile
+        rid = candidate.resume_id
         lines.append(
-            f"- resume_id={candidate.resume_id}; filename={candidate.filename}; "
-            f"title={profile.title}; skills={', '.join(profile.skills[:12])};"
+            f"- resume_id={rid}; filename={candidate.filename}; final_rank={ranks.get(rid, 0)}; "
+            f"tournament_wins={wins.get(rid, 0)}; contested={rid in contested}; "
+            f"title={candidate.profile.title}; skills={', '.join(candidate.profile.skills[:12])};"
         )
-        for u in units:
+        for u in evidence_units_from_alignment(rows):
             lines.append(f"    evidence: {u}")
     return "\n".join(lines)
 
@@ -151,63 +152,60 @@ def llm_justify(
     requirements: list[JdRequirement],
     *,
     attempt: int = 0,
+    rank_by_id: dict[str, int] | None = None,
+    tournament_wins: dict[str, int] | None = None,
+    contested_ids: set[str] | None = None,
 ) -> dict[str, ResumeRerankItem]:
+    """Justify AFTER final ordering; enforce rank-consistent superlatives in code."""
     if not candidates:
         return {}
-
     expected_ids = {c.resume_id for c in candidates}
+    ranks = rank_by_id or {c.resume_id: i + 1 for i, c in enumerate(candidates)}
     tmpl = load_prompt("justify")
-    prompt = _build_justify_prompt(job, candidates, alignment_by_id, requirements, tmpl.body)
+    prompt = _build_justify_prompt(
+        job, candidates, alignment_by_id, requirements, tmpl.body,
+        rank_by_id=ranks, tournament_wins=tournament_wins, contested_ids=contested_ids,
+    )
     if attempt > 0:
         prompt += (
-            "\n\nPrevious rationales did not cite provided evidence units. "
-            "Each rationale MUST quote a contiguous phrase from a provided evidence unit."
+            "\n\nPrevious response failed grounding or rank-consistency checks. "
+            "Quote evidence units; only final_rank=1 may use best-match superlatives."
         )
-
     response = llm.complete_json(
-        prompt,
-        ResumeRerankResponse,
+        prompt, ResumeRerankResponse,
         system=tmpl.system or "You are a recruiting matcher. Return JSON only.",
         max_tokens=int(tmpl.model_params.get("max_tokens") or settings.max_tokens_for_operation("justify")),
-        operation="justify",
-        prompt_meta=tmpl,
+        operation="justify", prompt_meta=tmpl,
     )
-
     if not response.results:
         raise ServiceFailingError("LLM", "resume justify returned no results")
-
     returned_ids = [item.resume_id for item in response.results]
     if len(returned_ids) != len(set(returned_ids)):
         raise ServiceFailingError("LLM", "resume justify returned duplicate resume_ids")
-
     returned_set = set(returned_ids)
     if returned_set != expected_ids:
-        missing = sorted(expected_ids - returned_set)
-        extra = sorted(returned_set - expected_ids)
-        raise ServiceFailingError(
-            "LLM",
-            f"resume justify resume_id mismatch: missing={missing}, extra={extra}",
-        )
-
+        missing, extra = sorted(expected_ids - returned_set), sorted(returned_set - expected_ids)
+        raise ServiceFailingError("LLM", f"resume justify resume_id mismatch: missing={missing}, extra={extra}")
     by_id = {c.resume_id: c for c in candidates}
+    def _retry(msg: str) -> dict[str, ResumeRerankItem]:
+        if attempt == 0:
+            return llm_justify(
+                job, candidates, alignment_by_id, requirements, attempt=1,
+                rank_by_id=ranks, tournament_wins=tournament_wins, contested_ids=contested_ids,
+            )
+        raise ServiceFailingError("LLM", msg)
     for item in response.results:
         units = evidence_units_from_alignment(alignment_by_id.get(item.resume_id, []))
         if not units:
             if not rationale_references_resume(item.rationale, by_id[item.resume_id].profile):
-                if attempt == 0:
-                    return llm_justify(job, candidates, alignment_by_id, requirements, attempt=1)
-                raise ServiceFailingError(
-                    "LLM",
-                    f"resume justify rationale lacks concrete resume references for {item.resume_id}",
-                )
+                return _retry(f"resume justify rationale lacks concrete resume references for {item.resume_id}")
         elif not rationale_cites_units(item.rationale, units):
-            if attempt == 0:
-                return llm_justify(job, candidates, alignment_by_id, requirements, attempt=1)
-            raise ServiceFailingError(
-                "LLM",
-                f"resume justify rationale does not cite evidence units for {item.resume_id}",
+            return _retry(f"resume justify rationale does not cite evidence units for {item.resume_id}")
+        final_rank = ranks.get(item.resume_id, 99)
+        if not rationale_rank_consistent(item.rationale, final_rank=final_rank):
+            return _retry(
+                f"resume justify rationale rank-inconsistent superlative for rank {final_rank} resume {item.resume_id}"
             )
         if item.coverage:
             item.coverage = filter_llm_coverage(item.coverage, units)
-
     return {item.resume_id: item for item in response.results}

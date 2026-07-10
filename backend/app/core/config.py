@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_CLIENT_SECRET: str | None = None
     GOOGLE_DRIVE_REFRESH_TOKEN: str | None = None
     RESUME_RECOMMEND_TOP_N: int = 3
+    # MaxSim evidence floor (0–1). Canonical default is ranking_math_align.DEFAULT_EVIDENCE_FLOOR;
+    # keep this value identical (tests assert parity). Below floor → 0 coverage contribution;
+    # at/above: evidence' = (e - floor) / (1 - floor).
+    EVIDENCE_FLOOR: float = 0.55
 
     # API hardening
     MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024  # 10 MiB

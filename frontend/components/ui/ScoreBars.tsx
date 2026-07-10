@@ -62,8 +62,10 @@ export default function ScoreBars({ breakdown, variant, coverageScore }: ScoreBa
   return (
     <div className="breakdown-bars" role="list" aria-label="Score breakdown">
       {showCoverage ? (
-        <div key="coverage" className="breakdown-row" role="listitem">
-          <span>Coverage</span>
+        <div key="coverage" className="breakdown-row" role="listitem" data-testid="scorebar-coverage">
+          <span title="MaxSim requirement coverage after evidence floor (0–1). The Overall match ring uses the same coverage×100 basis (tournament winner may get +1).">
+            Coverage
+          </span>
           <div className="breakdown-track" aria-hidden>
             <motion.div
               className="breakdown-fill"

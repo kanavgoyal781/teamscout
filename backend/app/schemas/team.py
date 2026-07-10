@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field
 
-
 class TeamExtraction(BaseModel):
     team_name: str = ""
     department: str = ""

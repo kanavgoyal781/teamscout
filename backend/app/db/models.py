@@ -6,7 +6,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-
 def _uuid() -> str:
     return str(uuid.uuid4())
 class Resume(Base):

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 class PublicStats(BaseModel):
     model_config = ConfigDict(extra="forbid")
     jobs_ranked_total: int = Field(ge=0)

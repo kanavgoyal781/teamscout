@@ -7,7 +7,6 @@ from typing import Any
 
 from app.core.config import settings
 
-
 class UploadSizeLimitMiddleware:
     def __init__(self, app: Any) -> None:
         self.app = app

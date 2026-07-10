@@ -70,7 +70,6 @@ def load_prompt(name: str) -> PromptTemplate:
     if "name" not in meta or "version" not in meta:
         raise ValueError(f"prompt {path.name} frontmatter must include name and version")
     body = text[m.end() :]
-    content_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
     model_params: dict[str, Any] = {}
     for key in ("temperature", "max_tokens", "top_p"):
         if key in meta:
@@ -78,6 +77,10 @@ def load_prompt(name: str) -> PromptTemplate:
     system = meta.get("system")
     if system is not None:
         system = str(system)
+    # Hash version + system + body so system-only or version edits invalidate caches
+    # (tournament_jd_key also folds version + content_hash; both must stay in sync).
+    hash_payload = f"{meta['version']}\n{system or ''}\n{body}"
+    content_hash = hashlib.sha256(hash_payload.encode("utf-8")).hexdigest()[:16]
     return PromptTemplate(
         name=str(meta["name"]),
         version=str(meta["version"]),
