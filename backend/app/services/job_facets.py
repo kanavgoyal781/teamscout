@@ -1,13 +1,8 @@
 """Facet aggregation over a job pool (for client-side filtering)."""
-
 from __future__ import annotations
-
 from collections import Counter
 from datetime import UTC, datetime
-
 from app.schemas.jobs import FacetBucket, Job, JobFacets
-
-
 def _salary_bucket(job: Job) -> str:
     if job.salary_unknown or job.salary_min is None:
         return "unknown"
@@ -21,7 +16,6 @@ def _salary_bucket(job: Job) -> str:
     if annual < 200_000:
         return "160k-200k"
     return "200k+"
-
 def _posted_age_bucket(job: Job, *, now: datetime | None = None) -> str:
     if job.posted_at is None:
         return "unknown"
@@ -39,11 +33,9 @@ def _posted_age_bucket(job: Job, *, now: datetime | None = None) -> str:
     if age_days < 30:
         return "30d"
     return "30d+"
-
 def _to_buckets(counter: Counter[str], *, limit: int = 30) -> list[FacetBucket]:
     items = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
     return [FacetBucket(value=k, count=v) for k, v in items[:limit]]
-
 def annotate_facet_buckets(jobs: list[Job], *, now: datetime | None = None) -> list[Job]:
     """Write salary_bucket / posted_age_bucket onto each job (FE filters by these)."""
     now = now or datetime.now(UTC)
@@ -58,7 +50,6 @@ def annotate_facet_buckets(jobs: list[Job], *, now: datetime | None = None) -> l
             )
         )
     return out
-
 def compute_facets(jobs: list[Job], *, now: datetime | None = None) -> JobFacets:
     companies: Counter[str] = Counter()
     seniorities: Counter[str] = Counter()
@@ -66,7 +57,6 @@ def compute_facets(jobs: list[Job], *, now: datetime | None = None) -> JobFacets
     salaries: Counter[str] = Counter()
     ages: Counter[str] = Counter()
     sources: Counter[str] = Counter()
-
     for job in jobs:
         companies[job.company or "Unknown"] += 1
         seniorities[job.seniority or "unknown"] += 1
@@ -74,7 +64,6 @@ def compute_facets(jobs: list[Job], *, now: datetime | None = None) -> JobFacets
         salaries[_salary_bucket(job)] += 1
         ages[_posted_age_bucket(job, now=now)] += 1
         sources[job.source or "unknown"] += 1
-
     return JobFacets(
         company=_to_buckets(companies),
         seniority=_to_buckets(seniorities),

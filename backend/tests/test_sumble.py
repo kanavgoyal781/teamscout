@@ -269,9 +269,17 @@ def test_not_found_reveal_is_terminal_and_stores_credits(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     sample_extraction: TeamExtraction,
-    sample_person: sumble.SumblePerson,
 ) -> None:
     monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
+    # Unique person_id so global email_reveals credit cache from other tests does not apply.
+    person = sumble.SumblePerson(
+        person_id=9100,
+        name="No Email Person",
+        title="Engineering Manager",
+        team="Platform",
+        seniority="Manager",
+        job_function="Engineering",
+    )
     job = Job(
         id="job-not-found",
         source="fixture",
@@ -285,7 +293,7 @@ def test_not_found_reveal_is_terminal_and_stores_credits(
         skills=["Python"],
     )
     extraction_id = _seed_extraction(client, job, sample_extraction)
-    contact_id = _seed_contact(client, job, extraction_id, sample_person)
+    contact_id = _seed_contact(client, job, extraction_id, person)
 
     reveal_calls: list[int] = []
 
@@ -310,7 +318,7 @@ def test_not_found_reveal_is_terminal_and_stores_credits(
         assert preview.json()["status"] == "not_found"
         assert preview.json()["cost_credits"] == 10
 
-    assert reveal_calls == [9001]
+    assert reveal_calls == [9100]
 
 
 def test_same_person_across_two_jobs(

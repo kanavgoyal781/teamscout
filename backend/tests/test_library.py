@@ -206,10 +206,12 @@ def test_drive_resync_skips_known_hashes(client: TestClient, monkeypatch: pytest
     monkeypatch.setattr(settings, "GOOGLE_DRIVE_API_KEY", "drive-test-key")
     profile = _profile("Jordan", "Platform Engineer", ["Go"], "Distributed systems")
     init_db()
+    wid = client.get("/workspace").json()["workspace_id"]
     db = SessionLocal()
     try:
         db.add(
             Resume(
+                workspace_id=wid,
                 filename="resume.pdf",
                 content_hash="drive-hash-resync",
                 parsed_json=profile.model_dump_json(),
@@ -219,6 +221,7 @@ def test_drive_resync_skips_known_hashes(client: TestClient, monkeypatch: pytest
         )
         db.add(
             DriveSyncedFile(
+                workspace_id=wid,
                 folder_id="folder-resync",
                 file_id="file-1",
                 filename="resume.pdf",
@@ -310,6 +313,7 @@ def test_intent_search_stores_results(client: TestClient) -> None:
 
 def test_recommend_resumes_ranking(client: TestClient) -> None:
     init_db()
+    wid = client.get("/workspace").json()["workspace_id"]
     db = SessionLocal()
     try:
         job = Job(
@@ -326,6 +330,7 @@ def test_recommend_resumes_ranking(client: TestClient) -> None:
         )
         db.add(
             JobCache(
+                workspace_id=wid,
                 job_id=job.id,
                 source=job.source,
                 source_job_id=job.source_job_id,
@@ -343,6 +348,7 @@ def test_recommend_resumes_ranking(client: TestClient) -> None:
         ):
             db.add(
                 Resume(
+                    workspace_id=wid,
                     filename=f"resume-{index}.pdf",
                     content_hash=f"pick-hash-{index}",
                     parsed_json=_profile(

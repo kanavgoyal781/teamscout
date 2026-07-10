@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field, field_validator
 FeedbackKind = Literal["thumbs_up", "thumbs_down", "apply_click", "find_team_click"]
 FeedbackTargetType = Literal["job_match", "resume_pick"]
 _HEX = re.compile(r"^[a-fA-F0-9]{8,64}$")
-# Allowlisted fusion component keys only (blocks offline-fit poisoning).
 _SCORE_COMPONENT_KEYS = frozenset({
     "llm", "rrf", "skills", "recency", "experience", "requirements", "cross_encoder",
 })
@@ -20,7 +19,6 @@ class FeedbackCreate(BaseModel):
     jd_hash: str | None = Field(default=None, max_length=64)
     score_shown: float | None = Field(default=None, ge=0, le=100)
     shown_rank: int | None = Field(default=None, ge=0, le=10_000)
-    # Component scores at feedback time for fit_weights (llm/rrf/skills/...).
     score_components: dict[str, float] | None = None
     @field_validator("profile_hash", "jd_hash", mode="before")
     @classmethod
@@ -62,7 +60,6 @@ class FeedbackCreate(BaseModel):
             if key in _LLM_KEYS:
                 out[key] = max(0.0, min(100.0, f))
             else:
-                # Accept 0–100 accidental scale and normalize to 0–1
                 if f > 1.0:
                     f = f / 100.0
                 out[key] = max(0.0, min(1.0, f))

@@ -86,8 +86,6 @@ def hybrid_rank(
     ce_scores: dict[str, float] = {}
     pool_n = cross_encoder_pool if cross_encoder_pool is not None else settings.CROSS_ENCODER_POOL
     shortlist_n = llm_top_n if llm_top_n is not None else settings.LLM_RERANK_TOP_N
-    # Shortlist shrink/reorder only when CE weight > 0 or explicit shortlist flag
-    # (use_cross_encoder alone with weight=0 must not silently change the LLM pool).
     ce_weight = float(settings.RANKING_WEIGHT_CROSS_ENCODER)
     apply_ce_shortlist = bool(
         use_cross_encoder and (ce_weight > 0.0 or settings.CROSS_ENCODER_SHORTLIST)
@@ -110,11 +108,9 @@ def hybrid_rank(
             )
             rerank_ids = ce_ranked[: max(shortlist_n, 1)]
         else:
-            # Fusion scores only — listwise still clamps to LLM_RERANK_TOP_N.
             n_llm = shortlist_n if settings.RANKING_LLM_LISTWISE else settings.RERANK_TOP_N
             rerank_ids = rrf_ranked_ids[: max(n_llm, 1)]
     else:
-        # Listwise needs a compact slate; clamp to LLM_RERANK_TOP_N when listwise is on.
         n_llm = shortlist_n if settings.RANKING_LLM_LISTWISE else settings.RERANK_TOP_N
         rerank_ids = rrf_ranked_ids[: max(n_llm, 1)]
     rerank_candidates = [by_id[cid] for cid in rerank_ids if cid in by_id]

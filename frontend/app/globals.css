@@ -2688,3 +2688,49 @@ html.light button.about-weight {
   margin: var(--space-2) 0 0;
   max-width: 42rem;
 }
+
+.workspace-footer {
+  margin-top: 2.5rem;
+  padding: 0.75rem 0 1.5rem;
+  font-size: 0.8rem;
+  color: var(--muted, #8b93a7);
+  border-top: 1px solid var(--border, rgba(255,255,255,0.08));
+}
+.filter-hint {
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  background: var(--panel-2, rgba(255,255,255,0.03));
+}
+.filter-hint p { margin: 0 0 0.5rem; font-size: 0.875rem; }
+.beta-modal-backdrop {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem;
+}
+.beta-modal {
+  width: min(420px, 100%);
+  background: var(--panel, #12151c);
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  border-radius: 12px;
+  padding: 1rem 1.1rem 1.1rem;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+}
+.beta-modal-head {
+  display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;
+}
+.beta-modal-head h2 { flex: 1; margin: 0; font-size: 1.05rem; }
+.beta-modal-list { margin: 0 0 0.75rem 1.1rem; padding: 0; }
+.beta-modal-list li { margin: 0.25rem 0; font-size: 0.9rem; }
+.journey-engineers { margin-top: 0.5rem; }
+.journey-engineers summary { cursor: pointer; font-size: 0.8rem; color: var(--muted, #8b93a7); }
+.journey-engineers-path {
+  margin: 0.35rem 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+}

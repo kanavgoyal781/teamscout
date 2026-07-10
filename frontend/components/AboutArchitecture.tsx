@@ -107,7 +107,7 @@ export default function AboutArchitecture() {
                 <span> — NDCG/MRR + resume-pick floors (never lowered)</span>
               </li>
               <li>
-                <code className="font-num">scripts/check_scope.py</code>
+                <code className="font-num">offline eval scripts</code>
                 <span> — CI anti-bloat + honesty gates</span>
               </li>
               <li>
@@ -193,7 +193,7 @@ export default function AboutArchitecture() {
         <RankingFunnelDiagram selected={selected} onSelect={select} />
         <p className="meta about-score-footnote">
           Weights shown are default product policy from backend{" "}
-          <code>RANKING_WEIGHT_*</code> (<code>app/core/config.py</code>); the live process may
+          <code>RANKING_WEIGHT_*</code> (<code>app/core/config</code>); the live process may
           override them via env. Benchmarks: hybrid NDCG@10 / MRR floors in{" "}
           <code>evals/thresholds.json</code>.
         </p>

@@ -211,3 +211,31 @@ usage (UI)
 ## What we deliberately rejected
 
 Platform sprawl (cluster orchestration, IaC-as-product, feature stores, remote model registries, queues, A/B SDKs) does not earn its place for a two-feature recruiting tool. Production-grade here means reproducible builds, CI gates, observable credit calls, eval floors, secure defaults, and one live deploy (Fly + Vercel). Auto-tuning production rankers from online feedback is also rejected — the learning loop is human-gated.
+
+## Anonymous workspaces (M19)
+
+Each browser gets an opaque `ts_workspace` cookie (`HttpOnly`, `SameSite=Lax`, `Secure` when `ENV=prod`). The first request without a cookie mints `secrets.token_urlsafe` and persists a `workspaces` row. All product reads/writes for resumes, resume_units, searches, intent_searches, jobs_cache (session-created), team_extractions, job_team_searches, contacts, and feedback are filtered by `workspace_id`. Direct ID probing across workspaces returns 404.
+
+### Global-by-design exceptions
+
+| Table / area | Scope | Notes |
+|---|---|---|
+| `email_reveals` | **Global** by Sumble `person_id` | Credit protection: a second workspace reuses a prior terminal reveal without re-billing |
+| `traces` | Global rows + optional `workspace_id` | Used for /ops cost and per-workspace usage today |
+| prompts / evals / experiments | Untouched | Shared offline artifacts |
+| embedding / query-expand / JD / pairwise caches | Global | Content-addressed cost caches |
+
+### Ephemerality
+
+`WORKSPACE_TTL_DAYS` (default 7). Sweep on API startup and lazy on the first request of each UTC day. Hard-deletes workspace-scoped rows and uploaded files; **never** deletes `email_reveals` or global content caches. UI footer: private anonymous workspace, auto-delete after 7 days, new browser = new workspace.
+
+### Cost ceilings
+
+Global: `LLM_DAILY_COST_CEILING_USD`, `SUMBLE_DAILY_CREDIT_CEILING`. Per workspace: `WORKSPACE_DAILY_LLM_USD` (default 1.00), `WORKSPACE_DAILY_SUMBLE_CREDITS` (default 100). Both enforced fail-closed (HTTP 429) with friendly workspace wording when the per-workspace cap is the tighter limit. `/ops` shows per-workspace usage for today.
+
+**Honest limit:** clearing the workspace cookie mints a new workspace and resets *per-workspace* ceilings for that browser. Global ceilings still apply across the process. This is intentional for a cookie-anonymous demo, not multi-tenant billing.
+
+### SQLite concurrency
+
+Engine init sets `PRAGMA busy_timeout=5000` and `journal_mode=WAL` on file databases (memory tests use StaticPool + busy_timeout).
+

@@ -22,7 +22,11 @@ test.describe("About page story", () => {
     await expect(page.getByTestId("journey-flow")).toBeVisible();
 
     await page.getByTestId("journey-step-parse").click();
-    await expect(page.getByText("services/parser.py · prompts/resume_schema.md")).toBeVisible();
+    await expect(page.getByText(/Structured extraction/i)).toBeVisible();
+    // Product surface must not expose source file extensions or ops secrets
+    const aboutText = await page.getByTestId("about-funnel").innerText();
+    expect(aboutText).not.toContain(".py");
+    expect(aboutText).not.toContain("OPS_TOKEN");
 
     await expect(page.getByTestId("ranking-funnel-diagram")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Score formula" })).toBeVisible();

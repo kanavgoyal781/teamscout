@@ -1,31 +1,24 @@
 """Load versioned prompt templates from this package (YAML frontmatter + body)."""
-
 from __future__ import annotations
-
 import hashlib
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-
 _FRONTMATTER = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 _PROMPTS_DIR = Path(__file__).resolve().parent
-
 @dataclass(frozen=True)
 class PromptTemplate:
     """Loaded prompt with version metadata for tracing."""
-
     name: str
     version: str
     body: str
     content_hash: str
     model_params: dict[str, Any] = field(default_factory=dict)
     system: str | None = None
-
     def __str__(self) -> str:
         return self.body
-
 def _parse_frontmatter(fm: str) -> dict[str, Any]:
     """Minimal YAML subset: scalar key: value lines (no nested blocks)."""
     data: dict[str, Any] = {}
@@ -51,7 +44,6 @@ def _parse_frontmatter(fm: str) -> dict[str, Any]:
             except ValueError:
                 data[key] = value
     return data
-
 @lru_cache(maxsize=32)
 def load_prompt(name: str) -> PromptTemplate:
     """Load `name.md` (or `name.txt`) with YAML frontmatter (name + version required)."""
@@ -61,7 +53,6 @@ def load_prompt(name: str) -> PromptTemplate:
             break
     else:
         raise FileNotFoundError(f"prompt template not found: {name}")
-
     text = path.read_text(encoding="utf-8")
     m = _FRONTMATTER.match(text)
     if not m:
@@ -86,7 +77,6 @@ def load_prompt(name: str) -> PromptTemplate:
         model_params=model_params,
         system=system,
     )
-
 def prompt_versions() -> dict[str, str]:
     """Map prompt name → version for eval history records."""
     out: dict[str, str] = {}

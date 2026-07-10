@@ -1,4 +1,4 @@
-"""LLM/embed/hiring-team/JSearch tracing, ceilings, optional OTLP."""
+"""Tracing, cost ceilings, optional OTLP."""
 from __future__ import annotations
 import statistics
 import time
@@ -14,6 +14,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from app.core.config import settings
+from app.core.workspace import current_workspace_id
 from app.core.env_utils import is_set
 from app.core.http_timeouts import default_timeout
 from app.core.logging import get_logger
@@ -96,22 +97,57 @@ def sumble_credits_today(db: Session | None = None) -> int:
     finally:
         if own:
             session.close()
+
+def _ws_sum(col, workspace_id: str, *filters, db: Session | None = None):
+    own = db is None
+    session = db or SessionLocal()
+    try:
+        q = session.query(func.coalesce(func.sum(col), 0)).filter(Trace.created_at >= _today_start_naive(), Trace.workspace_id == workspace_id, *filters)
+        return q.scalar() or 0
+    except SQLAlchemyError as exc:
+        raise CostCeilingExceededError("Workspace ceiling check failed — denying (fail closed)", details={"reason": str(exc)}) from exc
+    finally:
+        if own:
+            session.close()
+def workspace_llm_cost_today_usd(workspace_id: str, db: Session | None = None) -> float:
+    return float(_ws_sum(Trace.cost_usd, workspace_id, Trace.operation.in_(tuple(LLM_OPERATIONS)), db=db))
+def workspace_sumble_credits_today(workspace_id: str, db: Session | None = None) -> int:
+    return int(_ws_sum(Trace.credits_used, workspace_id, Trace.operation.like("sumble.%"), db=db))
 def assert_llm_budget_allows(*, estimated_cost_usd: float = 0.0) -> None:
     spent = llm_cost_today_usd()
     ceiling = float(settings.LLM_DAILY_COST_CEILING_USD)
     if spent + max(estimated_cost_usd, 0.0) > ceiling:
         raise CostCeilingExceededError(
             f"Daily LLM cost ceiling exceeded (${spent:.4f} spent, ceiling ${ceiling:.2f})",
-            details={"spent_usd": spent, "ceiling_usd": ceiling},
+            details={"spent_usd": spent, "ceiling_usd": ceiling, "scope": "global"},
         )
+    wid = current_workspace_id()
+    if wid:
+        wspent = workspace_llm_cost_today_usd(wid)
+        wceil = float(settings.WORKSPACE_DAILY_LLM_USD)
+        if wspent + max(estimated_cost_usd, 0.0) > wceil:
+            raise CostCeilingExceededError(
+                f"Workspace daily LLM limit exceeded (${wspent:.4f} spent, limit ${wceil:.2f})",
+                details={"spent_usd": wspent, "ceiling_usd": wceil, "scope": "workspace", "workspace_id": wid},
+            )
 def assert_sumble_budget_allows(*, estimated_credits: int = 0) -> None:
     spent = sumble_credits_today()
     ceiling = int(settings.SUMBLE_DAILY_CREDIT_CEILING)
     if spent + max(estimated_credits, 0) > ceiling:
         raise CostCeilingExceededError(
             f"Daily Sumble credit ceiling exceeded ({spent} used, ceiling {ceiling})",
-            details={"spent_credits": spent, "ceiling_credits": ceiling},
+            details={"spent_credits": spent, "ceiling_credits": ceiling, "scope": "global"},
         )
+    wid = current_workspace_id()
+    if wid:
+        wspent = workspace_sumble_credits_today(wid)
+        wceil = int(settings.WORKSPACE_DAILY_SUMBLE_CREDITS)
+        if wspent + max(estimated_credits, 0) > wceil:
+            raise CostCeilingExceededError(
+                f"Workspace daily Sumble credit limit exceeded ({wspent} used, limit {wceil})",
+                details={"spent_credits": wspent, "ceiling_credits": wceil, "scope": "workspace", "workspace_id": wid},
+            )
+
 def record_trace(
     *,
     operation: str,
@@ -132,6 +168,7 @@ def record_trace(
     rid = request_id if request_id is not None else current_request_id()
     row = Trace(
         request_id=rid,
+        workspace_id=current_workspace_id(),
         operation=operation,
         model=model,
         prompt_name=prompt_name,
@@ -294,6 +331,21 @@ def sumble_operation_from_path(path: str) -> str:
     if "/jobs" in p:
         return "sumble.jobs"
     return "sumble.unknown"
+def _workspace_usage_today(today: list[Trace]) -> list[dict[str, Any]]:
+    by: dict[str, dict[str, Any]] = {}
+    for r in today:
+        wid = r.workspace_id or ""
+        if not wid:
+            continue
+        b = by.setdefault(wid, {"workspace_id": wid, "llm_cost_usd": 0.0, "sumble_credits": 0})
+        if r.operation in LLM_OPERATIONS:
+            b["llm_cost_usd"] = float(b["llm_cost_usd"]) + float(r.cost_usd or 0)
+        if (r.operation or "").startswith("sumble."):
+            b["sumble_credits"] = int(b["sumble_credits"]) + int(r.credits_used or 0)
+    rows = sorted(by.values(), key=lambda x: float(x["llm_cost_usd"]), reverse=True)[:50]
+    for b in rows:
+        b["llm_cost_usd"] = round(float(b["llm_cost_usd"]), 6)
+    return rows
 def ops_stats(db: Session) -> dict[str, Any]:
     start = _today_start_naive()
     recent = db.query(Trace).order_by(Trace.created_at.desc()).limit(100).all()
@@ -369,4 +421,7 @@ def ops_stats(db: Session) -> dict[str, Any]:
         "embedding_cache_hit_rate": round((hits / len(embeds)) if embeds else 0.0, 4),
         "embedding_cache_hits": hits,
         "embedding_cache_total": len(embeds),
+        "workspace_usage_today": _workspace_usage_today(today),
+        "workspace_llm_ceiling_usd": float(settings.WORKSPACE_DAILY_LLM_USD),
+        "workspace_sumble_ceiling": int(settings.WORKSPACE_DAILY_SUMBLE_CREDITS),
     }

@@ -6,6 +6,7 @@ import math
 import re
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
+from app.core.workspace import workspace_or_system
 from app.db.models import Resume, ResumeUnit
 from app.schemas.resume import ResumeProfile
 from app.services import embeddings
@@ -109,8 +110,7 @@ def persist_units(db: Session, resume_id: str, units: list[ResumeUnitData]) -> N
     db.query(ResumeUnit).filter(ResumeUnit.resume_id == resume_id).delete()
     for u in units:
         db.add(
-            ResumeUnit(
-                resume_id=resume_id,
+            ResumeUnit(workspace_id=workspace_or_system(), resume_id=resume_id,
                 unit_text=u.unit_text,
                 section=u.section,
                 unit_hash=u.unit_hash,

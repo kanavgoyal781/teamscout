@@ -1,6 +1,4 @@
 from typing import Any
-
-
 class TeamScoutError(Exception):
     def __init__(
         self,

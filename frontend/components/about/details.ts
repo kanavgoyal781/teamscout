@@ -50,7 +50,7 @@ export const INK = "#8b93a7";
 
 /**
  * Default product-policy weights from backend `RANKING_WEIGHT_*` in
- * `app/core/config.py` (validated to sum to 1.0 at startup).
+ * server ranking weight config (validated to sum to 1.0 at startup).
  */
 export const SCORE_WEIGHTS = {
   llm: 0.38,
@@ -94,7 +94,7 @@ export const DETAILS: Record<Exclude<DetailKey, null>, Detail> = {
   llm: {
     title: "LLM (OpenAI-compatible)",
     why: "Structured extraction, rerank rationales, and resume justifications need language understanding — but only on top candidates.",
-    how: "complete_json with versioned prompts from app/prompts/*.md; traces record prompt name/version/hash and estimated cost.",
+    how: "complete_json with versioned prompts from versioned prompt files; traces record prompt name/version/hash and estimated cost.",
     tradeoff: "Daily USD ceiling fail-closed (429). Unconfigured → 503 ServiceNotConfiguredError, never invented text.",
     color: "#c084fc",
   },
@@ -108,7 +108,7 @@ export const DETAILS: Record<Exclude<DetailKey, null>, Detail> = {
   jsearch: {
     title: "Live jobs (provider registry)",
     why: "Feature 1 needs fresh market jobs from multiple official APIs — never HTML scraping.",
-    how: "JobSource registry fans out (concurrency 4): JSearch + free ATS boards (Greenhouse/Lever/Ashby via configs/ats_companies.json) + Remotive/RemoteOK feeds when remote/any + optional Adzuna. Post-fetch title/location/recency filters; 6h board cache; prefer direct_ats on dedupe.",
+    how: "JobSource registry fans out (concurrency 4): JSearch + free ATS boards (Greenhouse/Lever/Ashby via the ATS company list) + Remotive/RemoteOK feeds when remote/any + optional Adzuna. Post-fetch title/location/recency filters; 6h board cache; prefer direct_ats on dedupe.",
     tradeoff: "One source failing is counted in per_source_counts and never kills the search. Adzuna unset → health disabled (not missing). No scraping rule is absolute.",
     color: "#f472b6",
   },
@@ -178,7 +178,7 @@ export const DETAILS: Record<Exclude<DetailKey, null>, Detail> = {
   fuse: {
     title: "6 · Final weighted score",
     why: "Keyword title overlap alone promotes senior roles. Operators need YOE, requirements, and skills in the number.",
-    how: `final = 100 × (${SCORE_WEIGHTS.llm}·llm/100 + ${SCORE_WEIGHTS.rrf}·rrf + ${SCORE_WEIGHTS.skills}·skills + ${SCORE_WEIGHTS.experience}·experience + ${SCORE_WEIGHTS.requirements}·requirements + ${SCORE_WEIGHTS.recency}·recency + optional cross_encoder·ce_normalized). Default CE weight is 0 until an experiment promote. Weights validated at startup. Learned weights/Platt calibration are proposal-only (fit_weights.py → experiment harness); never auto-ship.`,
+    how: `final = 100 × (${SCORE_WEIGHTS.llm}·llm/100 + ${SCORE_WEIGHTS.rrf}·rrf + ${SCORE_WEIGHTS.skills}·skills + ${SCORE_WEIGHTS.experience}·experience + ${SCORE_WEIGHTS.requirements}·requirements + ${SCORE_WEIGHTS.recency}·recency + optional cross_encoder·ce_normalized). Default CE weight is 0 until an experiment promote. Weights validated at startup. Learned weights/Platt calibration are proposal-only (fit_weights → experiment harness); never auto-ship.`,
     tradeoff: "Weights are product policy. Position bias: shown_rank is logged with feedback as a covariate, not a fusion weight.",
     color: "#3dd68c",
   },
@@ -269,7 +269,7 @@ export const DETAILS: Record<Exclude<DetailKey, null>, Detail> = {
   mlops_traces: {
     title: "Traces + prompt versions",
     why: "Credit-costing and LLM calls must be auditable without bolting on a second observability vendor as product infra.",
-    how: "SQLite traces table records operation, model, prompt name/version/hash, tokens, latency, cost, credits, cache hits. Versioned prompts under app/prompts/*.md. Ops dashboard at GET /ops (OPS_TOKEN). Optional OTLP export when configured.",
+    how: "SQLite traces table records operation, model, prompt name/version/hash, tokens, latency, cost, credits, cache hits. Versioned prompts under versioned prompt files. Token-gated ops dashboard for operators. Optional OTLP export when configured.",
     tradeoff: "Trace writes are best-effort so a DB blip does not fail the user request; cost ceilings still fail closed on read errors.",
     color: "#22d3ee",
   },
@@ -330,7 +330,7 @@ export const PRINCIPLE_LINKS = [
   },
   {
     label: "Scope gate",
-    path: "scripts/check_scope.py",
+    path: "scripts/check_scope",
     tip: "CI-blocking static check for size, deps, floors",
   },
   {
@@ -345,7 +345,7 @@ export const PRINCIPLE_LINKS = [
   },
   {
     label: "Ranking service",
-    path: "backend/app/services/ranking.py",
+    path: "backend/app/services/ranking",
     // Short lines so auto-fill cards (~200px) do not wrap mid-phrase into the path.
     tip: "Hybrid · LLM rerank · MMR",
   },

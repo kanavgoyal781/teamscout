@@ -105,7 +105,7 @@ export default function ScoreBars({ breakdown, variant, coverageScore }: ScoreBa
       })}
       {softBoost > 0 && variant !== "resumes" ? (
         <div key="soft_boost" className="breakdown-row" role="listitem">
-          <span>Soft prefs</span>
+          <span>Prefer boost</span>
           <div className="breakdown-track" aria-hidden>
             <motion.div
               className="breakdown-fill"

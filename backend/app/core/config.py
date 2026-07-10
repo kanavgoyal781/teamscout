@@ -11,13 +11,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = Field(default="sqlite:///./teamscout.db")
     ENV: str = "dev"
     LOG_LEVEL: str = "INFO"
-    # Preferred alias; CORS_ORIGINS kept for backward compatibility.
     ALLOWED_ORIGINS: str | None = None
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
-    # Baked at image build time (docker ARG/ENV); fallback for local dev.
     APP_VERSION: str | None = None
     GIT_SHA: str | None = None
-    # Prefer LLM_*; accept common OPENAI_* aliases from older .env files.
     LLM_API_KEY: str | None = Field(
         default=None,
         validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"),
@@ -31,24 +28,18 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("EMBEDDINGS_API_KEY", "OPENAI_API_KEY"),
     )
-    # Full POST URL for embeddings, or leave unset to use LLM_API_BASE + /embeddings.
     EMBEDDINGS_API: str | None = None
     EMBEDDINGS_MODEL: str = "BAAI/bge-m3"
     JOBS_API_KEY: str | None = None
     JOBS_API_BASE: str | None = "https://jsearch.p.rapidapi.com"
     JOBS_API_HOST: str = "jsearch.p.rapidapi.com"
-    # Multi-source registry (free ATS/feeds); master flag + per-source toggles.
     JOBS_EXTRA_SOURCES_ENABLED: bool = True
     JOBS_SOURCE_ATS_ENABLED: bool = True
     JOBS_SOURCE_REMOTIVE_ENABLED: bool = True
     JOBS_SOURCE_REMOTEOK_ENABLED: bool = True
-    # Optional Adzuna aggregator (unset → health "disabled", never "missing").
     ADZUNA_APP_ID: str | None = None
     ADZUNA_APP_KEY: str | None = None
-    # Soft rank boost for direct_ats; default 0 — enable only via experiment config.
     RANKING_DIRECT_ATS_BOOST: float = 0.0
-    # Must sum to 1.0 (validated). Experience + requirements curb pure keyword/seniority drift.
-    # cross_encoder weight default 0 until an experiment rebalance is promoted.
     RANKING_WEIGHT_LLM: float = 0.38
     RANKING_WEIGHT_RRF: float = 0.20
     RANKING_WEIGHT_SKILLS: float = 0.12
@@ -58,24 +49,16 @@ class Settings(BaseSettings):
     RANKING_WEIGHT_CROSS_ENCODER: float = 0.0
     RRF_K: int = 60
     JOBS_FETCH_TARGET: int = 150
-    # Legacy/unused: recency is SearchParams.date_window (day|3days|week|month) via hard filters.
-    # Kept so older .env files do not fail settings load; do not wire new code to this.
     JOBS_RECENCY_DAYS: int = 14
     RERANK_TOP_N: int = 30
     SEARCH_RESULTS_TOP_N: int = 10
     RECENCY_HALF_LIFE_DAYS: int = 7
-    # Cross-encoder stage (DeepInfra). Default OFF until experiment win (M17 critical rule);
-    # set true via env / experiment variant. Hard-fails if enabled and key missing.
     RANKING_USE_CROSS_ENCODER: bool = False
-    # Shrink/reorder LLM shortlist via CE when True even if CE weight is 0.
-    # When False, shortlist shrinks only if RANKING_WEIGHT_CROSS_ENCODER > 0.
     CROSS_ENCODER_SHORTLIST: bool = False
     RERANKER_MODEL: str = "Qwen/Qwen3-Reranker-4B"
     CROSS_ENCODER_POOL: int = 50
     LLM_RERANK_TOP_N: int = 15
-    # Listwise LLM ordering (experiment-gated; default off until recorded win).
     RANKING_LLM_LISTWISE: bool = False
-    # Platt match-likelihood UI: default off until human promotes after fit_weights.
     RANKING_USE_CALIBRATION: bool = False
     SUMBLE_API_KEY: str | None = None
     SUMBLE_BASE_URL: str = "https://api.sumble.com"
@@ -86,7 +69,6 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_CLIENT_SECRET: str | None = None
     GOOGLE_DRIVE_REFRESH_TOKEN: str | None = None
     RESUME_RECOMMEND_TOP_N: int = 3
-    # API hardening
     MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024  # 10 MiB
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_UPLOAD: str = "20/minute"
@@ -94,19 +76,19 @@ class Settings(BaseSettings):
     RATE_LIMIT_FIND_TEAM: str = "20/minute"
     RATE_LIMIT_REVEAL_EMAIL: str = "30/minute"
     RATE_LIMIT_LLM: str = "20/minute"
-    # Outbound HTTP timeouts (seconds)
     HTTP_TIMEOUT_DEFAULT: float = 60.0
     HTTP_TIMEOUT_EMBEDDINGS_BATCH: float = 120.0
     HTTP_TIMEOUT_DRIVE_DOWNLOAD: float = 120.0
-    # Ops dashboard (required for /ops; missing token denies all access)
     OPS_TOKEN: str | None = None
-    # Directory that contains evals/ (history, experiments). Empty = auto-discover.
     EVALS_DIR: str | None = None
     RATE_LIMIT_FEEDBACK: str = "60/hour"
-    # Cost guardrails
     LLM_DAILY_COST_CEILING_USD: float = 5.0
     SUMBLE_DAILY_CREDIT_CEILING: int = 1000
-    # Per-operation max_tokens budgets
+    WORKSPACE_TTL_DAYS: int = 7
+    WORKSPACE_DAILY_LLM_USD: float = 1.0
+    WORKSPACE_DAILY_SUMBLE_CREDITS: int = 100
+    # empty=auto (Lax in dev, None+Secure in prod for Vercel→Fly)
+    WORKSPACE_COOKIE_SAMESITE: str | None = None
     LLM_MAX_TOKENS_PARSE_RESUME: int = 4096
     LLM_MAX_TOKENS_RERANK: int = 6000
     LLM_MAX_TOKENS_TEAM_EXTRACT: int = 2048
@@ -114,11 +96,9 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS_JD_DECOMPOSE: int = 3000
     LLM_MAX_TOKENS_PAIRWISE_JUDGE: int = 1200
     LLM_MAX_TOKENS_DEFAULT: int = 4096
-    # Model prices USD per 1M tokens (input/output). Embeddings use input only.
     LLM_PRICE_INPUT_PER_1M: float = 0.15
     LLM_PRICE_OUTPUT_PER_1M: float = 0.60
     EMBEDDINGS_PRICE_PER_1M: float = 0.02
-    # Optional OTLP/HTTP JSON traces endpoint (unset = SQLite only)
     OTEL_EXPORTER_OTLP_ENDPOINT: str | None = None
     model_config = SettingsConfigDict(
         env_file=_resolve_env_files(),

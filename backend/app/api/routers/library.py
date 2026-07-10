@@ -2,6 +2,7 @@ import json
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from sqlalchemy.orm import Session
 from app.core.rate_limit import limiter, llm_limit, search_limit, upload_limit
+from app.core.workspace import require_workspace_id
 from app.db.models import IntentSearch
 from app.db.session import get_db
 from app.errors import ValidationError
@@ -76,6 +77,7 @@ def intent_search(
     fetched_jobs = jobs.fetch_jobs_for_intent(intent, db)
     ranked = ranking.rank_jobs(intent.as_query_profile(), fetched_jobs)
     row = IntentSearch(
+        workspace_id=require_workspace_id(),
         role=intent.role,
         years_of_experience=intent.years_of_experience,
         location=intent.location,

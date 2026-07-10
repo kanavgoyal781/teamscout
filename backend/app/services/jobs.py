@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.logging import get_logger
+from app.core.workspace import workspace_or_system
 from app.db.models import JobCache
 from app.errors import ServiceFailingError, ServiceNotConfiguredError
 from app.schemas.jobs import DroppedCounts, Job, SearchParams, SourceCounts
@@ -39,9 +40,10 @@ def extract_skills_from_description(description: str, profile_skills: list[str])
             found.append(token)
     return found
 def _cached_job_id(db: Session, source: str, source_job_id: str) -> str | None:
+    wid = workspace_or_system()
     existing = (
         db.query(JobCache)
-        .filter(JobCache.source == source, JobCache.source_job_id == source_job_id)
+        .filter(JobCache.workspace_id == wid, JobCache.source == source, JobCache.source_job_id == source_job_id)
         .one_or_none()
     )
     if existing is None:
@@ -53,10 +55,11 @@ def _cached_job_id(db: Session, source: str, source_job_id: str) -> str | None:
     return None
 def _cache_jobs(db: Session, jobs: list[Job]) -> list[Job]:
     out: list[Job] = []
+    wid = workspace_or_system()
     for job in jobs:
         existing = (
             db.query(JobCache)
-            .filter(JobCache.source == job.source, JobCache.source_job_id == job.source_job_id)
+            .filter(JobCache.workspace_id == wid, JobCache.source == job.source, JobCache.source_job_id == job.source_job_id)
             .first()
         )
         if existing is not None:
@@ -76,7 +79,7 @@ def _cache_jobs(db: Session, jobs: list[Job]) -> list[Job]:
             continue
         db.add(
             JobCache(
-                job_id=job.id, source=job.source, source_job_id=job.source_job_id,
+                workspace_id=wid, job_id=job.id, source=job.source, source_job_id=job.source_job_id,
                 title=job.title, payload_json=job.model_dump_json(),
             )
         )

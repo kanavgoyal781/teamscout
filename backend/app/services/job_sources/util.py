@@ -8,6 +8,7 @@ from pathlib import Path
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from app.core.logging import get_logger
+from app.core.workspace import workspace_or_system
 from app.db.models import JobCache
 from app.schemas.jobs import Job
 from app.services.job_filters import DATE_WINDOW_DAYS, infer_remote_mode
@@ -61,7 +62,8 @@ def load_ats_slugs() -> dict[str, list[str]]:
         out[key] = [str(s).strip() for s in vals if str(s).strip()]
     return out
 def _board_row(db: Session, source: str, slug: str):
-    return db.query(JobCache).filter(JobCache.source == f"{source}_board", JobCache.source_job_id == slug).one_or_none()
+    wid = workspace_or_system()
+    return db.query(JobCache).filter(JobCache.workspace_id == wid, JobCache.source == f"{source}_board", JobCache.source_job_id == slug).one_or_none()
 def board_cache_get(db: Session | None, source: str, slug: str) -> object | None:
     if db is None:
         return None
@@ -87,7 +89,7 @@ def board_cache_set(db: Session | None, source: str, slug: str, payload: object)
         existing.payload_json, existing.title, existing.fetched_at = body, f"board:{slug}", now
         db.add(existing)
     else:
-        db.add(JobCache(source=f"{source}_board", source_job_id=slug, title=f"board:{slug}", payload_json=body, fetched_at=now))
+        db.add(JobCache(workspace_id=workspace_or_system(), source=f"{source}_board", source_job_id=slug, title=f"board:{slug}", payload_json=body, fetched_at=now))
     try:
         db.commit()
     except SQLAlchemyError:

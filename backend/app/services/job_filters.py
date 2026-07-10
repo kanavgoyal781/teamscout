@@ -86,7 +86,6 @@ def parse_salary_min(
             lo = _parse_money_token(groups[0], groups[1] if len(groups) > 1 else None)
             if lo is None:
                 continue
-            # Prefer lower bound of ranges
             if best is None or lo < best:
                 best = lo
     if best is not None and best >= 1000:
@@ -210,7 +209,6 @@ def apply_hard_filters(
                 continue
         if params.employment_type != "any" and params.employment_type_pref == "hard":
             if not _employment_matches(params.employment_type, job.employment_type):
-                # unknown employment: keep
                 if job.employment_type and job.employment_type != "unknown":
                     dropped.hard_employment += 1
                     continue
@@ -219,7 +217,6 @@ def apply_hard_filters(
                 if job.salary_min < float(params.min_salary):
                     dropped.hard_salary += 1
                     continue
-            # salary_unknown always kept
         kept.append(job)
     return kept, dropped
 def soft_boost_score(job: Job, params: SearchParams, base_score: float) -> float:
@@ -238,7 +235,6 @@ def soft_boost_score(job: Job, params: SearchParams, base_score: float) -> float
     if params.min_salary is not None and params.min_salary_pref == "soft":
         if not job.salary_unknown and job.salary_min is not None and job.salary_min >= float(params.min_salary):
             score += SOFT_BOOST_POINTS
-    # Experiment-only direct ATS boost (default 0.0 — never hand-flipped on).
     boost = float(getattr(settings, "RANKING_DIRECT_ATS_BOOST", 0.0) or 0.0)
     if boost > 0 and getattr(job, "source_quality", None) == "direct_ats":
         score += boost

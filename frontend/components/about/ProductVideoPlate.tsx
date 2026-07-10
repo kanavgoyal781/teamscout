@@ -186,7 +186,7 @@ export default function ProductVideoPlate({
       </figcaption>
       <p className="meta about-video-note">
         Real scores come from the weighted pipeline below, gated by{" "}
-        <code>scripts/eval_ranking.py</code> and <code>scripts/eval_fit_signals.py</code>.
+        <code>offline eval scripts</code> and <code>offline eval scripts</code>.
       </p>
     </figure>
   );

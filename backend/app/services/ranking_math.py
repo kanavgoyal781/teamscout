@@ -163,7 +163,6 @@ def experience_fit_score(
         if yoe < lo:
             gap = lo - yoe
             return round(max(0.05, 1.0 - gap * 0.22), 4)
-        # Overqualified for junior/mid band
         gap = yoe - hi
         return round(max(0.15, 1.0 - gap * 0.14), 4)
     if yoe <= 0:
@@ -177,7 +176,6 @@ def extract_requirement_terms(job_skills: list[str], description: str) -> list[s
         cleaned = term.strip().lower()
         if len(cleaned) < 2 or cleaned in seen:
             return
-        # Drop pure filler
         if cleaned in {"and", "or", "the", "with", "from", "experience", "years", "year", "plus"}:
             return
         seen.add(cleaned)
@@ -191,7 +189,6 @@ def extract_requirement_terms(job_skills: list[str], description: str) -> list[s
         if not chunk:
             continue
         if 2 <= len(chunk) <= 40 and not chunk.endswith("."):
-            # strip leading "N+ years of"
             chunk = re.sub(r"^\d+\+?\s*years?\s+(?:of\s+)?", "", chunk, flags=re.I)
             if chunk:
                 add(chunk)
@@ -274,7 +271,6 @@ def mmr(
     """Maximal Marginal Relevance diversification (pure)."""
     if not item_ids:
         return []
-    # Unique preserve first occurrence
     seen: set[str] = set()
     candidates: list[str] = []
     for item_id in item_ids:
@@ -303,7 +299,6 @@ def mmr(
             continue
         best_id: str | None = None
         best_score = float("-inf")
-        # Deterministic: scan in relevance order
         for item_id in by_rel:
             if item_id not in remaining:
                 continue
@@ -352,13 +347,11 @@ def apply_company_soft_cap(
         head.append(item_id)
         if company:
             counts[company] = used + 1
-    # Fill head from deferred if under top_k
     rest = []
     for item_id in deferred:
         if len(head) < top_k:
             company = company_by_id.get(item_id, "")
             used = counts.get(company, 0)
-            # Still respect cap when filling
             if company and used >= max_per_company:
                 rest.append(item_id)
                 continue

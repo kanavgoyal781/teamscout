@@ -8,13 +8,13 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.upload_limit import enforce_upload_size
+from app.core.workspace import require_workspace_id, workspace_upload_path
 from app.db.models import DriveSyncedFile, DriveSyncState, Resume
 from app.errors import NotFoundError, ValidationError
 from app.schemas.library import LibraryResumeOut, ResumeCandidate
 from app.schemas.resume import ResumeProfile
 from app.services import drive, parser
 from app.services.ranking_math_align import cluster_variant_label
-UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads"
 def _cluster_meta(rows: list[Resume]) -> dict[str, tuple[str | None, int, str | None]]:
     """resume_id → (cluster_id, size, label)."""
     members: dict[str, list[str]] = defaultdict(list)
@@ -51,7 +51,8 @@ def _resume_to_out(row: Resume, meta: dict[str, tuple[str | None, int, str | Non
         cluster_size=size,
     )
 def _resume_out_by_hash(content_hash: str, db: Session) -> LibraryResumeOut:
-    row = db.query(Resume).filter(Resume.content_hash == content_hash).one_or_none()
+    wid = require_workspace_id()
+    row = db.query(Resume).filter(Resume.workspace_id == wid, Resume.content_hash == content_hash).one_or_none()
     if row is None:
         raise NotFoundError("resume", content_hash)
     return _resume_to_out(row)
@@ -74,7 +75,8 @@ def _maybe_index_units(row: Resume, profile: ResumeProfile, db: Session) -> tupl
         )
         return False, str(exc)
 def load_candidates(db: Session) -> list[ResumeCandidate]:
-    rows = db.query(Resume).filter(Resume.in_library.is_(True)).order_by(Resume.created_at.desc()).all()
+    wid = require_workspace_id()
+    rows = db.query(Resume).filter(Resume.workspace_id == wid, Resume.in_library.is_(True)).order_by(Resume.created_at.desc()).all()
     return [
         ResumeCandidate(
             resume_id=row.id,
@@ -86,11 +88,13 @@ def load_candidates(db: Session) -> list[ResumeCandidate]:
         for row in rows
     ]
 def list_library_resumes(db: Session) -> list[LibraryResumeOut]:
-    rows = db.query(Resume).filter(Resume.in_library.is_(True)).order_by(Resume.created_at.desc()).all()
+    wid = require_workspace_id()
+    rows = db.query(Resume).filter(Resume.workspace_id == wid, Resume.in_library.is_(True)).order_by(Resume.created_at.desc()).all()
     meta = _cluster_meta(rows)
     return [_resume_to_out(row, meta) for row in rows]
 def distinct_version_count(db: Session) -> int:
-    rows = db.query(Resume).filter(Resume.in_library.is_(True)).all()
+    wid = require_workspace_id()
+    rows = db.query(Resume).filter(Resume.workspace_id == wid, Resume.in_library.is_(True)).all()
     if not rows:
         return 0
     clusters = {row.cluster_id or row.id for row in rows}
@@ -106,7 +110,8 @@ def ingest_resume_bytes(
         raise ValidationError(f"File is empty: {filename}")
     enforce_upload_size(data)
     file_hash, profile = parser.parse_resume_file(filename, data)
-    existing = db.query(Resume).filter(Resume.content_hash == file_hash).one_or_none()
+    wid = require_workspace_id()
+    existing = db.query(Resume).filter(Resume.workspace_id == wid, Resume.content_hash == file_hash).one_or_none()
     if existing is not None:
         if not existing.in_library:
             existing.in_library = True
@@ -116,10 +121,10 @@ def ingest_resume_bytes(
             db.refresh(existing)
         _maybe_index_units(existing, profile, db)
         return _resume_to_out(existing), False
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    destination = UPLOAD_DIR / f"{file_hash}_{Path(filename).name}"
+    destination = workspace_upload_path(wid, file_hash, filename)
     destination.write_bytes(data)
     row = Resume(
+        workspace_id=wid,
         filename=filename,
         content_hash=file_hash,
         file_path=str(destination),
@@ -150,6 +155,7 @@ def _index_status_for_resumes(db: Session, resumes: list[LibraryResumeOut]) -> t
         return False, f"{missing} resume(s) missing unit index (will re-index at rank)"
     return True, None
 def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str, object]:
+    wid = require_workspace_id()
     listing = drive.list_folder_files(folder_id)
     parsed = 0
     skipped = 0
@@ -158,6 +164,7 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
         synced = (
             db.query(DriveSyncedFile)
             .filter(
+                DriveSyncedFile.workspace_id == wid,
                 DriveSyncedFile.folder_id == folder_id,
                 DriveSyncedFile.file_id == item.file_id,
             )
@@ -179,6 +186,7 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
         if synced is None:
             db.add(
                 DriveSyncedFile(
+                    workspace_id=wid,
                     folder_id=folder_id,
                     file_id=item.file_id,
                     filename=item.name,
@@ -193,10 +201,14 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
             synced.content_hash = content_hash
             synced.synced_at = now
             db.add(synced)
-    state = db.query(DriveSyncState).filter(DriveSyncState.folder_id == folder_id).one_or_none()
+    state = (
+        db.query(DriveSyncState)
+        .filter(DriveSyncState.workspace_id == wid, DriveSyncState.folder_id == folder_id)
+        .one_or_none()
+    )
     now = datetime.now(UTC)
     if state is None:
-        state = DriveSyncState(folder_id=folder_id, folder_url=folder_url, last_synced_at=now)
+        state = DriveSyncState(workspace_id=wid, folder_id=folder_id, folder_url=folder_url, last_synced_at=now)
         db.add(state)
     else:
         state.folder_url = folder_url

@@ -1,14 +1,11 @@
 """POST /feedback — thumbs + implicit signals for the learning loop."""
 from __future__ import annotations
-
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
-
 from app.core.rate_limit import feedback_limit, limiter
 from app.db.session import get_db
 from app.schemas.feedback import FeedbackCreate, FeedbackResponse
 from app.services import feedback_store
-
 router = APIRouter(tags=["feedback"])
 @router.post("/feedback", response_model=FeedbackResponse)
 @limiter.limit(feedback_limit)

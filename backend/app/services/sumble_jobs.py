@@ -44,10 +44,8 @@ def find_best_matching_job_post(organization_id: int, jd_title: str, company: st
         if not title:
             continue
         score = sumble_client.title_similarity(jd_l, title)
-        # boost if company/domain overlap
         if comp_l and (comp_l in title.lower() or comp_l.split()[0] in title.lower()):
             score += 0.15
-        # word overlap boost
         jd_words = set(w for w in jd_l.split() if len(w) > 2)
         title_words = set(w for w in title.lower().split() if len(w) > 2)
         if jd_words:

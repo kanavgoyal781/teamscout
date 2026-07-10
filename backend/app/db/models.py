@@ -5,11 +5,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 def _uuid() -> str:
     return str(uuid.uuid4())
+class Workspace(Base):
+    __tablename__ = "workspaces"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    prefs_json: Mapped[str | None] = mapped_column(Text)
 class Resume(Base):
     __tablename__ = "resumes"
+    __table_args__ = (UniqueConstraint("workspace_id", "content_hash", name="uq_resume_ws_hash"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="")
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
-    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     file_path: Mapped[str | None] = mapped_column(String(1024))
     parsed_json: Mapped[str | None] = mapped_column(Text)
     confirmed: Mapped[bool] = mapped_column(default=False)
@@ -20,8 +28,11 @@ class Resume(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 class JobCache(Base):
     __tablename__ = "jobs_cache"
-    __table_args__ = (UniqueConstraint("source", "source_job_id", name="uq_jobs_cache_source_job"),)
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "source", "source_job_id", name="uq_jobs_cache_ws_source_job"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="")
     job_id: Mapped[str | None] = mapped_column(String(36), index=True)
     source: Mapped[str] = mapped_column(String(64), nullable=False)
     source_job_id: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -31,6 +42,7 @@ class JobCache(Base):
 class Search(Base):
     __tablename__ = "searches"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="")
     resume_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     label: Mapped[str] = mapped_column(String(256), nullable=False)
     query_json: Mapped[str | None] = mapped_column(Text)
@@ -39,6 +51,7 @@ class Search(Base):
 class IntentSearch(Base):
     __tablename__ = "intent_searches"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="")
     role: Mapped[str] = mapped_column(String(256), nullable=False)
     years_of_experience: Mapped[float] = mapped_column(default=0.0)
     location: Mapped[str] = mapped_column(String(256), default="")
@@ -48,14 +61,17 @@ class IntentSearch(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 class DriveSyncState(Base):
     __tablename__ = "drive_sync_state"
+    __table_args__ = (UniqueConstraint("workspace_id", "folder_id", name="uq_drive_ws_folder"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    folder_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="")
+    folder_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     folder_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     last_synced_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 class DriveSyncedFile(Base):
     __tablename__ = "drive_synced_files"
-    __table_args__ = (UniqueConstraint("folder_id", "file_id", name="uq_drive_folder_file"),)
+    __table_args__ = (UniqueConstraint("workspace_id", "folder_id", "file_id", name="uq_drive_ws_folder_file"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="")
     folder_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     file_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
@@ -65,14 +81,17 @@ class DriveSyncedFile(Base):
 class TeamExtractionRecord(Base):
     __tablename__ = "team_extractions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="")
     job_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     extraction_json: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 class JobTeamSearch(Base):
     __tablename__ = "job_team_searches"
+    __table_args__ = (UniqueConstraint("workspace_id", "job_id", name="uq_job_team_ws_job"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    job_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="")
+    job_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     extraction_id: Mapped[str] = mapped_column(String(36), nullable=False)
     search_id: Mapped[str | None] = mapped_column(String(36), index=True)
     team_searched_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -80,8 +99,9 @@ class JobTeamSearch(Base):
     search_path: Mapped[str | None] = mapped_column(String(64))
 class Contact(Base):
     __tablename__ = "contacts"
-    __table_args__ = (UniqueConstraint("sumble_person_id", "job_id", name="uq_contact_person_job"),)
+    __table_args__ = (UniqueConstraint("workspace_id", "sumble_person_id", "job_id", name="uq_contact_ws_person_job"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="")
     full_name: Mapped[str] = mapped_column(String(256), nullable=False)
     title: Mapped[str | None] = mapped_column(String(256))
     company: Mapped[str | None] = mapped_column(String(256))
@@ -106,6 +126,7 @@ class Trace(Base):
     __tablename__ = "traces"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     request_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    workspace_id: Mapped[str | None] = mapped_column(String(64), index=True)
     operation: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     model: Mapped[str | None] = mapped_column(String(128))
     prompt_name: Mapped[str | None] = mapped_column(String(128))
@@ -140,6 +161,7 @@ class ResumeUnit(Base):
     __tablename__ = "resume_units"
     __table_args__ = (UniqueConstraint("resume_id", "unit_hash", name="uq_resume_unit_hash"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="")
     resume_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     unit_text: Mapped[str] = mapped_column(Text, nullable=False)
     section: Mapped[str] = mapped_column(String(64), nullable=False, default="experience")
@@ -168,6 +190,7 @@ class PairwiseJudgeCache(Base):
 class Feedback(Base):
     __tablename__ = "feedback"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="")
     kind: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     target_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     target_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
@@ -184,7 +207,6 @@ class Feedback(Base):
     ranking_config_hash: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
 class ScoreCalibration(Base):
-    """Platt (or similar) params; written only by explicit fit_weights/calibration scripts."""
     __tablename__ = "score_calibration"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     kind: Mapped[str] = mapped_column(String(64), nullable=False, index=True)

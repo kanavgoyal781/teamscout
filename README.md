@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/OWNER/teamscout/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/teamscout/actions/workflows/ci.yml)
 
-Recruiting intelligence — resume→jobs→team and library→best-resume, with production hardening (containers, CI, rate limits, request IDs). See [ARCHITECTURE.md](./ARCHITECTURE.md).
+Recruiting intelligence: resume→jobs→team and library→best-resume, with production hardening (containers, CI, rate limits, request IDs). See [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+Private anonymous workspaces: cookie-scoped data auto-deletes after 7 days. New browser = new workspace.
 
 > Replace `OWNER/teamscout` in the badge URL with your GitHub org/repo.
 
@@ -32,7 +34,7 @@ Optional frontend: `NEXT_PUBLIC_GITHUB_BASE=https://github.com/<org>/<repo>/blob
 - Backend: http://localhost:8000
 - Frontend: http://localhost:3000
 
-### 2. Feature 1 — Resume → Jobs → Sumble team
+### 2. Feature 1: Resume → Jobs → Sumble team
 
 1. Open http://localhost:3000 (sidebar: **Resume → Jobs → Team**)
 2. Upload `samples/sample_resume.pdf`
@@ -41,7 +43,7 @@ Optional frontend: `NEXT_PUBLIC_GITHUB_BASE=https://github.com/<org>/<repo>/blob
 5. On a job, click **Extract team from description** → **Confirm & search Sumble**
 6. Preview then confirm **Reveal email** per contact
 
-### 3. Feature 2 — Resume library + best resume
+### 3. Feature 2: Resume library + best resume
 
 1. Open http://localhost:3000/library (sidebar: **Resume Library**)
 2. Upload multiple PDF/DOCX files or a ZIP of resumes (or sync a public Drive folder — see below)

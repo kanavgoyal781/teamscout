@@ -44,16 +44,25 @@ def _cached_not_found_error(contact_id: str, reveal: EmailReveal) -> ValidationE
             "cached": True,
         },
     )
+
+def _global_person_reveal(db: Session, person_id: str | None, *, exclude_contact_id: str | None = None) -> EmailReveal | None:
+    if not person_id:
+        return None
+    q = db.query(EmailReveal).filter(
+        EmailReveal.sumble_person_id == person_id,
+        EmailReveal.status.in_(tuple(TERMINAL_STATUSES)),
+    )
+    if exclude_contact_id:
+        q = q.filter(EmailReveal.contact_id != exclude_contact_id)
+    return q.order_by(EmailReveal.created_at.desc()).first()
 def preview_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
     existing = db.query(EmailReveal).filter(EmailReveal.contact_id == contact.id).one_or_none()
     if existing is not None and is_terminal(existing):
         return _terminal_response(contact.id, existing)
-    return EmailRevealResponse(
-        contact_id=contact.id,
-        cost_credits=sumble.EMAIL_REVEAL_COST,
-        cached=False,
-        status="preview",
-    )
+    global_hit = _global_person_reveal(db, contact.sumble_person_id, exclude_contact_id=contact.id)
+    if global_hit is not None:
+        return EmailRevealResponse(contact_id=contact.id, cost_credits=0, cached=True, status="preview", email=global_hit.email if global_hit.status == "revealed" else None)
+    return EmailRevealResponse(contact_id=contact.id, cost_credits=sumble.EMAIL_REVEAL_COST, cached=False, status="preview")
 def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
     _begin_immediate(db)
     not_found_err: ValidationError | None = None
@@ -91,6 +100,19 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
                     "Email reveal already in progress for this contact",
                     details={"contact_id": contact.id, "status": existing.status},
                 )
+        global_hit = _global_person_reveal(db, contact.sumble_person_id, exclude_contact_id=contact.id)
+        if global_hit is not None:
+            existing.email = global_hit.email
+            existing.cost_credits = 0
+            existing.status = global_hit.status
+            existing.revealed_at = global_hit.revealed_at
+            existing.sumble_person_id = contact.sumble_person_id
+            db.add(existing)
+            db.commit()
+            db.refresh(existing)
+            if existing.status == "not_found":
+                raise _cached_not_found_error(contact.id, existing)
+            return EmailRevealResponse(contact_id=contact.id, cached=True, email=existing.email, cost_credits=0, status=existing.status)
         email, credits_used = sumble.reveal_email(int(contact.sumble_person_id))
         now = datetime.now(UTC)
         existing.email = email
@@ -111,7 +133,6 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
                     "cached": True,
                 },
             )
-            # fall to post-try raise
         else:
             return EmailRevealResponse(
                 contact_id=contact.id,

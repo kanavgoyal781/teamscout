@@ -1,10 +1,11 @@
 "use client";
 
-import { useSyncExternalStore, useState } from "react";
-import { BookOpen, Briefcase, Files, Library, Play, Send, Settings } from "lucide-react";
+import { useSyncExternalStore, useState, useEffect, useId, useRef } from "react";
+import { BookOpen, Briefcase, Files, Library, Lock, Play, Send, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { API_BASE, fetchHealth } from "../lib/api";
 import { getOpsToken, setOpsToken, subscribeOpsToken } from "../lib/opsToken";
@@ -18,10 +19,43 @@ const NAV_ITEMS = [
   { href: "/about", label: "About", full: "About", icon: BookOpen, tour: "nav-about" },
 ] as const;
 
-const BETA_ITEMS = [
-  { label: "Outreach (Beta)", icon: Send },
-  { label: "Applications Tracker (Beta)", icon: Files },
-] as const;
+type BetaKey = "outreach" | "tracker";
+
+const BETA_ITEMS: {
+  key: BetaKey;
+  label: string;
+  icon: typeof Send;
+  title: string;
+  bullets: string[];
+  why: string;
+}[] = [
+  {
+    key: "outreach",
+    label: "Outreach (Beta)",
+    icon: Send,
+    title: "Outreach — planned",
+    bullets: [
+      "Sequenced follow-ups across hiring contacts",
+      "Reply detection and status on each thread",
+      "Per-contact history in one place",
+      "Daily send caps and clear opt-out handling",
+    ],
+    why: "CONSTRAINTS.md keeps TeamScout to two live features. Outreach stays a roadmap stub until it earns a real surface.",
+  },
+  {
+    key: "tracker",
+    label: "Applications Tracker (Beta)",
+    icon: Files,
+    title: "Applications Tracker — planned",
+    bullets: [
+      "Kanban board fed from apply and compose actions",
+      "Stage reminders so nothing stalls",
+      "Resume version tied to each application",
+      "Lightweight notes without becoming a full ATS",
+    ],
+    why: "CONSTRAINTS.md gates third product surfaces. The tracker is planned, not built, so the two core journeys stay focused.",
+  },
+];
 
 function useOpsToken() {
   return useSyncExternalStore(subscribeOpsToken, getOpsToken, () => null);
@@ -53,28 +87,98 @@ function HealthDot() {
   );
 }
 
+function BetaRoadmapModal({
+  item,
+  onClose,
+}: {
+  item: (typeof BETA_ITEMS)[number];
+  onClose: () => void;
+}) {
+  const titleId = useId();
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const Icon = item.icon;
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="beta-modal-backdrop"
+      role="presentation"
+      onClick={onClose}
+      data-testid={`beta-modal-${item.key}`}
+    >
+      <div
+        className="beta-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="beta-modal-head">
+          <Icon size={18} aria-hidden />
+          <h2 id={titleId}>{item.title}</h2>
+          <button
+            ref={closeRef}
+            type="button"
+            className="about-detail-close"
+            onClick={onClose}
+            aria-label="Close roadmap dialog"
+          >
+            ×
+          </button>
+        </div>
+        <ul className="beta-modal-list">
+          {item.bullets.map((b) => (
+            <li key={b}>{b}</li>
+          ))}
+        </ul>
+        <p className="meta">Why gated: {item.why}</p>
+        <div className="actions" style={{ marginTop: 12 }}>
+          <button
+            type="button"
+            className="primary"
+            data-testid={`beta-notify-${item.key}`}
+            onClick={() => toast.message("Noted — this is a demo roadmap")}
+          >
+            Notify me
+          </button>
+          <button type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const opsToken = useOpsToken();
   const [tourOpen, setTourOpen] = useState(false);
   const [opsPrompt, setOpsPrompt] = useState(false);
   const [opsDraft, setOpsDraft] = useState("");
+  const [betaOpen, setBetaOpen] = useState<BetaKey | null>(null);
+  const opsFormId = useId();
 
   function openOps() {
     if (!opsToken) {
       setOpsPrompt(true);
       return;
     }
-    // Open backend ops HTML with token header via query only in local operator use;
-    // prefer Bearer via a small form-less window fetch is hard — use Authorization
-    // by opening a same-origin proxy is out of scope. Open /ops with X-Ops-Token via
-    // a temporary fetch download is overkill; document: operator pastes token once
-    // and we open `${API_BASE}/ops` with header via window name workaround is fragile.
-    // Practical: open ops URL; token sent as Authorization Bearer via a blob HTML
-    // redirect is too heavy. Use fetch + open blob for HTML.
     void (async () => {
       try {
         const res = await fetch(`${API_BASE}/ops`, {
+          credentials: "include",
           headers: {
             Authorization: `Bearer ${opsToken}`,
             "X-Ops-Token": opsToken,
@@ -97,6 +201,8 @@ export default function Sidebar() {
     setOpsPrompt(false);
     setOpsDraft("");
   }
+
+  const openBeta = BETA_ITEMS.find((b) => b.key === betaOpen) ?? null;
 
   return (
     <aside className="sidebar" data-testid="app-sidebar">
@@ -143,10 +249,12 @@ export default function Sidebar() {
             className="sidebar-link sidebar-link-btn sidebar-link-muted"
             onClick={() => setOpsPrompt(true)}
             data-testid="nav-ops-unlock"
-            title="Enter OPS_TOKEN (memory only)"
+            title="Ops access"
+            aria-haspopup="dialog"
+            aria-expanded={opsPrompt}
           >
-            <Settings size={16} aria-hidden />
-            Ops
+            <Lock size={16} aria-hidden />
+            Ops access
           </button>
         )}
 
@@ -165,18 +273,32 @@ export default function Sidebar() {
         {BETA_ITEMS.map((item) => {
           const Icon = item.icon;
           return (
-            <span key={item.label} className="sidebar-link disabled" title="Coming soon">
+            <button
+              key={item.key}
+              type="button"
+              className="sidebar-link sidebar-link-btn sidebar-link-muted"
+              title="Open roadmap"
+              data-testid={`beta-nav-${item.key}`}
+              onClick={() => setBetaOpen(item.key)}
+            >
               <Icon size={16} aria-hidden />
               {item.label}
-            </span>
+            </button>
           );
         })}
       </nav>
 
       {opsPrompt ? (
-        <form className="ops-token-form" onSubmit={submitOpsToken} data-testid="ops-token-form">
+        <form
+          id={opsFormId}
+          className="ops-token-form"
+          onSubmit={submitOpsToken}
+          data-testid="ops-token-form"
+          role="dialog"
+          aria-label="Ops access"
+        >
           <label className="meta" htmlFor="ops-token-input">
-            OPS_TOKEN (memory only — never stored)
+            Ops access
           </label>
           <input
             id="ops-token-input"
@@ -184,7 +306,7 @@ export default function Sidebar() {
             autoComplete="off"
             value={opsDraft}
             onChange={(e) => setOpsDraft(e.target.value)}
-            placeholder="Paste token"
+            placeholder="Paste access token"
             data-testid="ops-token-input"
           />
           <div className="actions" style={{ marginTop: 8 }}>
@@ -197,6 +319,8 @@ export default function Sidebar() {
           </div>
         </form>
       ) : null}
+
+      {openBeta ? <BetaRoadmapModal item={openBeta} onClose={() => setBetaOpen(null)} /> : null}
 
       <DemoTour open={tourOpen} onClose={() => setTourOpen(false)} />
     </aside>

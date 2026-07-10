@@ -11,7 +11,6 @@ from app.services import observability
 from app.services.ranking_math import normalize_scores
 logger = get_logger(__name__)
 _INFER = "https://api.deepinfra.com/v1/inference"
-# org/model path only — blocks injection into the inference URL.
 _MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
 def _validated_model() -> str:
     model = (settings.RERANKER_MODEL or "").strip()
@@ -51,8 +50,6 @@ def cross_encode(query: str, documents: list[str]) -> list[float]:
         raise ServiceFailingError("CrossEncoder", "documents must be non-empty")
     _require()
     model = settings.RERANKER_MODEL or ""
-    # Cost uses embeddings $/1M as intentional approximation (same DeepInfra token meter;
-    # no separate RERANKER_PRICE until provider bills diverge).
     est = observability.approx_token_count(query) + sum(observability.approx_token_count(d) for d in documents)
     headers = {"Authorization": f"Bearer {settings.EMBEDDINGS_API_KEY}", "Content-Type": "application/json"}
     payload = {"queries": [query], "documents": list(documents)}

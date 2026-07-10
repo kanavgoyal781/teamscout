@@ -121,7 +121,6 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
                 ):
                     host = host.replace(junk, "")
                 host = host.strip(".")
-                # Take registrable domain-ish
                 parts = [p for p in host.split(".") if p]
                 if len(parts) >= 2:
                     candidate = ".".join(parts[-2:])
@@ -129,7 +128,6 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
                         return candidate
         except (ValueError, TypeError, AttributeError):
             pass
-    # fallback from name
     slug = "".join(c for c in (company_name or "").lower() if c.isalnum())
     if slug:
         return f"{slug}.com"
@@ -231,7 +229,6 @@ def find_hiring_team(
     """Primary path: org job-posts match -> find-related-people."""
     lim = getattr(settings, "SUMBLE_SEARCH_LIMIT", sumble_client.DEFAULT_LIMIT)
     total_credits = 0
-    # Preferred: job post match
     if jd_title:
         try:
             matched_id, job_credits = sumble_jobs.find_best_matching_job_post(organization_id, jd_title, company)
@@ -250,7 +247,6 @@ def find_hiring_team(
                     return people, total_credits, path_label
         except (httpx.HTTPError, ServiceFailingError) as exc:
             logger.info("sumble.job_related_fallback", reason=str(exc)[:200])
-    # Fallback
     people, search_credits = search_people(
         organization_id=organization_id,
         team_name=team_name,

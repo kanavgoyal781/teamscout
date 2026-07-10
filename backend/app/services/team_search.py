@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from sqlalchemy.orm import Session
+from app.core.workspace import require_workspace_id
 from app.db.models import Contact, EmailReveal, JobTeamSearch
 from app.schemas.jobs import Job
 from app.schemas.team import ContactOut, FindTeamResponse, TeamExtraction
@@ -26,10 +27,12 @@ def _record_team_search(
     db: Session,
 ) -> None:
     now = datetime.now(UTC)
-    existing = db.query(JobTeamSearch).filter(JobTeamSearch.job_id == job_id).one_or_none()
+    wid = require_workspace_id()
+    existing = db.query(JobTeamSearch).filter(JobTeamSearch.job_id == job_id, JobTeamSearch.workspace_id == wid).one_or_none()
     if existing is None:
         db.add(
             JobTeamSearch(
+                workspace_id=wid,
                 job_id=job_id,
                 extraction_id=extraction_id,
                 search_id=search_id,
@@ -52,6 +55,7 @@ def find_team_for_job(
     search_id: str | None,
     db: Session,
 ) -> FindTeamResponse:
+    wid = require_workspace_id()
     org, org_credits = sumble.lookup_organization(job.company, job.apply_url)
     people, search_credits, search_path = sumble.find_hiring_team(
         organization_id=org.organization_id,
@@ -66,10 +70,11 @@ def find_team_for_job(
     for person in people:
         person_key = str(person.person_id)
         existing = (
-            db.query(Contact).filter(Contact.sumble_person_id == person_key, Contact.job_id == job.id).one_or_none()
+            db.query(Contact).filter(Contact.workspace_id == wid, Contact.sumble_person_id == person_key, Contact.job_id == job.id).one_or_none()
         )
         if existing is None:
             existing = Contact(
+                workspace_id=wid,
                 full_name=person.name or "Unknown",
                 title=person.title,
                 company=job.company,

@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.env_utils import is_set
+from app.core.workspace import require_workspace_id
 from app.db.models import Feedback
 from app.prompts import prompt_versions
 from app.schemas.feedback import FeedbackCreate
@@ -32,6 +33,7 @@ def record_feedback(db: Session, payload: FeedbackCreate) -> Feedback:
     if payload.score_components:
         components_json = json.dumps(payload.score_components, sort_keys=True)
     row = Feedback(
+        workspace_id=require_workspace_id(),
         kind=payload.kind,
         target_type=payload.target_type,
         target_id=payload.target_id,

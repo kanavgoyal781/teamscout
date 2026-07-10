@@ -117,7 +117,7 @@ async function parseError(response: Response): Promise<ApiClientError> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, init);
+  const response = await fetch(`${API_BASE}${path}`, { ...init, credentials: "include" });
   if (!response.ok) {
     throw await parseError(response);
   }
@@ -129,7 +129,7 @@ export async function fetchHealth(): Promise<HealthResponse> {
   // config with a valid JSON body — not "backend unreachable".
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}/health`, { cache: "no-store" });
+    response = await fetch(`${API_BASE}/health`, { cache: "no-store", credentials: "include" });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Network error";
     throw new ApiClientError(msg, { status: 0, errorCode: "network_error" });
@@ -286,5 +286,25 @@ export async function postFeedback(payload: FeedbackCreate): Promise<FeedbackRes
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  });
+}
+
+export type WorkspaceInfo = {
+  workspace_id: string;
+  ttl_days: number;
+  prefs: Record<string, unknown>;
+};
+
+export async function fetchWorkspace(): Promise<WorkspaceInfo> {
+  return request<WorkspaceInfo>("/workspace");
+}
+
+export async function patchWorkspacePrefs(prefs: {
+  filter_hint_dismissed?: boolean;
+}): Promise<WorkspaceInfo> {
+  return request<WorkspaceInfo>("/workspace/prefs", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(prefs),
   });
 }

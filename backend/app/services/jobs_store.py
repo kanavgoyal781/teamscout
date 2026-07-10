@@ -3,6 +3,7 @@ import re
 import uuid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from app.core.workspace import require_workspace_id
 from app.db.models import JobCache
 from app.errors import NotFoundError, ValidationError
 from app.schemas.jobs import Job
@@ -62,7 +63,12 @@ def extract_skills_from_jd_text(description: str, title: str = "") -> list[str]:
             break
     return out
 def resolve_job(job_id: str, db: Session) -> Job:
-    row = db.query(JobCache).filter(JobCache.job_id == job_id).one_or_none()
+    wid = require_workspace_id()
+    row = (
+        db.query(JobCache)
+        .filter(JobCache.job_id == job_id, JobCache.workspace_id == wid)
+        .one_or_none()
+    )
     if row is None or not row.payload_json:
         raise NotFoundError("job", job_id)
     return Job.model_validate_json(row.payload_json)
@@ -88,9 +94,10 @@ def cache_pasted_job(
     content_hash = hashlib.sha256(desc.encode("utf-8")).hexdigest()[:32]
     source_job_id = f"paste-{content_hash}"
     skills = extract_skills_from_jd_text(desc, title_clean)
+    wid = require_workspace_id()
     existing = (
         db.query(JobCache)
-        .filter(JobCache.source == "paste", JobCache.source_job_id == source_job_id)
+        .filter(JobCache.workspace_id == wid, JobCache.source == "paste", JobCache.source_job_id == source_job_id)
         .first()
     )
     if existing is not None and existing.payload_json:
@@ -128,6 +135,7 @@ def cache_pasted_job(
         with db.begin_nested():
             db.add(
                 JobCache(
+                    workspace_id=wid,
                     job_id=job.id,
                     source=job.source,
                     source_job_id=job.source_job_id,
@@ -142,7 +150,7 @@ def cache_pasted_job(
         db.rollback()
         existing = (
             db.query(JobCache)
-            .filter(JobCache.source == "paste", JobCache.source_job_id == source_job_id)
+            .filter(JobCache.workspace_id == wid, JobCache.source == "paste", JobCache.source_job_id == source_job_id)
             .first()
         )
         if existing is None or not existing.payload_json:

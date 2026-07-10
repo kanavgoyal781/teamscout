@@ -19,7 +19,6 @@ class Job(BaseModel):
     posted_at: datetime | None = None
     skills: list[str] = Field(default_factory=list)
     source_quality: SourceQuality = "aggregator"
-    # Structured annotations (filled during normalize / filter pass)
     seniority: str | None = None
     remote_mode: str | None = None  # remote|hybrid|onsite|unknown
     employment_type: str | None = None  # fulltime|contractor|parttime|unknown
@@ -33,9 +32,6 @@ class Job(BaseModel):
     def lexical_text(self) -> str:
         return f"{self.title} {self.company} {self.location} {' '.join(self.skills)} {self.description}"
     def dedup_embedding_text(self) -> str:
-        # Include company so distinct employers with commodity titles/boilerplate
-        # are less likely to merge at cosine > 0.97 (cross-post still matches when
-        # company strings normalize similarly or descriptions dominate).
         return f"{self.company}\n{self.title}\n{self.description[:500]}"
 class ScoreBreakdown(BaseModel):
     llm_fit: float
@@ -52,7 +48,6 @@ class ScoreBreakdown(BaseModel):
     matched_skills: list[str] = Field(default_factory=list)
     missing_skills: list[str] = Field(default_factory=list)
     rationale: str = ""
-    # 0–1 calibrated P(good match) when Platt artifact exists and n≥50; else null → UI shows raw score.
     match_likelihood: float | None = None
 class RankedJob(BaseModel):
     job: Job
@@ -69,7 +64,6 @@ class SearchParams(BaseModel):
     seniority_pref: PrefMode = "soft"
     min_salary: int | None = None
     min_salary_pref: PrefMode = "soft"
-    # When true, LLM expands profile into 3–5 query variants (requires LLM).
     use_expand: bool = True
 class FacetBucket(BaseModel):
     value: str

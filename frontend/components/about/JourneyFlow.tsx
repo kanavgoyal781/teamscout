@@ -11,7 +11,7 @@ export type JourneyStep = {
   title: string;
   product: string;
   underneath: string;
-  module: string;
+  engineers: string;
 };
 
 const FEATURE1_STEPS: JourneyStep[] = [
@@ -20,46 +20,45 @@ const FEATURE1_STEPS: JourneyStep[] = [
     title: "Parse",
     product: "Upload a PDF/DOCX. We extract a structured profile you can edit.",
     underneath:
-      "parser.py + LLM complete_json with versioned resume_schema prompt. Content-hash dedup on storage.",
-    module: "services/parser.py · prompts/resume_schema.md",
+      "Structured extraction with a versioned prompt. Content-hash dedup avoids storing the same file twice in one workspace.",
+    engineers: "services/parser · prompts/resume_schema",
   },
   {
     id: "confirm",
     title: "Confirm",
     product: "Lock title, location, and skills before any search spends API budget.",
-    underneath: "PUT /resumes/{id}/confirm snapshots the operator-edited profile used for ranking.",
-    module: "api/routers/resumes.py",
+    underneath: "Confirm snapshots the edited profile used for ranking and job search.",
+    engineers: "api/routers/resumes",
   },
   {
     id: "expand",
     title: "Expand queries",
     product: "Turn the profile into several market-facing search queries.",
-    underneath: "query_expand.py may call the LLM for 3–5 variants; content-hash cache avoids re-billing.",
-    module: "services/query_expand.py",
+    underneath: "Optional language-model expand into a few variants; cache avoids re-billing identical profiles.",
+    engineers: "services/query_expand",
   },
   {
     id: "fetch",
     title: "Fetch jobs",
     product: "Pull a live market pool (~150+) and cache stable job rows.",
-    underneath:
-      "job_sources registry (JSearch + ATS + feeds); filter/dedupe; jobs_cache.",
-    module: "services/jobs.py · job_sources/",
+    underneath: "Multi-source registry (live board + free ATS boards + remote feeds); filter and dedupe; workspace job cache.",
+    engineers: "services/jobs · job_sources",
   },
   {
     id: "rank",
     title: "Rank",
-    product: "Hybrid dense + BM25 → RRF → optional CE (RRF50→15) → LLM → weighted fuse → MMR top 10.",
+    product: "Hybrid dense + BM25 → RRF → optional CE → LLM → weighted fuse → MMR top 10.",
     underneath:
-      "hybrid_rank + ranking.py. Score breakdown is transparent in the UI (llm_fit, rrf, skills, YOE, requirements, recency).",
-    module: "services/ranking.py · hybrid_rank.py · ranking_math.py",
+      "Hybrid rank with a transparent score breakdown (fit, retrieval, skills, experience, requirements, recency).",
+    engineers: "services/ranking · hybrid_rank · ranking_math",
   },
   {
     id: "team",
     title: "Hiring team",
     product: "Extract likely hiring titles from the JD, then look up people. Email reveal is gated.",
     underneath:
-      "team_extract.py (LLM) → find-team people search → email reveal with no double-charge. Product copy never names the vendor.",
-    module: "services/team_extract.py · team_search.py · email_reveal.py",
+      "Team extract from the posting → people search → email reveal with no double-charge. Product copy never names the vendor.",
+    engineers: "services/team_extract · team_search · email_reveal",
   },
 ];
 
@@ -68,45 +67,43 @@ const FEATURE2_STEPS: JourneyStep[] = [
     id: "ingest",
     title: "Ingest library",
     product: "Upload many resumes, a ZIP, or sync a shared Drive folder.",
-    underneath: "library_store hash-dedup; optional Drive public-folder or OAuth path.",
-    module: "services/library_store.py · drive.py",
+    underneath: "Hash-dedup into the workspace library; optional Drive public-folder or OAuth path.",
+    engineers: "services/library_store · drive",
   },
   {
     id: "jd",
     title: "Paste JD",
-    product: "Paste the full job description — not just a title keyword.",
-    underneath: "recommend-from-jd ingests text into a job row for alignment.",
-    module: "api/routers/library.py",
+    product: "Paste the full job description, not just a title keyword.",
+    underneath: "Paste path stores a job row for alignment against the library.",
+    engineers: "api/routers/library",
   },
   {
     id: "decompose",
     title: "Decompose requirements",
     product: "Break the posting into weighted atomic requirements.",
-    underneath: "jd_decompose.py (LLM or deterministic fallback path for offline eval).",
-    module: "services/jd_decompose.py",
+    underneath: "Requirement decompose (language model or deterministic path for offline eval).",
+    engineers: "services/jd_decompose",
   },
   {
     id: "maxsim",
     title: "MaxSim coverage",
     product: "Each requirement finds its best evidence unit on every resume.",
-    underneath:
-      "resume_units + ranking_math_align MaxSim late-interaction coverage over bullet/skill units.",
-    module: "services/resume_units.py · ranking_math_align.py",
+    underneath: "Late-interaction coverage over bullet and skill units.",
+    engineers: "services/resume_units · ranking_math_align",
   },
   {
     id: "tournament",
     title: "Close-call tournament",
     product: "When top scores are neck-and-neck, a pairwise judge reorders the band.",
-    underneath:
-      "pairwise_tournament.py Borda over contested IDs; order-normalized cache; gap threshold ~0.05.",
-    module: "services/pairwise_tournament.py",
+    underneath: "Borda over contested IDs with order-normalized cache; gap threshold about 0.05.",
+    engineers: "services/pairwise_tournament",
   },
   {
     id: "justify",
     title: "Justify top 3",
     product: "Alignment table + short rationale for the winner and runners-up.",
-    underneath: "resume_justify.py + versioned justify prompt; tournament cost logged to traces.",
-    module: "services/resume_justify.py · resume_ranking.py",
+    underneath: "Justification prompt plus tournament cost logged to traces.",
+    engineers: "services/resume_justify · resume_ranking",
   },
 ];
 
@@ -161,7 +158,10 @@ function JourneyTrack({
                   >
                     <p className="journey-under-label">What happens underneath</p>
                     <p>{step.underneath}</p>
-                    <p className="meta font-num">{step.module}</p>
+                    <details className="journey-engineers" data-testid={`journey-engineers-${step.id}`}>
+                      <summary>For engineers</summary>
+                      <p className="meta font-num journey-engineers-path">{step.engineers}</p>
+                    </details>
                   </motion.div>
                 ) : null}
               </AnimatePresence>
@@ -190,8 +190,8 @@ function JourneyTrack({
 export default function JourneyFlow() {
   return (
     <div className="journey-flow" data-testid="journey-flow">
-      <JourneyTrack featureLabel="Feature 1 — Resume → jobs → hiring team" steps={FEATURE1_STEPS} />
-      <JourneyTrack featureLabel="Feature 2 — Library → best resume" steps={FEATURE2_STEPS} />
+      <JourneyTrack featureLabel="Feature 1 · Resume → jobs → hiring team" steps={FEATURE1_STEPS} />
+      <JourneyTrack featureLabel="Feature 2 · Library → best resume" steps={FEATURE2_STEPS} />
     </div>
   );
 }

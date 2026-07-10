@@ -35,7 +35,6 @@ from app.services.resume_justify import (
     rationale_references_resume,
 )
 from app.services.resume_units import ensure_candidate_units
-# Back-compat re-exports for tests
 _rationale_cites_units = rationale_cites_units
 _rationale_references_resume = rationale_references_resume
 _llm_justify = llm_justify
@@ -58,8 +57,10 @@ def _whole_doc_baseline_order(job: Job, candidates: list[ResumeCandidate]) -> li
     return [resume_id for resume_id, _ in scored]
 def recluster_library(db: Session) -> dict[str, str]:
     """Recompute near-dup clusters for all library resumes; persist cluster_id."""
+    from app.core.workspace import require_workspace_id
     from app.db.models import Resume
-    rows = db.query(Resume).filter(Resume.in_library.is_(True)).all()
+    wid = require_workspace_id()
+    rows = db.query(Resume).filter(Resume.workspace_id == wid, Resume.in_library.is_(True)).all()
     if not rows:
         return {}
     ids: list[str] = []

@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+import { fetchWorkspace, patchWorkspacePrefs } from "../lib/api";
 import type { PrefMode, SearchParams } from "../lib/types";
 
 type SearchFiltersProps = {
@@ -20,7 +24,7 @@ function PrefToggle({
   label: string;
 }) {
   return (
-    <label className="pref-toggle" title={`${label}: filter excludes; boost reorders`}>
+    <label className="pref-toggle" title={`${label}: Must have removes non-matches; Prefer ranks matches higher`}>
       <span className="meta" style={{ margin: 0 }}>
         {label}
       </span>
@@ -30,8 +34,8 @@ function PrefToggle({
         onChange={(e) => onChange(e.target.value as PrefMode)}
         aria-label={`${label} mode`}
       >
-        <option value="soft">Boost</option>
-        <option value="hard">Filter</option>
+        <option value="soft">Prefer</option>
+        <option value="hard">Must have</option>
       </select>
     </label>
   );
@@ -68,6 +72,17 @@ export function defaultSearchParams(): SearchParams {
 
 export default function SearchFilters({ params, onChange, disabled }: SearchFiltersProps) {
   const p = { ...DEFAULTS, ...params };
+  const qc = useQueryClient();
+  const { data: workspace } = useQuery({
+    queryKey: ["workspace"],
+    queryFn: fetchWorkspace,
+    staleTime: 60_000,
+  });
+  const dismissMut = useMutation({
+    mutationFn: () => patchWorkspacePrefs({ filter_hint_dismissed: true }),
+    onSuccess: (data) => qc.setQueryData(["workspace"], data),
+  });
+  const showHint = workspace && workspace.prefs?.filter_hint_dismissed !== true;
 
   function set<K extends keyof SearchParams>(key: K, value: SearchParams[K]) {
     onChange({ ...p, [key]: value });
@@ -76,6 +91,27 @@ export default function SearchFilters({ params, onChange, disabled }: SearchFilt
   return (
     <div className="search-filters" data-testid="search-filters">
       <h3 style={{ margin: "16px 0 8px", fontSize: "0.95rem" }}>Search options</h3>
+      {showHint ? (
+        <div className="filter-hint" data-testid="filter-prefer-hint" role="note">
+          <p>
+            <strong>Must have</strong> removes jobs that do not match. <strong>Prefer</strong> keeps
+            all jobs and ranks matching ones higher. Example: set Remote to Remote + Prefer to boost
+            remote roles without hiding hybrid or onsite.
+          </p>
+          <button
+            type="button"
+            className="meta"
+            onClick={() => dismissMut.mutate()}
+            data-testid="filter-prefer-hint-dismiss"
+          >
+            Got it
+          </button>
+        </div>
+      ) : null}
+      <p className="meta" style={{ marginBottom: 8 }}>
+        Must have removes jobs that don&apos;t match. Prefer keeps all jobs and ranks matching ones
+        higher.
+      </p>
       <div className="field-grid search-filters-grid">
         <label>
           Remote
@@ -92,7 +128,7 @@ export default function SearchFilters({ params, onChange, disabled }: SearchFilt
           </select>
         </label>
         <PrefToggle
-          label="Remote pref"
+          label="Remote mode"
           value={p.remote_mode_pref}
           disabled={disabled}
           onChange={(v) => set("remote_mode_pref", v)}
@@ -112,7 +148,7 @@ export default function SearchFilters({ params, onChange, disabled }: SearchFilt
           </select>
         </label>
         <PrefToggle
-          label="Employment pref"
+          label="Employment mode"
           value={p.employment_type_pref}
           disabled={disabled}
           onChange={(v) => set("employment_type_pref", v)}
@@ -150,7 +186,7 @@ export default function SearchFilters({ params, onChange, disabled }: SearchFilt
           </select>
         </label>
         <PrefToggle
-          label="Seniority pref"
+          label="Seniority mode"
           value={p.seniority_pref}
           disabled={disabled}
           onChange={(v) => set("seniority_pref", v)}
@@ -161,38 +197,32 @@ export default function SearchFilters({ params, onChange, disabled }: SearchFilt
           <input
             type="number"
             min={0}
-            step={5000}
-            placeholder="e.g. 120000"
+            step={1000}
             disabled={disabled}
             value={p.min_salary ?? ""}
-            onChange={(e) => {
-              const raw = e.target.value;
-              set("min_salary", raw === "" ? null : Number(raw));
-            }}
+            onChange={(e) =>
+              set("min_salary", e.target.value === "" ? null : Number(e.target.value))
+            }
             aria-label="Minimum salary"
           />
         </label>
         <PrefToggle
-          label="Salary pref"
+          label="Salary mode"
           value={p.min_salary_pref}
           disabled={disabled}
           onChange={(v) => set("min_salary_pref", v)}
         />
 
-        <label className="full-width" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <label className="checkbox-row">
           <input
             type="checkbox"
-            checked={p.use_expand !== false}
+            checked={Boolean(p.use_expand)}
             disabled={disabled}
             onChange={(e) => set("use_expand", e.target.checked)}
-            aria-label="Expand queries with LLM"
           />
-          <span>Expand queries (LLM · 3–5 variants)</span>
+          Expand search queries with AI
         </label>
       </div>
-      <p className="meta" style={{ marginTop: 8 }}>
-        Filter excludes non-matches. Boost reorders matches higher. Jobs without salary are kept and flagged.
-      </p>
     </div>
   );
 }

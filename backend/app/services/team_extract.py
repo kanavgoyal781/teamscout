@@ -3,12 +3,9 @@ from app.prompts import load_prompt
 from app.schemas.jobs import Job
 from app.schemas.team import TeamExtraction
 from app.services import llm
-
-
 def extract_team_from_job(job: Job) -> TeamExtraction:
     if not job.description.strip():
         raise ValidationError("Job description is required for team extraction")
-
     tmpl = load_prompt("team_extract")
     prompt = (
         f"{tmpl.body}\n\n"

@@ -99,7 +99,6 @@ def _build_listwise_prompt(profile: ResumeProfile, alias_jobs: list[tuple[str, J
 def _skills_chips(profile: ResumeProfile, job: Job) -> tuple[list[str], list[str]]:
     """Matched/missing chips using skill_equals (aliases; same as fusion Jaccard)."""
     from app.services.ranking_math_align import skill_equals
-
     profile_skills = [s for s in profile.skills if s and s.strip()]
     job_skills = [s for s in job.skills if s and s.strip()]
     matched = [s for s in profile_skills if any(skill_equals(s, js) for js in job_skills)][:5]
@@ -210,7 +209,6 @@ def _llm_rerank_listwise(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _
     prompt = _build_listwise_prompt(profile, alias_jobs, tmpl.body)
     system = tmpl.system or "You are a recruiting matcher. Return JSON only."
     def _once() -> list[tuple[str, str]]:
-        # max_retries=0: one JSON attempt per outer call (outer loop owns "retry once").
         resp = llm.complete_json(
             prompt, ListwiseResponse, system=system, max_tokens=budget,
             max_retries=0, operation="rerank", prompt_meta=tmpl,
@@ -227,7 +225,6 @@ def _llm_rerank_listwise(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _
             last_err = exc
             logger.warning("jobs.listwise_retry", attempt=attempt + 1, error=str(exc))
     if ordered is None:
-        # Token-safe fallback: no second LLM cascade — preserve input (RRF/CE) order + heuristics.
         logger.warning("jobs.listwise_fallback_heuristic", error=str(last_err))
         return _heuristic_rerank_from_order(profile, jobs)
     real_ids = [jid for jid, _ in ordered]
@@ -330,7 +327,6 @@ def rank_jobs(
         use_llm=use_llm, use_cross_encoder=use_ce,
         score_pool="rerank_top_n", top_n=score_n,
     )
-    # Load Platt params once per search (not N+1 sessions).
     from app.services.calibration import load_active_calibration, ui_match_likelihood
     cal_params = load_active_calibration() if settings.RANKING_USE_CALIBRATION else None
     ranked: list[RankedJob] = []
