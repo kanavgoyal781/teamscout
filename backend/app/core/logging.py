@@ -41,10 +41,8 @@ def configure_logging(level: str = "INFO", *, env: str = "dev") -> None:
         cache_logger_on_first_use=True,
     )
 
-
 def get_logger(name: str = __name__):
     return structlog.get_logger(name)
-
 
 def log_configured_services() -> None:
     """Startup log of which integrations are configured (names only, never keys)."""

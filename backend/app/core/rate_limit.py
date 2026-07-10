@@ -1,10 +1,4 @@
-"""slowapi rate limiting for expensive endpoints.
-
-Key function uses the direct peer address (get_remote_address). Suitable for
-compose-direct / single-host deploy; do not trust X-Forwarded-For without a
-known reverse-proxy hop.
-"""
-
+"""slowapi rate limiting for expensive endpoints."""
 from __future__ import annotations
 
 from fastapi import Request, Response
@@ -19,8 +13,6 @@ from app.core.config import settings
 def _key_func(request: Request) -> str:
     return get_remote_address(request)
 
-
-# headers_enabled=False avoids requiring `response: Response` on every limited route.
 limiter = Limiter(
     key_func=_key_func,
     enabled=settings.RATE_LIMIT_ENABLED,
@@ -28,26 +20,26 @@ limiter = Limiter(
     default_limits=[],
 )
 
-
 def upload_limit() -> str:
     return settings.RATE_LIMIT_UPLOAD
-
 
 def search_limit() -> str:
     return settings.RATE_LIMIT_SEARCH
 
-
 def find_team_limit() -> str:
     return settings.RATE_LIMIT_FIND_TEAM
-
 
 def reveal_email_limit() -> str:
     return settings.RATE_LIMIT_REVEAL_EMAIL
 
-
 def llm_limit() -> str:
     return settings.RATE_LIMIT_LLM
 
+def feedback_limit() -> str:
+    return settings.RATE_LIMIT_FEEDBACK
+
+def stats_limit() -> str:
+    return "60/minute"
 
 def rate_limit_exceeded_handler(request: Request, exc: Exception) -> Response:
     """Return 429 JSON. X-Request-ID is set solely by RequestIdMiddleware."""
@@ -58,9 +50,5 @@ def rate_limit_exceeded_handler(request: Request, exc: Exception) -> Response:
     details = {"request_id": request_id} if request_id else {}
     return JSONResponse(
         status_code=429,
-        content={
-            "error": "rate_limit_exceeded",
-            "message": message,
-            "details": details,
-        },
+        content={"error": "rate_limit_exceeded", "message": message, "details": details},
     )

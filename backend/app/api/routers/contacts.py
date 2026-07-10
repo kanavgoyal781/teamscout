@@ -10,7 +10,6 @@ from app.services import email_reveal
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
 
-
 @router.post("/{contact_id}/reveal-email", response_model=EmailRevealResponse)
 @limiter.limit(reveal_email_limit)
 def reveal_email(

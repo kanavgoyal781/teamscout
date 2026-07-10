@@ -90,7 +90,7 @@ export default function TeamDiscoveryPanel({
               className="primary"
               onClick={onFindTeam}
               disabled={teamState.finding || !teamState.extractionId}
-              data-testid="confirm-find-team"
+              data-testid="confirm-find-team" data-tour="confirm-find-team" data-tour-credit-gate="true"
             >
               {teamState.finding ? "Finding hiring team…" : "Confirm & find hiring team"}
             </button>

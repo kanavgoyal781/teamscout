@@ -84,7 +84,7 @@ def test_rank_jobs_survives_partial_llm_rerank() -> None:
     with patch("app.services.hybrid_rank.dense_ranking", return_value=["job-1", "job-2"]):
         with patch("app.services.hybrid_rank.lexical_ranking", return_value=["job-2", "job-1"]):
             with patch("app.services.ranking.llm.complete_json", return_value=partial):
-                ranked = rank_jobs(_profile(), jobs, use_llm=True)
+                ranked = rank_jobs(_profile(), jobs, use_llm=True, diversify=False)
     assert len(ranked) >= 1
     ids = {r.job.id for r in ranked}
     assert ids <= {"job-1", "job-2"}

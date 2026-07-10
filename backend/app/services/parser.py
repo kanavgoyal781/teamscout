@@ -15,10 +15,8 @@ from app.services import llm
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 
-
 def content_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
-
 
 def extract_text(filename: str, data: bytes) -> str:
     suffix = Path(filename).suffix.lower()
@@ -38,7 +36,6 @@ def extract_text(filename: str, data: bytes) -> str:
         return _extract_pdf(data)
     return _extract_docx(data)
 
-
 def _extract_pdf(data: bytes) -> str:
     try:
         with fitz.open(stream=data, filetype="pdf") as doc:
@@ -50,7 +47,6 @@ def _extract_pdf(data: bytes) -> str:
         raise ValidationError("PDF contains no extractable text")
     return text
 
-
 def _extract_docx(data: bytes) -> str:
     try:
         document = Document(io.BytesIO(data))
@@ -61,7 +57,6 @@ def _extract_docx(data: bytes) -> str:
     if not text:
         raise ValidationError("DOCX contains no extractable text")
     return text
-
 
 def parse_resume_text(text: str) -> ResumeProfile:
     if not text.strip():
@@ -75,7 +70,6 @@ def parse_resume_text(text: str) -> ResumeProfile:
         prompt_meta=tmpl,
         max_tokens=int(tmpl.model_params.get("max_tokens") or settings.max_tokens_for_operation("parse_resume")),
     )
-
 
 def parse_resume_file(filename: str, data: bytes) -> tuple[str, ResumeProfile]:
     file_hash = content_hash(data)

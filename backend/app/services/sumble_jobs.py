@@ -1,7 +1,4 @@
-"""Sumble job-post matching and related-people path.
-
-Internal helpers used by app.services.sumble.find_hiring_team.
-"""
+"""Sumble job-post matching and related-people path."""
 
 from __future__ import annotations
 
@@ -14,13 +11,8 @@ from app.services import sumble_client
 
 logger = get_logger(__name__)
 
-
 def search_org_job_posts(organization_id: int, limit: int | None = None) -> tuple[list[dict], int]:
-    """Search org's job posts (filter mode). Used to find matching JD post.
-
-    Selects only free attributes (title is free per docs; organization is paid).
-    Limit defaults to SUMBLE_JOB_MATCH_LIMIT (30) to control credit spend.
-    """
+    """Search org's job posts (filter mode). Used to find matching JD post."""
     lim = limit or getattr(settings, "SUMBLE_JOB_MATCH_LIMIT", 30)
     data = sumble_client.post(
         "/v6/jobs",
@@ -35,13 +27,8 @@ def search_org_job_posts(organization_id: int, limit: int | None = None) -> tupl
     credits = int(data.get("credits_used") or 0)
     return (jobs if isinstance(jobs, list) else [], credits)
 
-
 def find_best_matching_job_post(organization_id: int, jd_title: str, company: str) -> tuple[int | None, int]:
-    """Find Sumble job post for org whose title best matches cached JD (title sim + company).
-
-    Returns (Sumble job_id or None, credits_used from org job search).
-    Heuristic quality focused.
-    """
+    """Find Sumble job post for org whose title best matches cached JD (title sim + company)."""
     if not jd_title:
         return None, 0
     try:
@@ -82,16 +69,10 @@ def find_best_matching_job_post(organization_id: int, jd_title: str, company: st
         return best_id, search_credits
     return None, search_credits
 
-
 def get_related_people_for_job(
     sumble_job_id: int, limit: int | None = None
 ) -> tuple[list[sumble_client.SumblePerson], int]:
-    """Documented list-mode jobs + related_people (the 'find-related-people' flow).
-
-    Per docs: returns the people most relevant to that role (hiring managers/team).
-    Request uses documented "jobs" list + "select.related_people".
-    Response: jobs[0].related_people[] with person_id + attributes.
-    """
+    """Documented list-mode jobs + related_people (the 'find-related-people' flow)."""
     lim = limit or getattr(settings, "SUMBLE_SEARCH_LIMIT", sumble_client.DEFAULT_LIMIT)
     data = sumble_client.post(
         "/v6/jobs",

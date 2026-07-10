@@ -8,22 +8,23 @@ from app.core.rate_limit import limiter, search_limit
 from app.db.models import Resume, Search
 from app.db.session import get_db
 from app.errors import NotFoundError, ValidationError
-from app.schemas.jobs import RankedJob
+from app.schemas.jobs import DroppedCounts, JobFacets, RankedJob, SearchParams
 from app.schemas.resume import ResumeProfile
 from app.services import jobs, ranking
+from app.services.job_facets import compute_facets
 
 router = APIRouter(prefix="/searches", tags=["searches"])
 
-
 class SearchRequest(BaseModel):
     resume_id: str
-
+    params: SearchParams | None = None
 
 class SearchResponse(BaseModel):
     search_id: str
     resume_id: str
     results: list[RankedJob] = Field(default_factory=list)
-
+    dropped_counts: dict[str, int] = Field(default_factory=dict)
+    facets: JobFacets | None = None
 
 @router.post("", response_model=SearchResponse)
 @limiter.limit(search_limit)
@@ -45,8 +46,12 @@ def create_search(
     if not profile.skills:
         raise ValidationError("At least one skill is required before search")
 
-    fetched_jobs = jobs.fetch_jobs(profile, db)
-    ranked = ranking.rank_jobs(profile, fetched_jobs)
+    params = payload.params or SearchParams()
+    detailed = jobs.fetch_jobs_detailed(profile, db, params=params)
+    fetched_jobs = detailed.jobs if hasattr(detailed, 'jobs') else detailed
+    dropped = getattr(detailed, 'dropped_counts', None) or DroppedCounts()
+    ranked = ranking.rank_jobs(profile, fetched_jobs, params=params)
+    facets = compute_facets(fetched_jobs)
 
     search_row = Search(
         resume_id=row.id,
@@ -58,4 +63,4 @@ def create_search(
     db.commit()
     db.refresh(search_row)
 
-    return SearchResponse(search_id=search_row.id, resume_id=row.id, results=ranked)
+    return SearchResponse(search_id=search_row.id, resume_id=row.id, results=ranked, dropped_counts=dropped.as_dict() if hasattr(dropped, "as_dict") else dict(dropped or {}), facets=facets)

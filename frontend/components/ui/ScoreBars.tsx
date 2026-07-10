@@ -10,9 +10,11 @@ type ScoreBarsProps = {
   breakdown: ScoreBreakdown;
   /**
    * jobs (default): llm / rrf / skill / experience / requirements / recency
-   * resumes: llm / rrf / skill / experience / requirements (recency=0 for F2)
+   * resumes: coverage (MaxSim) / llm / skill / experience — not RRF
    */
   variant?: "jobs" | "resumes";
+  /** MaxSim coverage 0–1 for resume cards (authoritative; not rrf_normalized). */
+  coverageScore?: number | null;
 };
 
 type Row = { key: keyof ScoreBreakdown; label: string; isPercent: boolean };
@@ -28,16 +30,13 @@ const JOB_ROWS: Row[] = [
 
 const RESUME_ROWS: Row[] = [
   { key: "llm_fit", label: "LLM fit", isPercent: true },
-  { key: "rrf_normalized", label: "RRF", isPercent: false },
   { key: "skill_jaccard", label: "Skill", isPercent: false },
   { key: "experience_fit", label: "Experience", isPercent: false },
-  { key: "requirements_met", label: "Requirements", isPercent: false },
 ];
 
 function resolveRows(breakdown: ScoreBreakdown, variant?: "jobs" | "resumes"): Row[] {
   if (variant === "resumes") return RESUME_ROWS;
   if (variant === "jobs") return JOB_ROWS;
-  // Auto: when experience_fit is present and recency is empty, treat as resume ranking
   const exp = breakdown.experience_fit;
   if (exp != null && Number.isFinite(exp) && (!breakdown.recency || breakdown.recency === 0)) {
     return RESUME_ROWS;
@@ -45,14 +44,43 @@ function resolveRows(breakdown: ScoreBreakdown, variant?: "jobs" | "resumes"): R
   return JOB_ROWS;
 }
 
-export default function ScoreBars({ breakdown, variant }: ScoreBarsProps) {
+export default function ScoreBars({ breakdown, variant, coverageScore }: ScoreBarsProps) {
   const reduced = useReducedMotion();
   const rows = resolveRows(breakdown, variant);
+  const softBoost =
+    typeof breakdown.soft_boost === "number" && breakdown.soft_boost > 0
+      ? breakdown.soft_boost
+      : 0;
+  // Soft prefs are absolute points (typically 5–20), not a 0–1 fraction.
+  const softPct = Math.min(100, Math.max(0, (softBoost / 20) * 100));
+  const showCoverage =
+    variant === "resumes" &&
+    typeof coverageScore === "number" &&
+    Number.isFinite(coverageScore);
+  const covPct = showCoverage ? toPercent(coverageScore as number, false) : 0;
 
   return (
     <div className="breakdown-bars" role="list" aria-label="Score breakdown">
+      {showCoverage ? (
+        <div key="coverage" className="breakdown-row" role="listitem">
+          <span>Coverage</span>
+          <div className="breakdown-track" aria-hidden>
+            <motion.div
+              className="breakdown-fill"
+              initial={reduced ? { width: `${covPct}%` } : { width: 0 }}
+              animate={{ width: `${covPct}%` }}
+              transition={reduced ? { duration: 0 } : { ...easeOut, duration: 0.22 }}
+            />
+          </div>
+          <span className="breakdown-val font-num">
+            {formatScoreDecimal(coverageScore as number, 2)}
+          </span>
+        </div>
+      ) : null}
       {rows.map((row) => {
         const raw = breakdown[row.key];
+        if (raw == null && row.key !== "llm_fit" && row.key !== "skill_jaccard") return null;
+        // Always show skill on resume cards (0 is a real miss when JD lists skills)
         const value = typeof raw === "number" ? raw : 0;
         const pct = toPercent(value, row.isPercent);
         return (
@@ -72,6 +100,20 @@ export default function ScoreBars({ breakdown, variant }: ScoreBarsProps) {
           </div>
         );
       })}
+      {softBoost > 0 && variant !== "resumes" ? (
+        <div key="soft_boost" className="breakdown-row" role="listitem">
+          <span>Soft prefs</span>
+          <div className="breakdown-track" aria-hidden>
+            <motion.div
+              className="breakdown-fill"
+              initial={reduced ? { width: `${softPct}%` } : { width: 0 }}
+              animate={{ width: `${softPct}%` }}
+              transition={reduced ? { duration: 0 } : { ...easeOut, duration: 0.22 }}
+            />
+          </div>
+          <span className="breakdown-val font-num">+{formatScoreDecimal(softBoost, 1)}</span>
+        </div>
+      ) : null}
     </div>
   );
 }

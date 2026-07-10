@@ -40,13 +40,13 @@
 - SQLite cache in `jobs_cache`
 - Hard-fail if `JOBS_API_KEY` missing
 
-## Hybrid ranking (M4 refactor)
+## Ranking
 
-- `services/hybrid_rank.py`: shared dense + BM25 + RRF + LLM rerank + fuse orchestration
-- `services/ranking.py`: thin wrapper for resume→jobs (`POST /searches`, intent search)
-- `services/resume_ranking.py`: thin wrapper for job→resumes (best-resume pick)
-- Job search: LLM rerank top 30 fetched jobs, return top 10
-- Resume pick: LLM rerank top 30 by RRF, **score all library resumes** with RRF + skill + experience_fit, return top 3
+- `services/hybrid_rank.py`: **job search only** — dense + BM25 + RRF + LLM rerank + fuse
+- `services/ranking.py`: resume→jobs (`POST /searches`, intent search); soft prefs + MMR diversify
+- `services/resume_ranking.py`: job→resumes (best-resume pick) via **MaxSim**, not hybrid_rank
+- Job search: optional query expand; hard/soft `SearchParams`; LLM rerank top 30 (batches of 6); return top 10
+- Resume pick: JD decompose → unit MaxSim coverage → optional close-call pairwise tournament → justify; return top 3
 
 ## Resume library (M4)
 
@@ -88,7 +88,7 @@ Shared utilities: `frontend/lib/format.ts` (`formatPostedAgo`, score helpers).
 ## Tests
 
 - pytest with `respx` mocking external HTTP (in `tests/` only)
-- Resume pick: 35+ candidate pool test (RRF rank >30 still scored)
+- Resume pick: MaxSim ranks entire library; property tests for coverage/tournament; hard eval ≥7/8 near-dup libraries
 - All existing tests must pass
 
 ## Acceptance criteria

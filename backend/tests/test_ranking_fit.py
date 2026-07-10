@@ -125,10 +125,7 @@ def test_llm_rerank_batches_calls(monkeypatch) -> None:
         calls.append(len(batch))
         from app.services.ranking import _RerankItem
 
-        return {
-            j.id: _RerankItem(job_id=j.id, fit_score=50.0, rationale="ok")
-            for j in batch
-        }
+        return {j.id: _RerankItem(job_id=j.id, fit_score=50.0, rationale="ok") for j in batch}
 
     monkeypatch.setattr(ranking, "_llm_rerank_batch", fake_batch)
     out = ranking._llm_rerank(profile, jobs)
@@ -138,7 +135,7 @@ def test_llm_rerank_batches_calls(monkeypatch) -> None:
 
 
 def test_map_alias_results_maps_short_ids() -> None:
-    from app.services.ranking import _RerankItem, _RerankResponse, _map_alias_results
+    from app.services.ranking import _map_alias_results, _RerankItem, _RerankResponse
 
     resp = _RerankResponse(
         results=[
@@ -209,9 +206,7 @@ def test_llm_rerank_batch_fills_missing_without_raising(monkeypatch) -> None:
         calls["n"] += 1
         # First call: only j0; second (retry): still incomplete → heuristic fills rest
         if calls["n"] == 1:
-            return _RerankResponse(
-                results=[_RerankItem(job_id="j0", fit_score=90, rationale="good")]
-            )
+            return _RerankResponse(results=[_RerankItem(job_id="j0", fit_score=90, rationale="good")])
         return _RerankResponse(results=[])
 
     monkeypatch.setattr(ranking, "_call_rerank_llm", fake_call)

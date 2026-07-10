@@ -1,8 +1,4 @@
-"""LLM / embeddings / Sumble / JSearch tracing, cost ceilings, optional OTLP.
-
-SQLite `traces` is the source of truth. OTLP export is best-effort when
-OTEL_EXPORTER_OTLP_ENDPOINT is set and must never break the request path.
-"""
+"""LLM/embed/hiring-team/JSearch tracing, ceilings, optional OTLP."""
 
 from __future__ import annotations
 
@@ -13,22 +9,25 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
+import httpx
 import structlog
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.env_utils import is_set
+from app.core.http_timeouts import default_timeout
 from app.core.logging import get_logger
 from app.db.models import Trace
-from app.db.session import SessionLocal, ensure_db
+from app.db.session import SessionLocal
 from app.errors import CostCeilingExceededError
-from app.services.observability_otlp import maybe_export_otlp
 
 logger = get_logger(__name__)
 
-LLM_OPERATIONS = frozenset({"parse_resume", "rerank", "team_extract", "justify", "embed", "llm"})
+LLM_OPERATIONS = frozenset({"parse_resume", "rerank", "team_extract", "justify", "embed"})
 FEATURE1_OPS = frozenset(
     {
         "parse_resume",
@@ -45,7 +44,6 @@ FEATURE1_OPS = frozenset(
 )
 FEATURE2_OPS = frozenset({"justify"})
 
-
 def current_request_id() -> str | None:
     try:
         ctx = structlog.contextvars.get_contextvars()
@@ -53,7 +51,6 @@ def current_request_id() -> str | None:
         return None
     rid = ctx.get("request_id")
     return str(rid) if rid else None
-
 
 def estimate_llm_cost_usd(
     *, model: str | None, input_tokens: int | None, output_tokens: int | None
@@ -65,104 +62,52 @@ def estimate_llm_cost_usd(
         out / 1_000_000.0
     ) * settings.LLM_PRICE_OUTPUT_PER_1M
 
-
 def estimate_embedding_cost_usd(*, input_tokens: int | None) -> float:
     return (max(int(input_tokens or 0), 0) / 1_000_000.0) * settings.EMBEDDINGS_PRICE_PER_1M
-
 
 def approx_token_count(text: str) -> int:
     return 0 if not text else max(1, len(text) // 4)
 
-
 def _today_start_naive() -> datetime:
     return datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
 
-
-def _retry_after_schema(exc: SQLAlchemyError) -> bool:
-    """If the DB is missing M8 tables, force schema create once."""
-    msg = str(exc).lower()
-    return "no such table" in msg and ("traces" in msg or "embedding_cache" in msg)
-
-
 def llm_cost_today_usd(db: Session | None = None) -> float:
-    from app.db.session import init_db
-
-    ensure_db()
     own = db is None
     session = db or SessionLocal()
     try:
-        try:
-            total = (
-                session.query(func.coalesce(func.sum(Trace.cost_usd), 0.0))
-                .filter(
-                    Trace.created_at >= _today_start_naive(),
-                    Trace.operation.in_(tuple(LLM_OPERATIONS)),
-                )
-                .scalar()
-            )
-            return float(total or 0.0)
-        except SQLAlchemyError as exc:
-            if own and _retry_after_schema(exc):
-                session.close()
-                init_db()
-                session = SessionLocal()
-                total = (
-                    session.query(func.coalesce(func.sum(Trace.cost_usd), 0.0))
-                    .filter(
-                        Trace.created_at >= _today_start_naive(),
-                        Trace.operation.in_(tuple(LLM_OPERATIONS)),
-                    )
-                    .scalar()
-                )
-                return float(total or 0.0)
-            raise CostCeilingExceededError(
-                "LLM cost ceiling check failed — denying request (fail closed)",
-                details={"reason": str(exc)},
-            ) from exc
+        total = (
+            session.query(func.coalesce(func.sum(Trace.cost_usd), 0.0))
+            .filter(Trace.created_at >= _today_start_naive(), Trace.operation.in_(tuple(LLM_OPERATIONS)))
+            .scalar()
+        )
+        return float(total or 0.0)
+    except SQLAlchemyError as exc:
+        raise CostCeilingExceededError(
+            "LLM cost ceiling check failed — denying request (fail closed)",
+            details={"reason": str(exc)},
+        ) from exc
     finally:
         if own:
             session.close()
-
 
 def sumble_credits_today(db: Session | None = None) -> int:
-    from app.db.session import init_db
-
-    ensure_db()
     own = db is None
     session = db or SessionLocal()
     try:
-        try:
-            total = (
-                session.query(func.coalesce(func.sum(Trace.credits_used), 0))
-                .filter(
-                    Trace.created_at >= _today_start_naive(),
-                    Trace.operation.like("sumble.%"),
-                )
-                .scalar()
-            )
-            return int(total or 0)
-        except SQLAlchemyError as exc:
-            if own and _retry_after_schema(exc):
-                session.close()
-                init_db()
-                session = SessionLocal()
-                total = (
-                    session.query(func.coalesce(func.sum(Trace.credits_used), 0))
-                    .filter(
-                        Trace.created_at >= _today_start_naive(),
-                        Trace.operation.like("sumble.%"),
-                    )
-                    .scalar()
-                )
-                return int(total or 0)
-            raise CostCeilingExceededError(
-                "Hiring-team credit ceiling check failed — denying request (fail closed)",
-                details={"reason": str(exc)},
-            ) from exc
+        total = (
+            session.query(func.coalesce(func.sum(Trace.credits_used), 0))
+            .filter(Trace.created_at >= _today_start_naive(), Trace.operation.like("sumble.%"))
+            .scalar()
+        )
+        return int(total or 0)
+    except SQLAlchemyError as exc:
+        raise CostCeilingExceededError(
+            "Sumble credit ceiling check failed — denying request (fail closed)",
+            details={"reason": str(exc)},
+        ) from exc
     finally:
         if own:
             session.close()
-
 
 def assert_llm_budget_allows(*, estimated_cost_usd: float = 0.0) -> None:
     spent = llm_cost_today_usd()
@@ -173,16 +118,14 @@ def assert_llm_budget_allows(*, estimated_cost_usd: float = 0.0) -> None:
             details={"spent_usd": spent, "ceiling_usd": ceiling},
         )
 
-
 def assert_sumble_budget_allows(*, estimated_credits: int = 0) -> None:
     spent = sumble_credits_today()
     ceiling = int(settings.SUMBLE_DAILY_CREDIT_CEILING)
     if spent + max(estimated_credits, 0) > ceiling:
         raise CostCeilingExceededError(
-            f"Daily hiring-team credit ceiling exceeded ({spent} used, ceiling {ceiling})",
+            f"Daily Sumble credit ceiling exceeded ({spent} used, ceiling {ceiling})",
             details={"spent_credits": spent, "ceiling_credits": ceiling},
         )
-
 
 def record_trace(
     *,
@@ -201,7 +144,6 @@ def record_trace(
     cache_hit: bool = False,
     request_id: str | None = None,
 ) -> None:
-    ensure_db()
     rid = request_id if request_id is not None else current_request_id()
     row = Trace(
         request_id=rid,
@@ -233,8 +175,43 @@ def record_trace(
         return
     finally:
         session.close()
-    maybe_export_otlp(operation=op_name, status=op_status, request_id=op_rid)
+    _maybe_export_otlp(operation=op_name, status=op_status, request_id=op_rid)
 
+def _maybe_export_otlp(*, operation: str, status: str, request_id: str) -> None:
+    endpoint = settings.OTEL_EXPORTER_OTLP_ENDPOINT
+    if not is_set(endpoint):
+        return
+    url = (endpoint or "").rstrip("/")
+    if not url.endswith("/v1/traces"):
+        url = f"{url}/v1/traces"
+    body = {
+        "resourceSpans": [
+            {
+                "scopeSpans": [
+                    {
+                        "spans": [
+                            {
+                                "name": operation,
+                                "attributes": [
+                                    {"key": "teamscout.operation", "value": {"stringValue": operation}},
+                                    {"key": "teamscout.status", "value": {"stringValue": status}},
+                                    {
+                                        "key": "teamscout.request_id",
+                                        "value": {"stringValue": request_id},
+                                    },
+                                ],
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+    try:
+        with httpx.Client(timeout=default_timeout()) as client:
+            client.post(url, json=body, headers={"Content-Type": "application/json"})
+    except httpx.HTTPError as exc:
+        logger.warning("otlp.export_failed", error=str(exc), host=urlparse(url).netloc)
 
 @dataclass
 class TraceContext:
@@ -250,7 +227,6 @@ class TraceContext:
     cache_hit: bool = False
     status: str = "ok"
     error_type: str | None = None
-
 
 @contextmanager
 def traced_call(
@@ -280,8 +256,6 @@ def traced_call(
     try:
         yield ctx
     except BaseException as exc:
-        # Record failed outbound attempts (BaseException covers TeamScoutError + HTTP failures).
-        # Kind is exact-matched by check_scope allowlist.
         ctx.status = "error"
         ctx.error_type = type(exc).__name__
         record_trace(
@@ -317,7 +291,6 @@ def traced_call(
             cache_hit=ctx.cache_hit,
         )
 
-
 def _percentile(sorted_vals: list[float], p: float) -> float:
     if not sorted_vals:
         return 0.0
@@ -330,7 +303,6 @@ def _percentile(sorted_vals: list[float], p: float) -> float:
         return sorted_vals[f]
     return sorted_vals[f] + (sorted_vals[c] - sorted_vals[f]) * (k - f)
 
-
 def sumble_operation_from_path(path: str) -> str:
     p = path.strip().rstrip("/")
     if "title-lookup" in p:
@@ -342,7 +314,6 @@ def sumble_operation_from_path(path: str) -> str:
     if "/jobs" in p:
         return "sumble.jobs"
     return "sumble.unknown"
-
 
 def ops_stats(db: Session) -> dict[str, Any]:
     start = _today_start_naive()

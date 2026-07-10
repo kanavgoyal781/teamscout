@@ -1,8 +1,4 @@
-"""Optional free job boards (no API key). Best-effort enrichment only.
-
-Failures are logged and swallowed so the required JSearch path remains the
-source of truth for configured/failing honesty semantics.
-"""
+"""Optional free job boards (no API key). Best-effort enrichment only."""
 
 from __future__ import annotations
 
@@ -58,7 +54,6 @@ _STOP = frozenset(
     }
 )
 
-
 def _tokens_from_profile(profile: ResumeProfile) -> list[str]:
     raw: list[str] = []
     if profile.title:
@@ -76,14 +71,12 @@ def _tokens_from_profile(profile: ResumeProfile) -> list[str]:
         out.append(token)
     return out
 
-
 def _matches_profile(title: str, description: str, profile: ResumeProfile) -> bool:
     """Require at least one meaningful profile token in title or description."""
     tokens = _tokens_from_profile(profile)
     if not tokens:
         return True
     hay = f"{title}\n{description}".lower()
-    # Prefer title hits; fall back to description skill hits.
     title_l = title.lower()
     for token in tokens:
         if len(token) >= 3 and token in title_l:
@@ -93,14 +86,12 @@ def _matches_profile(title: str, description: str, profile: ResumeProfile) -> bo
             return True
     return False
 
-
 def _parse_iso(value: object) -> datetime | None:
     if value is None:
         return None
     text = str(value).strip()
     if not text:
         return None
-    # Remotive uses "2024-01-15T12:00:00"; Arbeitnow unix seconds sometimes.
     if text.isdigit():
         try:
             return datetime.fromtimestamp(int(text), tz=UTC)
@@ -115,12 +106,10 @@ def _parse_iso(value: object) -> datetime | None:
         posted = posted.replace(tzinfo=UTC)
     return posted.astimezone(UTC)
 
-
 def _search_query(profile: ResumeProfile) -> str:
     title = profile.title.strip() or "software engineer"
     skill = next((s.strip() for s in profile.skills if s.strip()), "")
     return f"{title} {skill}".strip()
-
 
 def fetch_remotive(profile: ResumeProfile, *, limit: int = 50) -> list[Job]:
     params = {"search": _search_query(profile), "limit": str(limit)}
@@ -170,7 +159,6 @@ def fetch_remotive(profile: ResumeProfile, *, limit: int = 50) -> list[Job]:
         )
     return out
 
-
 def fetch_arbeitnow(profile: ResumeProfile, *, pages: int = 2) -> list[Job]:
     out: list[Job] = []
     with httpx.Client(timeout=default_timeout()) as client:
@@ -216,7 +204,6 @@ def fetch_arbeitnow(profile: ResumeProfile, *, pages: int = 2) -> list[Job]:
                     )
                 )
     return out
-
 
 def fetch_optional_boards(profile: ResumeProfile) -> list[Job]:
     """Fetch free boards; never raise — optional enrichment only."""

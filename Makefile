@@ -91,22 +91,33 @@ deploy-web:
 	echo "deploy-web: vercel --prod (repo root uses vercel.json → frontend/)"; \
 	vercel --prod
 
-# Print deploy readiness without mutating production.
+# Print deploy readiness without mutating production. Never invents success.
 deploy-status:
 	@echo "=== Deploy readiness ==="; \
 	FLY=$$(command -v flyctl || command -v fly || true); \
 	if [ -n "$$FLY" ]; then \
 	  echo "flyctl: $$FLY"; \
-	  $$FLY auth whoami 2>&1 || echo "flyctl: present but not authenticated (fly auth login)"; \
-	  $$FLY status --app teamscout-api 2>&1 || true; \
+	  if $$FLY auth whoami >/dev/null 2>&1; then \
+	    echo "flyctl auth: ok ($$($$FLY auth whoami 2>/dev/null))"; \
+	    $$FLY status --app teamscout-api 2>&1 || echo "fly status: app teamscout-api not reachable or not created"; \
+	  else \
+	    echo "flyctl: present but not authenticated — run: fly auth login"; \
+	  fi; \
 	else \
-	  echo "flyctl: MISSING — install from https://fly.io/docs/hands-on/install-flyctl/"; \
+	  echo "flyctl: MISSING — install: curl -L https://fly.io/install.sh | sh"; \
+	  echo "  (or: brew install flyctl) then: fly auth login && make deploy-api"; \
 	fi; \
 	if command -v vercel >/dev/null 2>&1; then \
 	  echo "vercel: $$(command -v vercel)"; \
-	  vercel whoami 2>&1 || echo "vercel: present but not authenticated"; \
+	  if vercel whoami >/dev/null 2>&1; then \
+	    echo "vercel auth: ok ($$(vercel whoami 2>/dev/null))"; \
+	  else \
+	    echo "vercel: present but not authenticated — run: vercel login"; \
+	  fi; \
 	else \
-	  echo "vercel: MISSING — npm i -g vercel@39"; \
+	  echo "vercel: MISSING — install: npm i -g vercel@39"; \
+	  echo "  then: vercel login && vercel link && make deploy-web"; \
 	fi; \
 	echo "docs: DEPLOYMENT.md"; \
-	echo "smoke after deploy: DEMO_API_BASE=https://<app>.fly.dev make demo-check"
+	echo "smoke after deploy: DEMO_API_BASE=https://<app>.fly.dev make demo-check"; \
+	echo "status: no deploy performed (readiness only)"

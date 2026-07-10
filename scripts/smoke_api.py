@@ -115,7 +115,8 @@ def main() -> int:
                 rationale="Strong fit",
             ),
         )
-        with patch("app.api.routers.searches.jobs.fetch_jobs", return_value=[job]):
+        from app.services.jobs import JobFetchResult
+        with patch("app.api.routers.searches.jobs.fetch_jobs_detailed", return_value=JobFetchResult(jobs=[job])):
             with patch("app.api.routers.searches.ranking.rank_jobs", return_value=[ranked]):
                 search = client.post("/searches", json={"resume_id": resume_id})
         results.append(_step("POST /searches", search.status_code == 200 and len(search.json().get("results", [])) >= 1))

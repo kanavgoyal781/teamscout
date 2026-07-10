@@ -6,6 +6,8 @@ Recruiting intelligence — resume→jobs→team and library→best-resume, with
 
 > Replace `OWNER/teamscout` in the badge URL with your GitHub org/repo.
 
+![About TeamScout](./frontend/public/screenshots/07-about.png)
+
 ## 3-minute demo (JobRight / Sumble)
 
 ### Prerequisites
@@ -23,6 +25,9 @@ cp .env.example .env
 make install
 make dev
 ```
+
+Optional frontend: `NEXT_PUBLIC_GITHUB_BASE=https://github.com/<org>/<repo>/blob/main` for About page repo links.
+
 
 - Backend: http://localhost:8000
 - Frontend: http://localhost:3000
@@ -116,13 +121,17 @@ python3 scripts/smoke_sumble.py
 
 ## Ranking pipeline
 
-1. Multi-source fetch (~150): JSearch multi-query + optional Remotive/Arbeitnow; 14-day recency; SQLite `jobs_cache`
+**Jobs (Feature 1)** — see [ARCHITECTURE.md](./ARCHITECTURE.md) for the full funnel:
+
+1. Multi-source fetch (~150): optional LLM query expand → JSearch multi-query + optional Remotive/Arbeitnow; recency via `SearchParams.date_window` (default **month**); hard/soft prefs; exact/embedding dedupe; SQLite `jobs_cache`
 2. Dense cosine similarity + BM25 lexical retrieval
 3. Reciprocal Rank Fusion (`k=60`)
-4. LLM rerank top 30 in batches of 8 (JSON salvage on truncated responses)
-5. Final score (defaults): `0.38·LLM + 0.20·RRF + 0.12·skills + 0.12·experience + 0.10·requirements + 0.08·recency`
+4. LLM rerank top 30 in batches of **6** (retry + labeled heuristic fill for omitted ids)
+5. Final score (defaults): `0.38·LLM + 0.20·RRF + 0.12·skills + 0.12·experience + 0.10·requirements + 0.08·recency`, then soft-pref boosts + MMR diversify
 
-Resume pick inverts the pipeline: job description is the query, library resumes are candidates. See [ARCHITECTURE.md](./ARCHITECTURE.md).
+**Resume pick (Feature 2):** JD → atomic requirements → MaxSim unit coverage → optional close-call pairwise tournament → top 3 with alignment + justification. Not hybrid RRF.
+
+**Deploy model:** single-operator demo. No multi-user auth; protect public deploys with network gates / secrets and daily cost ceilings (see DEPLOYMENT.md).
 
 ## UI screenshots (M10)
 

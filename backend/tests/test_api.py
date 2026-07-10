@@ -116,7 +116,10 @@ def test_create_search_uses_confirmed_snapshot_not_request_override(client: Test
         json={"title": "Confirmed Title", "location": "Confirmed City", "skills": ["Python"]},
     )
 
-    with patch("app.api.routers.searches.jobs.fetch_jobs") as fetch_mock:
+    from app.services.jobs import JobFetchResult
+
+    with patch("app.api.routers.searches.jobs.fetch_jobs_detailed") as fetch_mock:
+        fetch_mock.return_value = JobFetchResult(jobs=[job])
         with patch("app.api.routers.searches.ranking.rank_jobs", return_value=[ranked]):
             response = client.post("/searches", json={"resume_id": resume_id})
 
@@ -179,7 +182,12 @@ def test_create_search_returns_ranked_jobs(client: TestClient) -> None:
     )
     assert confirm.status_code == 200
 
-    with patch("app.api.routers.searches.jobs.fetch_jobs", return_value=[job]):
+    from app.services.jobs import JobFetchResult
+
+    with patch(
+        "app.api.routers.searches.jobs.fetch_jobs_detailed",
+        return_value=JobFetchResult(jobs=[job]),
+    ):
         with patch("app.api.routers.searches.ranking.rank_jobs", return_value=[ranked]):
             response = client.post("/searches", json={"resume_id": resume_id})
 
@@ -189,3 +197,5 @@ def test_create_search_returns_ranked_jobs(client: TestClient) -> None:
     assert len(body["results"]) == 1
     assert body["results"][0]["match_score"] == 88.5
     assert body["results"][0]["score_breakdown"]["matched_skills"] == ["Python"]
+    assert "dropped_counts" in body
+    assert "facets" in body

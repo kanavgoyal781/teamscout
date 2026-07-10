@@ -43,6 +43,14 @@ def test_extract_skills_only_matches_profile_skills() -> None:
     assert "Ownership" not in extracted
 
 
+def test_extract_skills_rejects_java_substring_of_javascript() -> None:
+    description = "Stack is JavaScript, TypeScript, and React."
+    profile = ResumeProfile(title="Engineer", skills=["Java", "JavaScript", "Python"])
+    extracted = jobs.extract_skills_from_description(description, profile.skills)
+    assert "JavaScript" in extracted
+    assert "Java" not in extracted
+
+
 def test_build_jsearch_queries_diversifies() -> None:
     queries = jobs.build_jsearch_queries(
         "Data Scientist",
@@ -57,7 +65,11 @@ def test_build_jsearch_queries_diversifies() -> None:
 
 def test_build_jsearch_queries_skips_extra_remote_when_already_remote() -> None:
     queries = jobs.build_jsearch_queries("ML Engineer", "Remote", ["Python"])
-    assert not any(q.lower().endswith("remote") and " in " not in q.lower() for q in queries if "remote" in q.lower() and q.count("remote") > 1)
+    assert not any(
+        q.lower().endswith("remote") and " in " not in q.lower()
+        for q in queries
+        if "remote" in q.lower() and q.count("remote") > 1
+    )
     # Location already Remote → no separate "title remote" broaden query is fine either way;
     # ensure primary still present.
     assert any("ML Engineer" in q for q in queries)
@@ -87,8 +99,10 @@ def test_content_dedupe_key_normalizes() -> None:
     assert jobs._content_dedupe_key(a) == jobs._content_dedupe_key(b)
 
 
-def test_filter_and_cap_dedupes_across_sources() -> None:
-    cutoff = datetime.now(UTC) - timedelta(days=14)
+def test_exact_dedupe_across_sources_live_path() -> None:
+    """Live path uses job_dedup.dedupe_exact (not legacy _filter_and_cap)."""
+    from app.services import job_dedup
+
     posted = datetime.now(UTC) - timedelta(days=1)
     jobs_list = [
         Job(
@@ -111,7 +125,7 @@ def test_filter_and_cap_dedupes_across_sources() -> None:
             location="Remote",
             description="Python remote",
             apply_url="https://b.example",
-            posted_at=posted,
+            posted_at=posted - timedelta(hours=1),  # earlier? wait later than id1
         ),
         Job(
             id="3",
@@ -125,10 +139,15 @@ def test_filter_and_cap_dedupes_across_sources() -> None:
             posted_at=posted,
         ),
     ]
-    kept = jobs._filter_and_cap(jobs_list, cutoff=cutoff, limit=10)
+    # Make id2 earlier so earliest-posted wins among Acme dups
+    jobs_list[1] = jobs_list[1].model_copy(update={"posted_at": posted - timedelta(days=2)})
+    kept, dropped = job_dedup.dedupe_exact(jobs_list)
     assert len(kept) == 2
-    assert kept[0].source == "jsearch"
-    assert kept[1].title == "Data Scientist"
+    acme = next(j for j in kept if j.company == "Acme")
+    assert acme.id == "2"  # earlier posted
+    assert acme.duplicates_count == 2
+    assert dropped.exact_duplicate == 1
+    assert any(j.title == "Data Scientist" for j in kept)
 
 
 def test_cache_jobs_upserts_existing_rows() -> None:
@@ -136,7 +155,7 @@ def test_cache_jobs_upserts_existing_rows() -> None:
     existing = MagicMock()
     existing.job_id = "stable-job-id"
     existing.payload_json = None
-    db.query.return_value.filter.return_value.one_or_none.return_value = existing
+    db.query.return_value.filter.return_value.first.return_value = existing
 
     job = Job(
         id="new-uuid-should-not-win",
@@ -149,7 +168,8 @@ def test_cache_jobs_upserts_existing_rows() -> None:
         apply_url="https://example.com/apply",
         skills=["Python"],
     )
-    jobs._cache_jobs(db, [job])
+    result = jobs._cache_jobs(db, [job])
+    assert result[0].id == "stable-job-id"
 
     assert existing.job_id == "stable-job-id"
     assert existing.title == "Backend Engineer"
@@ -172,7 +192,7 @@ def test_cache_jobs_preserves_job_id_from_payload_when_column_empty() -> None:
         apply_url="https://example.com/apply",
         skills=["Python"],
     ).model_dump_json()
-    db.query.return_value.filter.return_value.one_or_none.return_value = existing
+    db.query.return_value.filter.return_value.first.return_value = existing
 
     incoming = Job(
         id="incoming-new-id",
@@ -185,7 +205,8 @@ def test_cache_jobs_preserves_job_id_from_payload_when_column_empty() -> None:
         apply_url="https://example.com/apply",
         skills=["Python"],
     )
-    jobs._cache_jobs(db, [incoming])
+    result = jobs._cache_jobs(db, [incoming])
+    assert result[0].id == "payload-job-id"
 
     assert existing.job_id == "payload-job-id"
 
@@ -291,13 +312,14 @@ def test_merge_fetch_includes_boards(monkeypatch: pytest.MonkeyPatch) -> None:
         skills=["Python"],
     )
     db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
     db.query.return_value.filter.return_value.one_or_none.return_value = None
 
     monkeypatch.setattr(jobs.settings, "JOBS_API_KEY", "test-key")
     monkeypatch.setattr(jobs.settings, "JOBS_API_BASE", "https://jsearch.example")
     monkeypatch.setattr(jobs.settings, "JOBS_EXTRA_SOURCES_ENABLED", True)
     monkeypatch.setattr(jobs.settings, "JOBS_FETCH_TARGET", 50)
-    monkeypatch.setattr(jobs, "_jsearch_get", lambda params: [jsearch_item])
+    monkeypatch.setattr(jobs, "fetch_jsearch_raw", lambda queries, base_params: ([jsearch_item], 0))
     monkeypatch.setattr(
         "app.services.job_boards.fetch_optional_boards",
         lambda _p: [board_job],
@@ -318,8 +340,39 @@ def test_merge_fetch_includes_boards(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda *a, **k: Trace(),
     )
 
-    result = jobs.fetch_jobs(profile, db)
+    from app.schemas.jobs import SearchParams
+
+    result = jobs.fetch_jobs(profile, db, params=SearchParams(use_expand=False))
     sources = {j.source for j in result}
     assert "jsearch" in sources
     assert "remotive" in sources
     db.commit.assert_called()
+
+
+def test_jsearch_source_job_id_uses_apply_url() -> None:
+    from app.services.jsearch_client import jsearch_source_job_id
+
+    assert jsearch_source_job_id({"job_apply_link": "https://x.com/a"}) == "https://x.com/a"
+    assert jsearch_source_job_id({"job_id": "id1", "job_apply_link": "https://x.com/a"}) == "id1"
+
+
+def test_cache_jobs_returns_stable_ids_on_existing() -> None:
+    """Returned list must match DB stable id for team flow."""
+    db = MagicMock()
+    existing = MagicMock()
+    existing.job_id = "stable-A"
+    existing.payload_json = None
+    db.query.return_value.filter.return_value.first.return_value = existing
+    job = Job(
+        id="client-B",
+        source="jsearch",
+        source_job_id="src-1",
+        title="Eng",
+        company="Co",
+        location="Remote",
+        description="Python role here for testing cache identity path thoroughly.",
+        apply_url="https://example.com/a",
+        skills=["Python"],
+    )
+    out = jobs._cache_jobs(db, [job])
+    assert out[0].id == "stable-A"

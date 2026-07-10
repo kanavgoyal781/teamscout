@@ -13,10 +13,16 @@ export async function useDarkTheme(page: Page) {
   ]);
 }
 
-/** Prefer reduced motion so entrance stagger does not capture washed-out shells. */
+/**
+ * Prefer reduced motion so entrance stagger / CountUp settle immediately
+ * for stable screenshots and chip assertions.
+ */
 export async function settleUi(page: Page) {
-  // colorScheme only — entrance motion is skipped under navigator.webdriver
-  await page.emulateMedia({ colorScheme: "dark" });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+}
+
+/** After navigation: wait for fonts for screenshot fidelity. */
+export async function settleFonts(page: Page) {
   await page.evaluate(async () => {
     if (document.fonts?.ready) {
       await document.fonts.ready;
@@ -31,6 +37,5 @@ export async function waitForOpacityOne(page: Page, testId: string) {
       page.getByTestId(testId).evaluate((el) => window.getComputedStyle(el).opacity),
     )
     .toBe("1");
-  // Allow score-ring SVG + layout paint after opacity settles
   await page.waitForTimeout(200);
 }

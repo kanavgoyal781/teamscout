@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { formatScore } from "../../lib/format";
@@ -18,6 +19,26 @@ export default function ScoreRing({ score, size = 56, label = "Match" }: ScoreRi
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const offset = c - (clamped / 100) * c;
+  const [shown, setShown] = useState(reduced ? clamped : 0);
+
+  useEffect(() => {
+    if (reduced) {
+      setShown(clamped);
+      return;
+    }
+    let raf = 0;
+    const from = 0;
+    const start = performance.now();
+    const dur = 650;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / dur);
+      const e = 1 - Math.pow(1 - t, 3);
+      setShown(from + (clamped - from) * e);
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [clamped, reduced]);
 
   return (
     <div className="score-ring-wrap" aria-label={`${label} score ${formatScore(clamped)}`}>
@@ -55,7 +76,7 @@ export default function ScoreRing({ score, size = 56, label = "Match" }: ScoreRi
           fontFamily="var(--font-mono)"
           fontWeight={600}
         >
-          {formatScore(clamped)}
+          {formatScore(shown)}
         </text>
       </svg>
       <span className="score-ring-label">{label}</span>

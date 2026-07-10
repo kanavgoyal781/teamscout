@@ -16,7 +16,6 @@ router = APIRouter(prefix="/resumes", tags=["resumes"])
 
 UPLOAD_DIR = Path(__file__).resolve().parents[3] / "uploads"
 
-
 class ResumeUploadResponse(BaseModel):
     id: str
     filename: str
@@ -24,18 +23,15 @@ class ResumeUploadResponse(BaseModel):
     confirmed: bool
     profile: ResumeProfile
 
-
 class ResumeConfirmRequest(BaseModel):
     title: str = ""
     location: str = ""
     skills: list[str] = Field(default_factory=list)
 
-
 class ResumeConfirmResponse(BaseModel):
     id: str
     confirmed: bool
     profile: ResumeProfile
-
 
 @router.post("/upload", response_model=ResumeUploadResponse)
 @limiter.limit(upload_limit)
@@ -87,7 +83,6 @@ async def upload_resume(
         confirmed=row.confirmed,
         profile=profile,
     )
-
 
 @router.put("/{resume_id}/confirm", response_model=ResumeConfirmResponse)
 def confirm_resume(

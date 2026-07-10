@@ -15,9 +15,13 @@ import type {
   RecommendFromJdResponse,
   ResumeProfile,
   ResumeUploadResponse,
+  SearchParams,
   SearchResponse,
+  JobFacets,
   TeamExtractionResponse,
   TeamListResponse,
+  FeedbackCreate,
+  FeedbackResponse,
 } from "./types";
 
 /** Re-exports for UI-used client types only. Retained backend routes (intent-search,
@@ -183,11 +187,14 @@ export async function confirmResume(
   });
 }
 
-export async function createSearch(resumeId: string): Promise<SearchResponse> {
+export async function createSearch(
+  resumeId: string,
+  params?: import("./types").SearchParams,
+): Promise<SearchResponse> {
   return request<SearchResponse>("/searches", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ resume_id: resumeId }),
+    body: JSON.stringify({ resume_id: resumeId, params: params ?? {} }),
   });
 }
 
@@ -254,6 +261,28 @@ export async function ingestJobFromText(
   payload: IngestJobFromTextRequest,
 ): Promise<IngestJobFromTextResponse> {
   return request<IngestJobFromTextResponse>("/jobs/from-text", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+
+
+export type PublicStats = {
+  jobs_ranked_total: number;
+  resumes_parsed_total: number;
+  teams_discovered_total: number;
+  median_rank_latency_ms: number | null;
+  total_llm_cost_usd: number;
+};
+
+export async function fetchPublicStats(): Promise<PublicStats> {
+  return request<PublicStats>("/stats");
+}
+
+export async function postFeedback(payload: FeedbackCreate): Promise<FeedbackResponse> {
+  return request<FeedbackResponse>("/feedback", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

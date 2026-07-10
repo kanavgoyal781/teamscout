@@ -1,0 +1,155 @@
+# Weekly evaluation — observe and gate only. Never auto-changes production
+# ranking weights, prompts, or deploy configuration.
+#
+# Validate YAML locally:
+#   python3 -c "import yaml; yaml.safe_load(open('.github/workflows/weekly-eval.yml'))"
+#   # or: actionlint .github/workflows/weekly-eval.yml
+#
+# Secret safety:
+#   - Secrets only via env: from ${{ secrets.* }} (never echo / printenv / cat .env)
+#   - Artifacts are metrics JSONL only (history, experiments, feedback_set) — no .env
+#   - smoke_sumble / demo-check run only when their secrets/URL are present
+
+name: Weekly eval
+
+on:
+  schedule:
+    # Mondays 14:00 UTC
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+
+jobs:
+  scope:
+    name: scope
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Scope enforcement
+        run: python3 scripts/check_scope.py
+
+  weekly:
+    name: weekly-eval
+    needs: scope
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend deps
+        run: python3 -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+
+      - name: Fit-signal eval (offline)
+        run: python3 scripts/eval_fit_signals.py
+
+      - name: Detect eval secrets
+        id: secrets
+        env:
+          EMBEDDINGS_API_KEY: ${{ secrets.EMBEDDINGS_API_KEY }}
+          EMBEDDINGS_API: ${{ secrets.EMBEDDINGS_API }}
+          LLM_API_BASE: ${{ secrets.LLM_API_BASE }}
+          SUMBLE_API_KEY: ${{ secrets.SUMBLE_API_KEY }}
+          DEMO_API_BASE: ${{ secrets.DEMO_API_BASE }}
+        run: |
+          # Presence checks only — never print secret values.
+          if [ -n "${EMBEDDINGS_API_KEY}" ] && { [ -n "${EMBEDDINGS_API}" ] || [ -n "${LLM_API_BASE}" ]; }; then
+            echo "embeddings=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "embeddings=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Embeddings secrets missing — ranking/resume-pick/experiment personas skip."
+          fi
+          if [ -n "${SUMBLE_API_KEY}" ]; then
+            echo "sumble=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "sumble=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SUMBLE_API_KEY missing — smoke_sumble skipped."
+          fi
+          if [ -n "${DEMO_API_BASE}" ]; then
+            echo "demo=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "demo=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::DEMO_API_BASE missing — demo-check skipped."
+          fi
+
+      - name: Ranking eval (synthetic + feedback)
+        if: steps.secrets.outputs.embeddings == 'true'
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_BASE: ${{ secrets.LLM_API_BASE }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          EMBEDDINGS_API_KEY: ${{ secrets.EMBEDDINGS_API_KEY }}
+          EMBEDDINGS_API: ${{ secrets.EMBEDDINGS_API }}
+          EMBEDDINGS_MODEL: ${{ secrets.EMBEDDINGS_MODEL }}
+        run: python3 scripts/eval_ranking.py --suite all
+
+      - name: Ranking eval offline (diversity + feedback only)
+        if: steps.secrets.outputs.embeddings != 'true'
+        run: |
+          python3 scripts/eval_ranking.py --suite synthetic
+          python3 scripts/eval_ranking.py --suite feedback
+
+      - name: Resume-pick eval
+        if: steps.secrets.outputs.embeddings == 'true'
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_BASE: ${{ secrets.LLM_API_BASE }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          EMBEDDINGS_API_KEY: ${{ secrets.EMBEDDINGS_API_KEY }}
+          EMBEDDINGS_API: ${{ secrets.EMBEDDINGS_API }}
+          EMBEDDINGS_MODEL: ${{ secrets.EMBEDDINGS_MODEL }}
+        run: python3 scripts/eval_resume_pick.py
+
+      - name: Experiment harness (defaults vs no-MMR)
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_BASE: ${{ secrets.LLM_API_BASE }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          EMBEDDINGS_API_KEY: ${{ secrets.EMBEDDINGS_API_KEY }}
+          EMBEDDINGS_API: ${{ secrets.EMBEDDINGS_API }}
+          EMBEDDINGS_MODEL: ${{ secrets.EMBEDDINGS_MODEL }}
+        run: python3 scripts/experiment.py --variants configs/experiments/*.json
+
+      - name: Threshold gate (loud annotate)
+        run: |
+          set -e
+          # Observe-only: fails job on breach; never mutates production weights/prompts.
+          # Does not pull production SQLite or build feedback_set.
+          if python3 scripts/eval_threshold_gate.py; then
+            echo "threshold gate ok"
+          else
+            echo "::error::THRESHOLD BREACH (observe-only — production not mutated)"
+            exit 1
+          fi
+
+      - name: Sumble smoke
+        if: steps.secrets.outputs.sumble == 'true'
+        env:
+          SUMBLE_API_KEY: ${{ secrets.SUMBLE_API_KEY }}
+        run: python3 scripts/smoke_sumble.py
+
+      - name: Demo check against prod URL
+        if: steps.secrets.outputs.demo == 'true'
+        env:
+          DEMO_API_BASE: ${{ secrets.DEMO_API_BASE }}
+        run: python3 scripts/demo_check.py
+
+      - name: Eval trend report
+        if: always()
+        run: python3 scripts/eval_report.py
+
+      - name: Upload eval artifacts (metrics only — no secrets)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-eval-metrics
+          path: |
+            evals/history.jsonl
+            evals/experiments.jsonl
+            evals/feedback_set.jsonl
+            evals/thresholds.json
+          if-no-files-found: ignore

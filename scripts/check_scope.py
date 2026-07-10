@@ -41,12 +41,12 @@ APP_LOC_MAX = 9000
 THRESHOLD_FLOORS: dict[str, float | int] = {
     "ndcg_at_10": 0.85,
     "mrr": 0.8,
-    "resume_pick_correct": 4,
-    "resume_pick_total": 5,
+    "resume_pick_correct": 7,
+    "resume_pick_total": 8,
 }
 
 ALLOWED_TOP_DIRS = frozenset(
-    {"backend", "frontend", "scripts", "samples", "evals", ".github"}
+    {"backend", "frontend", "scripts", "samples", "evals", "configs", ".github"}
 )
 ALLOWED_APP_SUBDIRS = frozenset(
     {"api", "core", "db", "schemas", "services", "prompts"}

@@ -1,8 +1,8 @@
 {
   "ndcg_at_10": 0.85,
   "mrr": 0.8,
-  "resume_pick_correct": 4,
-  "resume_pick_total": 5,
+  "resume_pick_correct": 7,
+  "resume_pick_total": 8,
   "experience_order_accuracy": 0.85,
   "requirements_order_accuracy": 0.85,
   "overqualified_penalty_rate": 0.8

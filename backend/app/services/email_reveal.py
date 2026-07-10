@@ -15,10 +15,8 @@ from app.services import sumble
 
 TERMINAL_STATUSES = frozenset({"revealed", "not_found"})
 
-
 def is_terminal(reveal: EmailReveal) -> bool:
     return reveal.status in TERMINAL_STATUSES
-
 
 def _begin_immediate(db: Session) -> None:
     bind = db.get_bind()
@@ -27,7 +25,6 @@ def _begin_immediate(db: Session) -> None:
     if db.in_transaction():
         db.rollback()
     db.execute(text("BEGIN IMMEDIATE"))
-
 
 def _terminal_response(contact_id: str, reveal: EmailReveal) -> EmailRevealResponse:
     if reveal.status == "revealed" and reveal.email:
@@ -46,7 +43,6 @@ def _terminal_response(contact_id: str, reveal: EmailReveal) -> EmailRevealRespo
         status=reveal.status,
     )
 
-
 def _cached_not_found_error(contact_id: str, reveal: EmailReveal) -> ValidationError:
     return ValidationError(
         "Email already attempted for this contact — no email found (cached)",
@@ -57,7 +53,6 @@ def _cached_not_found_error(contact_id: str, reveal: EmailReveal) -> ValidationE
             "cached": True,
         },
     )
-
 
 def preview_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
     existing = db.query(EmailReveal).filter(EmailReveal.contact_id == contact.id).one_or_none()
@@ -70,7 +65,6 @@ def preview_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
         cached=False,
         status="preview",
     )
-
 
 def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
     _begin_immediate(db)
@@ -124,9 +118,6 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
         db.refresh(existing)
 
         if not email:
-            # Set not_found terminal and commit BEFORE raising so the record survives.
-            # Raise AFTER the try/except block below to prevent outer rollback from
-            # destroying the terminal cached state (fixes double-charge on not_found).
             not_found_err = ValidationError(
                 "No email found for this contact",
                 details={
@@ -151,5 +142,4 @@ def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
 
     if not_found_err is not None:
         raise not_found_err
-    # Unreachable: revealed path returns inside try; not_found raises above.
     raise RuntimeError("unexpected reveal state")

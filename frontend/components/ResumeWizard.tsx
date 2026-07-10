@@ -6,7 +6,8 @@ import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { confirmResume, createSearch, formatApiError, uploadResume } from "../lib/api";
-import type { RankedJob, ResumeUploadResponse } from "../lib/types";
+import type { JobFacets, RankedJob, ResumeUploadResponse, SearchParams } from "../lib/types";
+import SearchFilters, { defaultSearchParams } from "./SearchFilters";
 import Stepper from "./ui/Stepper";
 
 type ConfirmedSnapshot = {
@@ -16,13 +17,19 @@ type ConfirmedSnapshot = {
 };
 
 type ResumeWizardProps = {
-  onSearchComplete: (results: RankedJob[], searchId: string) => void;
+  onSearchComplete: (
+    results: RankedJob[],
+    searchId: string,
+    meta?: { facets?: JobFacets; dropped_counts?: Record<string, number>; queries?: string[] },
+  ) => void;
   onSearchStart: () => void;
   onSearchError?: () => void;
   searching?: boolean;
   hasResults?: boolean;
   /** Parent sets true when any job team panel is open. */
   teamStepActive?: boolean;
+  /** Stable profile content hash for feedback provenance. */
+  onProfileReady?: (profileHash: string) => void;
 };
 
 const STEPS = [
@@ -39,6 +46,7 @@ export default function ResumeWizard({
   searching = false,
   hasResults = false,
   teamStepActive = false,
+  onProfileReady,
 }: ResumeWizardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -49,6 +57,7 @@ export default function ResumeWizard({
   const [skills, setSkills] = useState<string[]>([]);
   const [skillDraft, setSkillDraft] = useState("");
   const [confirmedSnapshot, setConfirmedSnapshot] = useState<ConfirmedSnapshot | null>(null);
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
 
   const profileDirty =
     confirmedSnapshot !== null &&
@@ -77,6 +86,8 @@ export default function ResumeWizard({
       setLocation(uploaded.profile.location);
       setSkills(uploaded.profile.skills);
       setConfirmedSnapshot(null);
+      // Clear prior profile provenance until this resume is confirmed.
+      onProfileReady?.("");
       toast.success(`Parsed ${uploaded.filename}. Review and confirm before searching.`);
     },
     onError: (error) => toast.error(formatApiError(error)),
@@ -91,6 +102,10 @@ export default function ResumeWizard({
     onSuccess: (confirmed) => {
       if (!resume) return;
       setResume({ ...resume, confirmed: confirmed.confirmed, profile: confirmed.profile });
+      {
+        const hash = resume?.content_hash;
+        if (hash) onProfileReady?.(hash);
+      }
       setConfirmedSnapshot({
         title: confirmed.profile.title,
         location: confirmed.profile.location,
@@ -104,14 +119,18 @@ export default function ResumeWizard({
   const searchMutation = useMutation({
     mutationFn: () => {
       if (!resume) throw new Error("No resume");
-      return createSearch(resume.id);
+      return createSearch(resume.id, searchParams);
     },
     retry: false,
     onMutate: () => {
       onSearchStart();
     },
     onSuccess: (response) => {
-      onSearchComplete(response.results, response.search_id);
+      onSearchComplete(response.results, response.search_id, {
+        facets: response.facets,
+        dropped_counts: response.dropped_counts,
+        queries: response.queries,
+      });
       toast.success(
         response.results.length > 0
           ? `Found top ${response.results.length} matches.`
@@ -160,8 +179,13 @@ export default function ResumeWizard({
   const parsed = Boolean(resume);
 
   return (
-    <section className="panel" data-testid="resume-wizard">
-      <Stepper steps={STEPS} current={stepIndex} />
+    <section className="panel" data-testid="resume-wizard" data-tour="resume-wizard">
+      <div data-tour="wizard-stepper" data-testid="wizard-stepper">
+        <Stepper steps={STEPS} current={stepIndex} />
+        <p className="meta" data-tour="credit-confirm" data-testid="credit-confirm" style={{ marginTop: 8 }}>
+          Team lookup and email reveal are confirm-gated (real credits). This tour never auto-spends.
+        </p>
+      </div>
 
       <h2>Upload resume</h2>
       <div
@@ -223,7 +247,7 @@ export default function ResumeWizard({
       ) : null}
 
       {resume ? (
-        <div style={{ marginTop: 24 }} data-testid="profile-confirm">
+        <div style={{ marginTop: 24 }} data-testid="profile-confirm" data-tour="profile-confirm">
           <h2>Confirm profile</h2>
           <p className="meta">
             Parsed from <strong>{resume.filename}</strong>
@@ -285,6 +309,11 @@ export default function ResumeWizard({
               </div>
             </div>
           </div>
+          <SearchFilters
+            params={searchParams}
+            onChange={setSearchParams}
+            disabled={searchMutation.isPending || searching}
+          />
           <div className="actions" style={{ marginTop: 16 }}>
             <button
               type="button"
@@ -298,7 +327,7 @@ export default function ResumeWizard({
               className="primary"
               onClick={() => searchMutation.mutate()}
               disabled={searchMutation.isPending || searching || !canSearch}
-              data-testid="search-jobs"
+              data-testid="search-jobs" data-tour="search-jobs"
             >
               {searchMutation.isPending || searching ? "Searching & ranking…" : "Search jobs"}
             </button>

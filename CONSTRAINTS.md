@@ -43,7 +43,7 @@ Anything beyond that list must be justified in a PR and still pass `check_scope`
 - Backend deps must appear in `scripts/allowed_deps_backend.txt` **with a non-empty `# why` comment** (enforced).
 - Frontend deps must appear in `scripts/allowed_deps_frontend.txt` **with a non-empty `# why` comment** (enforced).
 - Only `backend/requirements.txt` (+ any `backend/requirements*.txt`) and `frontend/package.json` are allowed dependency surfaces; secondary manifests (Pipfile, poetry.lock, pyproject dep tables, setup.py) fail the gate.
-- Top-level dirs exactly: `backend`, `frontend`, `scripts`, `samples`, `evals`, `.github`.
+- Top-level dirs exactly: `backend`, `frontend`, `scripts`, `samples`, `evals`, `configs`, `.github`.
 - `backend/app` package dirs exactly: `api`, `core`, `db`, `schemas`, `services`, `prompts`.
 
 ## Size budgets (do not raise)

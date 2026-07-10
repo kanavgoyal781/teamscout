@@ -7,7 +7,7 @@ export default function AboutPage() {
   return (
     <AppShell
       title="About TeamScout"
-      lede="An engineering essay on a two-feature recruiting tool: how multi-signal ranking works, why the honesty layer fails loud, and the constraints we kept."
+      lede="A scroll-through story of two recruiting journeys: multi-signal ranking, hiring-team discovery, MaxSim resume pick, and the constraints that keep the product honest."
     >
       <AboutArchitecture />
     </AppShell>

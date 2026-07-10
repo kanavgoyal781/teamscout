@@ -13,7 +13,6 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-
 def maybe_export_otlp(*, operation: str, status: str, request_id: str) -> None:
     endpoint = settings.OTEL_EXPORTER_OTLP_ENDPOINT
     if not is_set(endpoint):

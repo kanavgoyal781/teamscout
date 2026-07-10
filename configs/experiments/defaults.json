@@ -1,0 +1,19 @@
+{
+  "name": "defaults",
+  "weights": {
+    "llm": 0.38,
+    "rrf": 0.20,
+    "skills": 0.12,
+    "recency": 0.08,
+    "experience": 0.12,
+    "requirements": 0.10
+  },
+  "rrf_k": 60,
+  "mmr_lambda": 0.75,
+  "use_mmr": true,
+  "expansion": true,
+  "tournament_threshold": 0.05,
+  "recency_half_life_days": 7,
+  "rerank_top_n": 30,
+  "search_results_top_n": 10
+}

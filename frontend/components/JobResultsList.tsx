@@ -12,6 +12,7 @@ import EmptyState from "./ui/EmptyState";
 import { JobCardSkeleton } from "./ui/Skeleton";
 import ScoreBars from "./ui/ScoreBars";
 import ScoreRing from "./ui/ScoreRing";
+import FeedbackButtons, { trackImplicitFeedback } from "./FeedbackButtons";
 import TeamDiscoveryPanel from "./TeamDiscoveryPanel";
 
 type JobResultsListProps = {
@@ -19,6 +20,8 @@ type JobResultsListProps = {
   loading?: boolean;
   /** True after a search attempt completed (success or empty). */
   searched?: boolean;
+  /** Optional profile content hash for feedback provenance. */
+  profileHash?: string | null;
   getTeamState: (jobId: string) => JobTeamState;
   onHydrate: (jobId: string) => void;
   onExtract: (jobId: string) => void;
@@ -32,6 +35,7 @@ export default function JobResultsList({
   results,
   loading = false,
   searched = false,
+  profileHash = null,
   getTeamState,
   onHydrate,
   onExtract,
@@ -66,7 +70,7 @@ export default function JobResultsList({
   }
 
   return (
-    <section className="panel" data-testid="job-results">
+    <section className="panel" data-testid="job-results" data-tour="job-results">
       <h2>Top matches &amp; team discovery</h2>
       <motion.div
         className="job-list"
@@ -101,6 +105,26 @@ export default function JobResultsList({
                     {" · "}
                     <span className="font-num">{formatPostedAgo(item.job.posted_at)}</span>
                   </p>
+                  <div className="chip-row job-flags" style={{ marginTop: 6 }}>
+                    {(item.job.duplicates_count ?? 1) > 1 ? (
+                      <span className="chip chip-dup" title="Cross-posted listing">
+                        Posted on {item.job.duplicates_count} boards
+                      </span>
+                    ) : null}
+                    {item.job.salary_unknown !== false ? (
+                      <span className="chip chip-salary-unknown">Salary unknown</span>
+                    ) : item.job.salary_min != null ? (
+                      <span className="chip chip-salary font-num">
+                        From ${Math.round(item.job.salary_min).toLocaleString()}
+                      </span>
+                    ) : null}
+                    {item.job.seniority ? (
+                      <span className="chip">{item.job.seniority}</span>
+                    ) : null}
+                    {item.job.remote_mode && item.job.remote_mode !== "unknown" ? (
+                      <span className="chip">{item.job.remote_mode}</span>
+                    ) : null}
+                  </div>
                 </div>
                 <ScoreRing score={item.match_score} />
               </div>
@@ -138,6 +162,15 @@ export default function JobResultsList({
                   target="_blank"
                   rel="noreferrer"
                   className="apply-link"
+                  onClick={() =>
+                    trackImplicitFeedback({
+                      kind: "apply_click",
+                      targetType: "job_match",
+                      targetId: item.job.id,
+                      profileHash,
+                      scoreShown: item.match_score,
+                    })
+                  }
                 >
                   Apply <ExternalLink size={14} aria-hidden />
                 </a>
@@ -145,7 +178,16 @@ export default function JobResultsList({
                   type="button"
                   onClick={() => {
                     setExpandedTeam(teamOpen ? null : item.job.id);
-                    if (!teamOpen) onHydrate(item.job.id);
+                    if (!teamOpen) {
+                      onHydrate(item.job.id);
+                      trackImplicitFeedback({
+                        kind: "find_team_click",
+                        targetType: "job_match",
+                        targetId: item.job.id,
+                        profileHash,
+                        scoreShown: item.match_score,
+                      });
+                    }
                   }}
                   aria-expanded={teamOpen}
                   data-testid={`find-team-${index}`}
@@ -155,6 +197,13 @@ export default function JobResultsList({
                     {teamOpen ? "Hide team" : "Find the team"}
                   </span>
                 </button>
+                <FeedbackButtons
+                  targetType="job_match"
+                  targetId={item.job.id}
+                  profileHash={profileHash}
+                  scoreShown={item.match_score}
+                  testIdPrefix={`job-feedback-${index}`}
+                />
                 <span className="meta font-num" style={{ margin: 0 }}>
                   Est. ~20–30 credits before team lookup
                 </span>

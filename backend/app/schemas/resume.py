@@ -6,7 +6,6 @@ class WorkExperience(BaseModel):
     company: str
     bullets: list[str] = Field(default_factory=list)
 
-
 class ResumeProfile(BaseModel):
     name: str = ""
     title: str = ""

@@ -69,7 +69,9 @@ def test_llm_http_error_raises_service_failing(monkeypatch: pytest.MonkeyPatch) 
 
     assert exc.value.status_code == 503
     assert exc.value.error_code == "service_failing"
-    assert "connection refused" in exc.value.message
+    # Generic client message (no raw upstream body / socket detail)
+    assert "upstream" in exc.value.message.lower() or "failing" in exc.value.message.lower()
+    assert "connection refused" not in exc.value.message
 
 
 def test_embeddings_http_error_raises_service_failing(monkeypatch: pytest.MonkeyPatch) -> None:

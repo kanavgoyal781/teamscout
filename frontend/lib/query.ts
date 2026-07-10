@@ -23,6 +23,7 @@ export function createQueryClient(): QueryClient {
 
 export const queryKeys = {
   health: ["health"] as const,
+  stats: ["stats"] as const,
   library: ["library", "resumes"] as const,
   jobTeam: (jobId: string) => ["job-team", jobId] as const,
 };

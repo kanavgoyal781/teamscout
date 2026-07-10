@@ -1,5 +1,7 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactElement } from "react";
 
 // Controllable reduced-motion: default true so detail-panel tests avoid mode="wait" delays.
 const reducedMotion = { current: true };
@@ -14,6 +16,27 @@ vi.mock("framer-motion", async () => {
 
 import AboutArchitecture from "./AboutArchitecture";
 
+vi.mock("../lib/api", async () => {
+  const actual = await vi.importActual<typeof import("../lib/api")>("../lib/api");
+  return {
+    ...actual,
+    fetchPublicStats: vi.fn().mockResolvedValue({
+      jobs_ranked_total: 10,
+      resumes_parsed_total: 5,
+      teams_discovered_total: 2,
+      median_rank_latency_ms: 100,
+      total_llm_cost_usd: 0.5,
+    }),
+  };
+});
+
+function renderAbout(ui: ReactElement = <AboutArchitecture />) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
 describe("AboutArchitecture detail panel focus", () => {
   beforeEach(() => {
     reducedMotion.current = true;
@@ -21,7 +44,7 @@ describe("AboutArchitecture detail panel focus", () => {
   });
 
   it("moves focus to the close button when opening a detail", async () => {
-    render(<AboutArchitecture />);
+    renderAbout();
 
     fireEvent.click(screen.getByTestId("about-card-f1"));
 
@@ -34,7 +57,7 @@ describe("AboutArchitecture detail panel focus", () => {
   });
 
   it("keeps focus on the close button after switching f1 → f2 (mode=wait remount)", async () => {
-    render(<AboutArchitecture />);
+    renderAbout();
 
     fireEvent.click(screen.getByTestId("about-card-f1"));
     await waitFor(() => {
@@ -55,7 +78,7 @@ describe("AboutArchitecture detail panel focus", () => {
 
   it("scrolls the panel into view on open", async () => {
     const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView");
-    render(<AboutArchitecture />);
+    renderAbout();
 
     fireEvent.click(screen.getByTestId("about-card-f1"));
     await waitFor(() => {
@@ -70,7 +93,7 @@ describe("AboutArchitecture detail panel focus", () => {
   });
 
   it("surfaces ML ops and deploy narrative sections", () => {
-    render(<AboutArchitecture />);
+    renderAbout();
     expect(screen.getByTestId("about-mlops")).toBeInTheDocument();
     expect(screen.getByTestId("about-deploy")).toBeInTheDocument();
     expect(screen.getByText(/Lightweight ML ops/i)).toBeInTheDocument();
@@ -78,7 +101,7 @@ describe("AboutArchitecture detail panel focus", () => {
   });
 
   it("opens deploy topology detail from the deploy plate", async () => {
-    render(<AboutArchitecture />);
+    renderAbout();
     fireEvent.click(screen.getByTestId("about-card-deploy_topology"));
     await waitFor(() => {
       expect(screen.getByTestId("about-detail")).toBeInTheDocument();
@@ -87,7 +110,7 @@ describe("AboutArchitecture detail panel focus", () => {
   });
 
   it("renders the product film plate with multi-shot honesty copy (poster when reduced motion)", () => {
-    render(<AboutArchitecture />);
+    renderAbout();
     const plate = screen.getByTestId("about-product-video");
     expect(plate).toBeInTheDocument();
     // Reduced-motion mock → static poster, no playback control, no video element
@@ -103,7 +126,7 @@ describe("AboutArchitecture detail panel focus", () => {
   });
 
   it("opens product motion detail from the video plate", async () => {
-    render(<AboutArchitecture />);
+    renderAbout();
     fireEvent.click(screen.getByTestId("about-product-video"));
     await waitFor(() => {
       expect(screen.getByTestId("about-detail")).toBeInTheDocument();
@@ -135,7 +158,7 @@ describe("AboutArchitecture product film multi-shot (motion allowed)", () => {
   });
 
   it("mounts shot 1 video with correct src/poster and sibling playback control", () => {
-    render(<AboutArchitecture />);
+    renderAbout();
     const video = screen.getByTestId("about-product-video-el");
     expect(video).toHaveAttribute("data-shot", "resume");
     expect(video).toHaveAttribute("src", "/videos/teamscout-match-01.mp4");
@@ -152,7 +175,7 @@ describe("AboutArchitecture product film multi-shot (motion allowed)", () => {
   });
 
   it("advances shot on ended and wraps after shot 3", async () => {
-    render(<AboutArchitecture />);
+    renderAbout();
 
     fireEvent.ended(screen.getByTestId("about-product-video-el"));
     await waitFor(() => {
@@ -182,7 +205,7 @@ describe("AboutArchitecture product film multi-shot (motion allowed)", () => {
 
   it("pause intent blocks autoplay on next shot remount; resume continues", async () => {
     const playMock = HTMLMediaElement.prototype.play as ReturnType<typeof vi.fn>;
-    render(<AboutArchitecture />);
+    renderAbout();
 
     await waitFor(() => {
       expect(playMock).toHaveBeenCalled();
@@ -217,14 +240,14 @@ describe("AboutArchitecture product film multi-shot (motion allowed)", () => {
   });
 
   it("announces shot changes via polite live region on figcaption", () => {
-    render(<AboutArchitecture />);
+    renderAbout();
     const live = document.querySelector(".about-video-plate-label");
     expect(live).toHaveAttribute("aria-live", "polite");
   });
 
   it("shows Play after exhausted autoplay failures so one gesture restarts", async () => {
     HTMLMediaElement.prototype.play = vi.fn().mockRejectedValue(new DOMException("NotAllowedError"));
-    render(<AboutArchitecture />);
+    renderAbout();
 
     // Intent starts as play — control still says Pause while retry is in flight
     expect(screen.getByTestId("about-product-video-playback")).toHaveAttribute(

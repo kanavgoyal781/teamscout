@@ -4,10 +4,10 @@ from datetime import UTC, datetime
 
 from app.core.config import settings
 from app.errors import ValidationError
+from app.services.ranking_config import DEFAULT_MMR_LAMBDA
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9+#.]+")
 
-# Explicit YOE in JDs: "5+ years", "3-5 years", "minimum of 4 years experience"
 _YOE_PATTERNS = (
     re.compile(
         r"(?:minimum\s+(?:of\s+)?)?(\d{1,2})\s*(?:\+|plus)?\s*(?:-|to|–|—)\s*(\d{1,2})\s*\+?\s*"
@@ -35,7 +35,6 @@ _SENIORITY_RULES: list[tuple[str, re.Pattern[str], tuple[float, float]]] = [
     ("mid", re.compile(r"\b(mid[-\s]?level|intermediate)\b", re.I), (2.0, 6.0)),
 ]
 
-# Hard-requirement cues when structured job.skills is thin
 _REQ_SECTION = re.compile(
     r"(?:requirements?|qualifications?|must\s+have|what\s+you.?ll\s+need|"
     r"minimum\s+qualifications?)\s*[:\-]?\s*(.+?)(?=\n\s*\n|preferred|nice\s+to\s+have|responsibilities|$)",
@@ -43,16 +42,13 @@ _REQ_SECTION = re.compile(
 )
 _BULLET_SPLIT = re.compile(r"[\n•\-\*]+\s*")
 
-
 def tokenize(text: str) -> list[str]:
     return _TOKEN_PATTERN.findall(text.lower())
-
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
         raise ValueError("vector dimension mismatch")
     return sum(x * y for x, y in zip(a, b, strict=True))
-
 
 def reciprocal_rank_fusion(rankings: list[list[str]], k: int | None = None) -> dict[str, float]:
     rrf_k = k if k is not None else settings.RRF_K
@@ -61,7 +57,6 @@ def reciprocal_rank_fusion(rankings: list[list[str]], k: int | None = None) -> d
         for rank, job_id in enumerate(ranking):
             scores[job_id] = scores.get(job_id, 0.0) + 1.0 / (rrf_k + rank + 1)
     return scores
-
 
 def normalize_scores(scores: dict[str, float]) -> dict[str, float]:
     if not scores:
@@ -74,17 +69,23 @@ def normalize_scores(scores: dict[str, float]) -> dict[str, float]:
     span = maximum - minimum
     return {key: (value - minimum) / span for key, value in scores.items()}
 
-
 def skill_jaccard(resume_skills: list[str], job_skills: list[str]) -> float:
-    resume = {skill.strip().lower() for skill in resume_skills if skill.strip()}
-    job = {skill.strip().lower() for skill in job_skills if skill.strip()}
-    if not resume and not job:
-        return 0.0
-    union = resume | job
-    if not union:
-        return 0.0
-    return len(resume & job) / len(union)
+    """Jaccard with token-aware equality (go≡golang; java≠javascript)."""
+    from app.services.ranking_math_align import skill_equals
 
+    resume = [s.strip() for s in resume_skills if s and s.strip()]
+    job = [s.strip() for s in job_skills if s and s.strip()]
+    if not resume or not job:
+        return 0.0
+    matched, used = 0, set()
+    for rs in resume:
+        for ji, js in enumerate(job):
+            if ji not in used and skill_equals(rs, js):
+                matched += 1
+                used.add(ji)
+                break
+    union = len(resume) + len(job) - matched
+    return matched / union if union else 0.0
 
 def recency_score(posted_at: datetime | None, *, half_life_days: int | None = None) -> float:
     if posted_at is None:
@@ -94,7 +95,6 @@ def recency_score(posted_at: datetime | None, *, half_life_days: int | None = No
     posted = posted_at if posted_at.tzinfo else posted_at.replace(tzinfo=UTC)
     age_days = max((now - posted.astimezone(UTC)).total_seconds() / 86400.0, 0.0)
     return 0.5 ** (age_days / half_life)
-
 
 def parse_required_years(text: str) -> float | None:
     """Best-effort minimum years from JD/title text. Prefers range lows."""
@@ -118,14 +118,12 @@ def parse_required_years(text: str) -> float | None:
             continue
     return None
 
-
 def infer_seniority(title: str, description: str = "") -> str | None:
     blob = f"{title}\n{description[:800]}"
     for name, pattern, _band in _SENIORITY_RULES:
         if pattern.search(blob):
             return name
     return None
-
 
 def seniority_yoe_band(level: str | None) -> tuple[float, float] | None:
     if not level:
@@ -135,23 +133,18 @@ def seniority_yoe_band(level: str | None) -> tuple[float, float] | None:
             return band
     return None
 
-
 def experience_fit_score(
     candidate_yoe: float,
     *,
     title: str,
     description: str = "",
 ) -> float:
-    """0–1 fit of candidate years vs JD YOE + seniority band.
-
-    Penalizes under-qualified *and* heavily over-qualified (e.g. junior vs staff).
-    """
+    """0–1 fit of candidate years vs JD YOE + seniority band."""
     yoe = max(float(candidate_yoe or 0.0), 0.0)
     required = parse_required_years(f"{title}\n{description}")
     level = infer_seniority(title, description)
     band = seniority_yoe_band(level)
 
-    # Explicit YOE requirement is strongest signal
     if required is not None:
         if yoe >= required:
             overshoot = yoe - required
@@ -173,7 +166,6 @@ def experience_fit_score(
                 base = 0.28
             else:
                 base = 0.08
-        # Soft-adjust with seniority when both present
         if band is not None:
             lo, hi = band
             if yoe < lo - 1:
@@ -187,18 +179,15 @@ def experience_fit_score(
         if lo <= yoe <= hi:
             return 1.0
         if yoe < lo:
-            # Too junior for the title band — strong penalty (the "everything is senior" problem)
             gap = lo - yoe
             return round(max(0.05, 1.0 - gap * 0.22), 4)
         # Overqualified for junior/mid band
         gap = yoe - hi
         return round(max(0.15, 1.0 - gap * 0.14), 4)
 
-    # No signal → mild prior favoring mid experience presence
     if yoe <= 0:
         return 0.45
     return 0.6
-
 
 def extract_requirement_terms(job_skills: list[str], description: str) -> list[str]:
     """Structured skills first, then JD requirement bullets as tech-ish tokens."""
@@ -224,7 +213,6 @@ def extract_requirement_terms(job_skills: list[str], description: str) -> list[s
         chunk = chunk.strip()
         if not chunk:
             continue
-        # Prefer multi-word skill-ish phrases under 40 chars
         if 2 <= len(chunk) <= 40 and not chunk.endswith("."):
             # strip leading "N+ years of"
             chunk = re.sub(r"^\d+\+?\s*years?\s+(?:of\s+)?", "", chunk, flags=re.I)
@@ -237,7 +225,6 @@ def extract_requirement_terms(job_skills: list[str], description: str) -> list[s
             break
     return terms[:24]
 
-
 def requirements_met_score(
     *,
     profile_skills: list[str],
@@ -245,26 +232,21 @@ def requirements_met_score(
     job_skills: list[str],
     job_description: str,
 ) -> float:
-    """Fraction of job hard requirements covered by the profile (0–1)."""
+    """Fraction of requirements covered (token-aware phrase match; Java≠JS)."""
+    from app.services.ranking_math_align import phrase_in_text
+
     terms = extract_requirement_terms(job_skills, job_description)
     if not terms:
         return 0.5
 
-    hay_parts = [profile_text.lower()]
-    hay_parts.extend(s.lower() for s in profile_skills if s)
-    hay = " \n ".join(hay_parts)
+    skill_blob = " ".join(s for s in profile_skills if s)
+    hay = f"{profile_text or ''}\n{skill_blob}"
 
     hits = 0
     for term in terms:
-        if term in hay:
-            hits += 1
-            continue
-        # token-level fallback for multi-word terms
-        tokens = term.split()
-        if len(tokens) > 1 and all(t in hay for t in tokens if len(t) >= 3):
+        if phrase_in_text(term, hay):
             hits += 1
     return round(hits / len(terms), 4)
-
 
 def validate_ranking_weights() -> None:
     total = (
@@ -288,7 +270,6 @@ def validate_ranking_weights() -> None:
             },
         )
 
-
 def fuse_final_score(
     *,
     llm_fit: float,
@@ -307,3 +288,115 @@ def fuse_final_score(
         + settings.RANKING_WEIGHT_EXPERIENCE * experience_fit
         + settings.RANKING_WEIGHT_REQUIREMENTS * requirements_met
     ) * 100.0
+
+def mmr(
+    item_ids: list[str],
+    relevance: dict[str, float],
+    pairwise_similarity: dict[tuple[str, str], float],
+    *,
+    lambda_: float = DEFAULT_MMR_LAMBDA,
+    k: int | None = None,
+) -> list[str]:
+    """Maximal Marginal Relevance diversification (pure)."""
+    if not item_ids:
+        return []
+    # Unique preserve first occurrence
+    seen: set[str] = set()
+    candidates: list[str] = []
+    for item_id in item_ids:
+        if item_id not in seen:
+            seen.add(item_id)
+            candidates.append(item_id)
+    limit = len(candidates) if k is None else max(0, min(k, len(candidates)))
+    if limit == 0:
+        return []
+
+    def sim(a: str, b: str) -> float:
+        if a == b:
+            return 1.0
+        if (a, b) in pairwise_similarity:
+            return pairwise_similarity[(a, b)]
+        if (b, a) in pairwise_similarity:
+            return pairwise_similarity[(b, a)]
+        return 0.0
+
+    by_rel = sorted(candidates, key=lambda i: (-relevance.get(i, 0.0), i))
+    selected: list[str] = []
+    remaining = set(candidates)
+
+    while remaining and len(selected) < limit:
+        if not selected:
+            best = by_rel[0]
+            selected.append(best)
+            remaining.remove(best)
+            continue
+        best_id: str | None = None
+        best_score = float("-inf")
+        # Deterministic: scan in relevance order
+        for item_id in by_rel:
+            if item_id not in remaining:
+                continue
+            rel = relevance.get(item_id, 0.0)
+            max_sim = max(sim(item_id, s) for s in selected)
+            score = lambda_ * rel - (1.0 - lambda_) * max_sim
+            if best_id is None or score > best_score:
+                best_score = score
+                best_id = item_id
+        if best_id is None:
+            break
+        selected.append(best_id)
+        remaining.remove(best_id)
+    return selected
+
+def apply_company_soft_cap(
+    ordered_ids: list[str],
+    company_by_id: dict[str, str],
+    *,
+    top_k: int = 10,
+    max_per_company: int = 3,
+    pool_company_count: int | None = None,
+) -> list[str]:
+    """Cap company frequency in the first top_k slots (soft: spill to later ranks)."""
+    if not ordered_ids or top_k <= 0:
+        return list(ordered_ids)
+    if pool_company_count is None:
+        companies = {company_by_id.get(i, "") for i in ordered_ids}
+        companies.discard("")
+        pool_count = len(companies)
+    else:
+        pool_count = pool_company_count
+    if pool_count < top_k:
+        return list(ordered_ids)
+
+    head: list[str] = []
+    deferred: list[str] = []
+    counts: dict[str, int] = {}
+    for item_id in ordered_ids:
+        if len(head) >= top_k:
+            deferred.append(item_id)
+            continue
+        company = company_by_id.get(item_id, "")
+        used = counts.get(company, 0)
+        if company and used >= max_per_company:
+            deferred.append(item_id)
+            continue
+        head.append(item_id)
+        if company:
+            counts[company] = used + 1
+    # Fill head from deferred if under top_k
+    rest = []
+    for item_id in deferred:
+        if len(head) < top_k:
+            company = company_by_id.get(item_id, "")
+            used = counts.get(company, 0)
+            # Still respect cap when filling
+            if company and used >= max_per_company:
+                rest.append(item_id)
+                continue
+            head.append(item_id)
+            if company:
+                counts[company] = used + 1
+        else:
+            rest.append(item_id)
+    return head + rest
+

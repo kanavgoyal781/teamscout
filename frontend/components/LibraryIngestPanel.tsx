@@ -16,6 +16,7 @@ type LibraryIngestPanelProps = {
   syncing: boolean;
   driveUrl: string;
   syncStatus: string | null;
+  distinctVersions?: number;
   onDriveUrlChange: (value: string) => void;
   onUpload: (event: FormEvent<HTMLFormElement>) => void;
   onDriveSync: (event: FormEvent<HTMLFormElement>) => void;
@@ -29,6 +30,7 @@ export default function LibraryIngestPanel({
   syncing,
   driveUrl,
   syncStatus,
+  distinctVersions,
   onDriveUrlChange,
   onUpload,
   onDriveSync,
@@ -158,17 +160,53 @@ export default function LibraryIngestPanel({
           <EmptyState instruction="No resumes in library yet. Upload files or sync a Drive folder." />
         </div>
       ) : (
-        <ul className="library-list" data-testid="library-list">
-          {resumes.map((resume) => (
-            <li key={resume.id}>
-              <strong>{resume.filename}</strong>
-              <span className="meta" style={{ margin: 0 }}>
-                {resume.profile.title || "Untitled"} · {resume.source} ·{" "}
-                {resume.profile.skills.slice(0, 4).join(", ")}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className="meta font-num" style={{ marginTop: 16 }} data-testid="library-stats">
+            Your library: {resumes.length} file{resumes.length === 1 ? "" : "s"},{" "}
+            {distinctVersions ??
+              new Set(resumes.map((r) => r.cluster_id || r.id)).size}{" "}
+            distinct version
+            {(distinctVersions ?? new Set(resumes.map((r) => r.cluster_id || r.id)).size) === 1
+              ? ""
+              : "s"}
+          </p>
+          <ul className="library-list" data-testid="library-list">
+            {(() => {
+              // Group near-dup variants under cluster_id (M12).
+              const byCluster = new Map<string, typeof resumes>();
+              for (const r of resumes) {
+                const cid = r.cluster_id || r.id;
+                const list = byCluster.get(cid) ?? [];
+                list.push(r);
+                byCluster.set(cid, list);
+              }
+              const groups = Array.from(byCluster.entries()).sort((a, b) =>
+                a[0].localeCompare(b[0]),
+              );
+              return groups.map(([cid, members]) => (
+                <li key={cid} className="library-cluster">
+                  {members.length > 1 ? (
+                    <p className="meta" style={{ margin: "0 0 4px" }}>
+                      Base version {cid.slice(0, 8)} · {members.length} near-dups
+                    </p>
+                  ) : null}
+                  <ul className="library-cluster-members" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                    {members.map((resume) => (
+                      <li key={resume.id} style={{ marginBottom: 6 }}>
+                        <strong>{resume.filename}</strong>
+                        <span className="meta" style={{ margin: 0, display: "block" }}>
+                          {resume.profile.title || "Untitled"} · {resume.source} ·{" "}
+                          {resume.profile.skills.slice(0, 4).join(", ")}
+                          {resume.cluster_label ? ` · ${resume.cluster_label}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ));
+            })()}
+          </ul>
+        </>
       )}
     </section>
   );

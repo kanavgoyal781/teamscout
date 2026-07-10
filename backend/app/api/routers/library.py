@@ -24,12 +24,14 @@ from app.services.jobs_store import cache_pasted_job, resolve_job
 
 router = APIRouter(prefix="/library", tags=["library"])
 
-
 @router.get("/resumes", response_model=LibraryResumeListResponse)
 def list_resumes(db: Session = Depends(get_db)) -> LibraryResumeListResponse:
     resumes = library_store.list_library_resumes(db)
-    return LibraryResumeListResponse(resumes=resumes, total=len(resumes))
-
+    return LibraryResumeListResponse(
+        resumes=resumes,
+        total=len(resumes),
+        distinct_versions=library_store.distinct_version_count(db),
+    )
 
 @router.post("/upload", response_model=LibraryUploadResponse)
 @limiter.limit(upload_limit)
@@ -39,8 +41,19 @@ async def upload_library(
     db: Session = Depends(get_db),
 ) -> LibraryUploadResponse:
     result = await library_store.ingest_upload_files(files, db)
-    return LibraryUploadResponse(**result)
-
+    units_indexed = result.get("units_indexed")
+    return LibraryUploadResponse(
+        files_received=int(result["files_received"]),
+        files_parsed=int(result["files_parsed"]),
+        files_skipped=int(result["files_skipped"]),
+        files_ignored=int(result["files_ignored"]),
+        resumes=result["resumes"],  # type: ignore[arg-type]
+        distinct_versions=int(result.get("distinct_versions") or 0),
+        units_indexed=units_indexed if isinstance(units_indexed, bool) or units_indexed is None else None,
+        units_index_warning=(
+            str(result["units_index_warning"]) if result.get("units_index_warning") else None
+        ),
+    )
 
 @router.post("/drive/sync", response_model=DriveSyncResponse)
 def sync_drive(
@@ -50,7 +63,6 @@ def sync_drive(
     folder_id = drive.parse_folder_id(payload.folder_url)
     result = library_store.sync_drive_folder(folder_id, payload.folder_url, db)
     return DriveSyncResponse(**result)
-
 
 @router.post("/intent/search", response_model=IntentSearchResponse)
 @limiter.limit(search_limit)
@@ -86,7 +98,6 @@ def intent_search(
 
     return IntentSearchResponse(search_id=row.id, results=ranked)
 
-
 @router.post("/recommend-from-jd", response_model=RecommendFromJdResponse)
 @limiter.limit(llm_limit)
 def recommend_from_jd(
@@ -107,14 +118,17 @@ def recommend_from_jd(
         apply_url=payload.apply_url,
         db=db,
     )
-    recommendations = resume_ranking.rank_resumes_for_job(job, candidates)
+    recommendations = resume_ranking.rank_resumes_for_job(job, candidates, db=db)
+    tournament_ran = any(r.tournament and r.tournament.ran for r in recommendations)
+    comparisons = max((r.tournament.comparisons for r in recommendations if r.tournament), default=0)
     return RecommendFromJdResponse(
         job_id=job.id,
         job_title=job.title,
         job_company=job.company,
         recommendations=recommendations,
+        tournament_ran=tournament_ran,
+        tournament_comparisons=comparisons,
     )
-
 
 @router.post("/jobs/{job_id}/recommend-resumes", response_model=RecommendResumesResponse)
 @limiter.limit(llm_limit)
@@ -128,5 +142,13 @@ def recommend_resumes(
     if not candidates:
         raise ValidationError("Resume library is empty — upload resumes or sync Drive first")
 
-    recommendations = resume_ranking.rank_resumes_for_job(job, candidates)
-    return RecommendResumesResponse(job_id=job_id, recommendations=recommendations)
+    recommendations = resume_ranking.rank_resumes_for_job(job, candidates, db=db)
+    tournament_ran = any(r.tournament and r.tournament.ran for r in recommendations)
+    comparisons = max((r.tournament.comparisons for r in recommendations if r.tournament), default=0)
+    return RecommendResumesResponse(
+        job_id=job_id,
+        recommendations=recommendations,
+        tournament_ran=tournament_ran,
+        tournament_comparisons=comparisons,
+    )
+

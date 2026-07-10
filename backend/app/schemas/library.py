@@ -33,18 +33,15 @@ class IntentProfile(BaseModel):
             ),
         )
 
-
 class IntentSearchRequest(BaseModel):
     role: str
     years_of_experience: float = 0
     location: str = ""
     remote_preference: Literal["remote", "hybrid", "onsite", "any"] = "any"
 
-
 class IntentSearchResponse(BaseModel):
     search_id: str
     results: list[RankedJob] = Field(default_factory=list)
-
 
 class LibraryResumeOut(BaseModel):
     id: str
@@ -53,16 +50,17 @@ class LibraryResumeOut(BaseModel):
     source: str
     profile: ResumeProfile
     created_at: str | None = None
-
+    cluster_id: str | None = None
+    cluster_label: str | None = None
+    cluster_size: int | None = None
 
 class LibraryResumeListResponse(BaseModel):
     resumes: list[LibraryResumeOut] = Field(default_factory=list)
     total: int = 0
-
+    distinct_versions: int = 0
 
 class DriveSyncRequest(BaseModel):
     folder_url: str
-
 
 class DriveSyncResponse(BaseModel):
     folder_id: str
@@ -72,26 +70,45 @@ class DriveSyncResponse(BaseModel):
     files_ignored: int = 0
     resumes: list[LibraryResumeOut] = Field(default_factory=list)
 
-
 class LibraryUploadResponse(BaseModel):
     files_received: int
     files_parsed: int
     files_skipped: int
     files_ignored: int = 0
     resumes: list[LibraryResumeOut] = Field(default_factory=list)
-
+    distinct_versions: int = 0
+    units_indexed: bool | None = None
+    units_index_warning: str | None = None
 
 class ResumeCandidate(BaseModel):
     resume_id: str
     filename: str
     profile: ResumeProfile
-
+    content_hash: str | None = None
+    cluster_id: str | None = None
 
 class RequirementCoverage(BaseModel):
     requirement: str
     status: Literal["hit", "miss"]
     evidence: str | None = None
 
+class AlignmentRow(BaseModel):
+    requirement: str
+    kind: str = "must"
+    category: str = "skill"
+    weight: float = 1.0
+    evidence_unit: str | None = None
+    evidence_score: float = 0.0
+    status: Literal["hit", "miss"] = "miss"
+
+class TournamentRecord(BaseModel):
+    ran: bool = False
+    comparisons: int = 0
+    cache_hits: int = 0
+    cost_usd: float | None = None
+    wins: int = 0
+    contested: bool = False
+    reasons: list[str] = Field(default_factory=list)
 
 class RankedResumeRecommendation(BaseModel):
     resume_id: str
@@ -99,12 +116,19 @@ class RankedResumeRecommendation(BaseModel):
     match_score: float
     score_breakdown: ScoreBreakdown
     coverage: list[RequirementCoverage] = Field(default_factory=list)
-
+    coverage_score: float = 0.0
+    alignment: list[AlignmentRow] = Field(default_factory=list)
+    cluster_id: str | None = None
+    cluster_label: str | None = None
+    cluster_size: int | None = None
+    tournament: TournamentRecord | None = None
+    content_hash: str | None = None
 
 class RecommendResumesResponse(BaseModel):
     job_id: str
     recommendations: list[RankedResumeRecommendation] = Field(default_factory=list)
-
+    tournament_comparisons: int = 0
+    tournament_ran: bool = False
 
 class RecommendFromJdRequest(BaseModel):
     """Paste a full job description; rank library resumes against it (no JSearch)."""
@@ -115,9 +139,10 @@ class RecommendFromJdRequest(BaseModel):
     location: str = ""
     apply_url: str = ""
 
-
 class RecommendFromJdResponse(BaseModel):
     job_id: str
     job_title: str = ""
     job_company: str = ""
     recommendations: list[RankedResumeRecommendation] = Field(default_factory=list)
+    tournament_comparisons: int = 0
+    tournament_ran: bool = False

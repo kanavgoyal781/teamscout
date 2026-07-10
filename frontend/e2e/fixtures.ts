@@ -109,6 +109,16 @@ export async function mockApi(
       return json(health);
     }
 
+    if (path === "/stats") {
+      return json({
+        jobs_ranked_total: 42,
+        resumes_parsed_total: 17,
+        teams_discovered_total: 9,
+        median_rank_latency_ms: 320,
+        total_llm_cost_usd: 1.2345,
+      });
+    }
+
     if (path === "/resumes/upload" && method === "POST") {
       return json({
         id: "resume-1",

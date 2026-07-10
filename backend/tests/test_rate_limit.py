@@ -222,3 +222,24 @@ def test_unhandled_exception_no_stack_leak() -> None:
         assert "," not in rid
     finally:
         app.router.routes = [r for r in app.router.routes if getattr(r, "path", None) != "/__test_boom"]
+
+
+def test_feedback_rate_limit_returns_429(client: TestClient) -> None:
+    previous_enabled = limiter.enabled
+    previous_limit = settings.RATE_LIMIT_FEEDBACK
+    limiter.enabled = True
+    settings.RATE_LIMIT_FEEDBACK = "2/minute"
+    limiter.reset()
+    try:
+        body = {"kind": "thumbs_up", "target_type": "job_match", "target_id": "rl-1"}
+        assert client.post("/feedback", json=body).status_code == 200
+        body2 = {"kind": "thumbs_down", "target_type": "job_match", "target_id": "rl-2"}
+        assert client.post("/feedback", json=body2).status_code == 200
+        body3 = {"kind": "thumbs_up", "target_type": "job_match", "target_id": "rl-3"}
+        third = client.post("/feedback", json=body3)
+        assert third.status_code == 429
+        assert third.json().get("error") == "rate_limit_exceeded"
+    finally:
+        limiter.enabled = previous_enabled
+        settings.RATE_LIMIT_FEEDBACK = previous_limit
+        limiter.reset()

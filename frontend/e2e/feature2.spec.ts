@@ -46,11 +46,5 @@ test.describe("Feature 2 — library → paste JD → best resume", () => {
     await expect(page.getByText(/No resumes in library yet/i)).toBeVisible();
   });
 
-  test("about architecture page", async ({ page }) => {
-    await settleUi(page);
-    await mockApi(page);
-    await page.goto("/about");
-    await expect(page.getByTestId("about-funnel")).toBeVisible();
-    await expect(page.getByText(/Score formula/i)).toBeVisible();
-  });
+  // About coverage lives in e2e/about.spec.ts (stats + journeys + detail).
 });

@@ -21,11 +21,9 @@ from app.services.jobs_store import cache_pasted_job, resolve_job
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
-
 def _extraction_hash(extraction: TeamExtraction) -> str:
     payload = extraction.model_dump_json()
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
 
 def _load_confirmed_extraction(
     job_id: str,
@@ -47,10 +45,8 @@ def _load_confirmed_extraction(
         )
     return TeamExtraction.model_validate_json(row.extraction_json)
 
-
 def _team_searched(job_id: str, db: Session) -> bool:
     return db.query(JobTeamSearch).filter(JobTeamSearch.job_id == job_id).one_or_none() is not None
-
 
 def _latest_extraction(job_id: str, db: Session) -> tuple[str | None, TeamExtraction | None]:
     row = (
@@ -62,7 +58,6 @@ def _latest_extraction(job_id: str, db: Session) -> tuple[str | None, TeamExtrac
     if row is None:
         return None, None
     return row.id, TeamExtraction.model_validate_json(row.extraction_json)
-
 
 @router.post("/from-text", response_model=IngestJobFromTextResponse)
 def ingest_job_from_text(
@@ -87,7 +82,6 @@ def ingest_job_from_text(
         description_preview=preview,
     )
 
-
 @router.post("/{job_id}/extract-team", response_model=TeamExtractionResponse)
 @limiter.limit(llm_limit)
 def extract_team(
@@ -107,7 +101,6 @@ def extract_team(
     db.refresh(record)
     return TeamExtractionResponse(job_id=job_id, extraction_id=record.id, extraction=extraction)
 
-
 @router.post("/{job_id}/find-team", response_model=FindTeamResponse)
 @limiter.limit(find_team_limit)
 def find_team(
@@ -125,7 +118,6 @@ def find_team(
         search_id=payload.search_id,
         db=db,
     )
-
 
 @router.get("/{job_id}/team", response_model=TeamListResponse)
 def list_team(job_id: str, db: Session = Depends(get_db)) -> TeamListResponse:

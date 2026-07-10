@@ -115,6 +115,40 @@ def test_requirements_met_prefers_covered_skills() -> None:
     assert low <= 0.35
 
 
+def test_requirements_met_rejects_substring_false_positives() -> None:
+    """JavaScript must not satisfy a Java requirement; Go ≠ Good."""
+    js_only = requirements_met_score(
+        profile_skills=["JavaScript", "TypeScript"],
+        profile_text="Built JavaScript widgets and TypeScript apps",
+        job_skills=["Java"],
+        job_description="Requirements: Java",
+    )
+    java_real = requirements_met_score(
+        profile_skills=["Java"],
+        profile_text="Built Java services on the JVM",
+        job_skills=["Java"],
+        job_description="Requirements: Java",
+    )
+    assert java_real > js_only
+    assert js_only == 0.0
+    assert java_real == 1.0
+
+    go_fp = requirements_met_score(
+        profile_skills=["Python"],
+        profile_text="Good communication and ownership",
+        job_skills=["Go"],
+        job_description="Must have: Go",
+    )
+    go_hit = requirements_met_score(
+        profile_skills=["Go"],
+        profile_text="Wrote Go microservices",
+        job_skills=["Go"],
+        job_description="Must have: Go",
+    )
+    assert go_fp == 0.0
+    assert go_hit == 1.0
+
+
 def test_extract_requirement_terms_includes_skills() -> None:
     terms = extract_requirement_terms(
         ["Python", "Django"],
@@ -194,3 +228,8 @@ def test_fuse_final_score_surfaces_validation_error_for_bad_weights(
         fuse_final_score(llm_fit=80, rrf_normalized=0.9, skill_overlap=0.5, recency=0.8)
 
     assert exc.value.error_code == "validation_error"
+
+
+def test_skill_jaccard_aliases() -> None:
+    assert skill_jaccard(["Go"], ["golang"]) == 1.0
+    assert skill_jaccard(["Java"], ["JavaScript"]) == 0.0

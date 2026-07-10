@@ -1,7 +1,4 @@
-"""Enforce maximum request body size for uploads (default 10 MiB).
-
-Pure ASGI middleware so it does not break FastAPI exception handling.
-"""
+"""Enforce maximum request body size for uploads (default 10 MiB)."""
 
 from __future__ import annotations
 
@@ -50,7 +47,6 @@ class UploadSizeLimitMiddleware:
                 return
 
         await self.app(scope, receive, send)
-
 
 def enforce_upload_size(data: bytes) -> None:
     """Raise ValidationError if in-memory body exceeds the configured limit."""

@@ -1,8 +1,4 @@
-"""Request-ID middleware: UUID per request, response header, structlog binding.
-
-Pure ASGI middleware (not BaseHTTPMiddleware) so route exceptions still reach
-FastAPI exception handlers instead of being re-raised as ExceptionGroup.
-"""
+"""Request-ID middleware: UUID per request, response header, structlog binding."""
 
 from __future__ import annotations
 
@@ -17,20 +13,14 @@ REQUEST_ID_HEADER_LOWER = "x-request-id"
 # Token-safe IDs only — no CR/LF/NUL/spaces (header injection).
 _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
-
 def sanitize_request_id(raw: str | None) -> str:
-    """Return client id if token-safe; otherwise a new UUID.
-
-    Rejects empty, oversized, or non-printable / CR-LF values so we never
-    echo raw client bytes into response headers or logs.
-    """
+    """Return client id if token-safe; otherwise a new UUID."""
     if raw is None:
         return str(uuid.uuid4())
     candidate = raw.strip()
     if _SAFE_REQUEST_ID.fullmatch(candidate):
         return candidate
     return str(uuid.uuid4())
-
 
 class RequestIdMiddleware:
     def __init__(self, app: Any) -> None:

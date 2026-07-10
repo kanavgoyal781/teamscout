@@ -22,7 +22,6 @@ def contact_to_out(contact: Contact, reveal_email: str | None = None) -> Contact
         email=reveal_email,
     )
 
-
 def _record_team_search(
     job_id: str,
     extraction_id: str,
@@ -52,7 +51,6 @@ def _record_team_search(
     existing.credits_used = credits_used
     existing.search_path = search_path
     db.add(existing)
-
 
 def find_team_for_job(
     job: Job,

@@ -25,6 +25,8 @@ pnpm test:e2e     # Playwright (mocks API via route interception)
 
 Set `NEXT_PUBLIC_API_BASE` (default `http://localhost:8000`).
 
+Optional: `NEXT_PUBLIC_GITHUB_BASE` (e.g. `https://github.com/org/repo/blob/main`) enables clickable Engineering principles links on `/about`. When unset, paths render as plain text (never placeholder `OWNER/teamscout` URLs).
+
 ## Design
 
 - Dark-mode-first with light toggle (cookie `teamscout-theme`, class strategy, pre-paint script in `layout.tsx`; no browser storage APIs)
@@ -49,3 +51,4 @@ E2E writes six screenshots under `public/screenshots/` when `pnpm test:e2e` runs
 4. `04-team-discovery.png`
 5. `05-library.png`
 6. `06-resume-comparison.png`
+7. `07-about.png` (About story — journeys + funnel)

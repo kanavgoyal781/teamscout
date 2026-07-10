@@ -11,6 +11,7 @@ import {
   syncDrive,
   uploadLibrary,
 } from "../lib/api";
+import { contentHashHex } from "../lib/hash";
 import type { RankedResumeRecommendation } from "../lib/types";
 import { queryKeys } from "../lib/query";
 
@@ -25,7 +26,10 @@ export function useLibraryPage() {
   const [matchedJobTitle, setMatchedJobTitle] = useState<string>("");
   const [matchedJobCompany, setMatchedJobCompany] = useState<string>("");
   const [recommendations, setRecommendations] = useState<RankedResumeRecommendation[]>([]);
+  const [jdHash, setJdHash] = useState<string | null>(null);
   const [matched, setMatched] = useState(false);
+  const [tournamentRan, setTournamentRan] = useState(false);
+  const [tournamentComparisons, setTournamentComparisons] = useState(0);
 
   const libraryQuery = useQuery({
     queryKey: queryKeys.library,
@@ -41,9 +45,18 @@ export function useLibraryPage() {
         response.files_ignored > 0
           ? `, ${response.files_ignored} ignored (unsupported type)`
           : "";
+      const unitsNote =
+        response.units_indexed === false
+          ? " Units not indexed (embeddings unavailable)."
+          : response.units_indexed
+            ? " Units indexed for MaxSim ranking."
+            : "";
       toast.success(
-        `Uploaded ${response.files_received} file(s): ${response.files_parsed} parsed, ${response.files_skipped} skipped (duplicate hash)${ignoredNote}.`,
+        `Uploaded ${response.files_received} file(s): ${response.files_parsed} parsed, ${response.files_skipped} skipped (duplicate hash)${ignoredNote}.${unitsNote}`,
       );
+      if (response.units_index_warning) {
+        toast.message(response.units_index_warning);
+      }
       await queryClient.invalidateQueries({ queryKey: queryKeys.library });
     },
     onError: (error) => toast.error(formatApiError(error)),
@@ -57,12 +70,21 @@ export function useLibraryPage() {
         response.files_ignored > 0
           ? `, ${response.files_ignored} ignored (non-PDF/DOCX)`
           : "";
+      const unitsNote =
+        response.units_indexed === false
+          ? " Units not indexed (embeddings unavailable)."
+          : response.units_indexed
+            ? " Units indexed for MaxSim ranking."
+            : "";
       setSyncStatus(
-        `Synced folder ${response.folder_id}: ${response.files_seen} resume files seen, ${response.files_parsed} parsed, ${response.files_skipped} skipped${ignoredNote}.`,
+        `Synced folder ${response.folder_id}: ${response.files_seen} resume files seen, ${response.files_parsed} parsed, ${response.files_skipped} skipped${ignoredNote}.${unitsNote}`,
       );
       toast.success(
-        `Drive sync complete: ${response.files_parsed} parsed, ${response.files_skipped} skipped${ignoredNote}.`,
+        `Drive sync complete: ${response.files_parsed} parsed, ${response.files_skipped} skipped${ignoredNote}.${unitsNote}`,
       );
+      if (response.units_index_warning) {
+        toast.message(response.units_index_warning);
+      }
       await queryClient.invalidateQueries({ queryKey: queryKeys.library });
     },
     onError: (error) => toast.error(formatApiError(error)),
@@ -81,6 +103,9 @@ export function useLibraryPage() {
       setMatchedJobTitle(response.job_title);
       setMatchedJobCompany(response.job_company);
       setRecommendations(response.recommendations);
+      setJdHash(contentHashHex([jdTitle, jdCompany, jdLocation, jdText].join("\n")));
+      setTournamentRan(Boolean(response.tournament_ran));
+      setTournamentComparisons(response.tournament_comparisons ?? 0);
       setMatched(true);
       toast.success(
         response.recommendations.length > 0
@@ -124,11 +149,14 @@ export function useLibraryPage() {
     }
     setRecommendations([]);
     setMatched(false);
+    setTournamentRan(false);
+    setTournamentComparisons(0);
     matchMutation.mutate();
   }
 
   return {
     resumes: libraryQuery.data?.resumes ?? [],
+    distinctVersions: libraryQuery.data?.distinct_versions ?? 0,
     loadingLibrary: libraryQuery.isPending,
     libraryError: libraryQuery.isError ? formatApiError(libraryQuery.error) : null,
     uploading: uploadMutation.isPending,
@@ -144,6 +172,9 @@ export function useLibraryPage() {
     matchedJobTitle,
     matchedJobCompany,
     recommendations,
+    jdHash,
+    tournamentRan,
+    tournamentComparisons,
     setDriveUrl,
     setJdText,
     setJdTitle,

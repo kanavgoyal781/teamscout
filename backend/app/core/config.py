@@ -6,12 +6,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
 
-
 def _resolve_env_files() -> tuple[str, ...]:
     candidates = (_REPO_ROOT / ".env", _BACKEND_DIR / ".env")
     found = tuple(str(path) for path in candidates if path.is_file())
     return found or (str(_REPO_ROOT / ".env"),)
-
 
 class Settings(BaseSettings):
     DATABASE_URL: str = Field(default="sqlite:///./teamscout.db")
@@ -59,6 +57,8 @@ class Settings(BaseSettings):
     RANKING_WEIGHT_REQUIREMENTS: float = 0.10
     RRF_K: int = 60
     JOBS_FETCH_TARGET: int = 150
+    # Legacy/unused: recency is SearchParams.date_window (day|3days|week|month) via hard filters.
+    # Kept so older .env files do not fail settings load; do not wire new code to this.
     JOBS_RECENCY_DAYS: int = 14
     RERANK_TOP_N: int = 30
     SEARCH_RESULTS_TOP_N: int = 10
@@ -91,6 +91,9 @@ class Settings(BaseSettings):
 
     # Ops dashboard (required for /ops; missing token denies all access)
     OPS_TOKEN: str | None = None
+    # Directory that contains evals/ (history, experiments). Empty = auto-discover.
+    EVALS_DIR: str | None = None
+    RATE_LIMIT_FEEDBACK: str = "60/hour"
 
     # Cost guardrails
     LLM_DAILY_COST_CEILING_USD: float = 5.0
@@ -101,6 +104,8 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS_RERANK: int = 6000
     LLM_MAX_TOKENS_TEAM_EXTRACT: int = 2048
     LLM_MAX_TOKENS_JUSTIFY: int = 6000
+    LLM_MAX_TOKENS_JD_DECOMPOSE: int = 3000
+    LLM_MAX_TOKENS_PAIRWISE_JUDGE: int = 1200
     LLM_MAX_TOKENS_DEFAULT: int = 4096
 
     # Model prices USD per 1M tokens (input/output). Embeddings use input only.
@@ -123,6 +128,8 @@ class Settings(BaseSettings):
             "rerank": self.LLM_MAX_TOKENS_RERANK,
             "team_extract": self.LLM_MAX_TOKENS_TEAM_EXTRACT,
             "justify": self.LLM_MAX_TOKENS_JUSTIFY,
+            "jd_decompose": self.LLM_MAX_TOKENS_JD_DECOMPOSE,
+            "pairwise_judge": self.LLM_MAX_TOKENS_PAIRWISE_JUDGE,
         }
         return mapping.get(operation, self.LLM_MAX_TOKENS_DEFAULT)
 
@@ -152,6 +159,5 @@ class Settings(BaseSettings):
     def allowed_origins_list(self) -> list[str]:
         raw = self.ALLOWED_ORIGINS if (self.ALLOWED_ORIGINS and self.ALLOWED_ORIGINS.strip()) else self.CORS_ORIGINS
         return [origin.strip() for origin in raw.split(",") if origin.strip()]
-
 
 settings = Settings()

@@ -8,6 +8,7 @@ import EmptyState from "./ui/EmptyState";
 import { JobCardSkeleton } from "./ui/Skeleton";
 import ScoreBars from "./ui/ScoreBars";
 import ScoreRing from "./ui/ScoreRing";
+import FeedbackButtons from "./FeedbackButtons";
 
 type ResumeRecommendationsProps = {
   /** True after paste-JD match completed (including zero results). */
@@ -16,6 +17,9 @@ type ResumeRecommendationsProps = {
   recommendations: RankedResumeRecommendation[];
   jdTitle?: string;
   jdCompany?: string;
+  jdHash?: string | null;
+  tournamentRan?: boolean;
+  tournamentComparisons?: number;
 };
 
 function highlightCited(text: string, phrases: string[]): React.ReactNode {
@@ -25,7 +29,6 @@ function highlightCited(text: string, phrases: string[]): React.ReactNode {
     .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .filter((p) => p.length > 2);
   if (escaped.length === 0) return text;
-  // Case-insensitive split without /g so lastIndex cannot skip marks
   const splitRe = new RegExp(`(${escaped.join("|")})`, "i");
   const parts = text.split(splitRe);
   return parts.map((part, i) => {
@@ -46,6 +49,9 @@ export default function ResumeRecommendations({
   recommendations,
   jdTitle = "",
   jdCompany = "",
+  jdHash = null,
+  tournamentRan = false,
+  tournamentComparisons = 0,
 }: ResumeRecommendationsProps) {
   const reduced = useReducedMotion();
   const skipEntrance = shouldSkipEntrance(reduced);
@@ -75,6 +81,12 @@ export default function ResumeRecommendations({
             {jdCompany ? ` · ${jdCompany}` : ""}
           </p>
         ) : null}
+        {tournamentRan ? (
+          <p className="meta font-num" data-testid="tournament-cost">
+            Close-call tournament: {tournamentComparisons} pairwise comparison
+            {tournamentComparisons === 1 ? "" : "s"} (logged to ops traces)
+          </p>
+        ) : null}
         <motion.div
           className="recommendation-list"
           variants={skipEntrance ? undefined : staggerContainer}
@@ -83,10 +95,14 @@ export default function ResumeRecommendations({
         >
           {recommendations.slice(0, 3).map((item, index) => {
             const isWinner = index === 0;
-            const citePhrases = item.coverage
-              .filter((c) => c.status === "hit" && c.evidence)
-              .map((c) => c.evidence as string)
-              .slice(0, 6);
+            const align = item.alignment?.length ? item.alignment : null;
+            const citePhrases = (
+              align
+                ? align.filter((c) => c.status === "hit" && c.evidence_unit).map((c) => c.evidence_unit as string)
+                : item.coverage
+                    .filter((c) => c.status === "hit" && c.evidence)
+                    .map((c) => c.evidence as string)
+            ).slice(0, 6);
             return (
               <motion.article
                 key={item.resume_id}
@@ -102,13 +118,48 @@ export default function ResumeRecommendations({
                       <span className="rank-badge font-num">#{index + 1}</span>
                       {item.filename}
                     </h3>
+                    {item.cluster_label ? (
+                      <p className="meta" style={{ margin: "4px 0 0" }} data-testid={`cluster-${index}`}>
+                        {item.cluster_label}
+                        {item.cluster_size && item.cluster_size > 1
+                          ? ` · cluster of ${item.cluster_size}`
+                          : ""}
+                      </p>
+                    ) : null}
+                    {typeof item.coverage_score === "number" ? (
+                      <p className="meta font-num" style={{ margin: "4px 0 0" }}>
+                        Requirement coverage {(item.coverage_score * 100).toFixed(0)}%
+                      </p>
+                    ) : null}
                   </div>
                   <ScoreRing score={item.match_score} size={48} />
                 </div>
                 <p className="rationale">
                   {highlightCited(item.score_breakdown.rationale, citePhrases)}
                 </p>
-                <ScoreBars breakdown={item.score_breakdown} variant="resumes" />
+                {item.tournament?.ran && item.tournament.contested ? (
+                  <p className="meta font-num" data-testid={`tournament-${index}`}>
+                    Tournament: {item.tournament.wins} win
+                    {item.tournament.wins === 1 ? "" : "s"}
+                    {item.tournament.reasons[0] ? ` — ${item.tournament.reasons[0]}` : ""}
+                  </p>
+                ) : null}
+                <ScoreBars
+                  breakdown={item.score_breakdown}
+                  variant="resumes"
+                  coverageScore={item.coverage_score ?? null}
+                />
+                <div className="actions" style={{ marginTop: 10 }}>
+                  <FeedbackButtons
+                    targetType="resume_pick"
+                    targetId={item.resume_id}
+                    profileHash={item.content_hash ?? null}
+                    secondaryId={item.content_hash ?? null}
+                    jdHash={jdHash}
+                    scoreShown={item.match_score}
+                    testIdPrefix={`resume-feedback-${index}`}
+                  />
+                </div>
                 <div className="chip-row">
                   {item.score_breakdown.matched_skills.map((skill) => (
                     <span key={`m-${item.resume_id}-${skill}`} className="chip chip-match">
@@ -121,7 +172,34 @@ export default function ResumeRecommendations({
                     </span>
                   ))}
                 </div>
-                {item.coverage.length > 0 ? (
+                {align ? (
+                  <table className="coverage-table" data-testid={`alignment-${index}`}>
+                    <thead>
+                      <tr>
+                        <th>Requirement</th>
+                        <th>Kind</th>
+                        <th>Score</th>
+                        <th>Best evidence unit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {align.map((row) => (
+                        <tr key={`${item.resume_id}-${row.requirement}`}>
+                          <td>{row.requirement}</td>
+                          <td className="meta">{row.kind}</td>
+                          <td
+                            className={
+                              row.status === "hit" ? "coverage-hit font-num" : "coverage-miss font-num"
+                            }
+                          >
+                            {(row.evidence_score * 100).toFixed(0)}%
+                          </td>
+                          <td>{row.evidence_unit ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : item.coverage.length > 0 ? (
                   <table className="coverage-table">
                     <thead>
                       <tr>

@@ -15,20 +15,14 @@ from app.services import observability
 
 T = TypeVar("T", bound=BaseModel)
 
-
 def _require_llm_config() -> None:
     if not is_set(settings.LLM_API_KEY):
         raise ServiceNotConfiguredError("LLM", "LLM_API_KEY")
     if not is_set(settings.LLM_API_BASE):
         raise ServiceNotConfiguredError("LLM", "LLM_API_BASE")
 
-
 def _extract_message_text(message: object) -> str:
-    """Pull assistant text from OpenAI-compatible chat payloads.
-
-    Some hosted models (e.g. MiniMax on Friendli) put interim text in
-    reasoning_content and leave content null when max_tokens is tight.
-    """
+    """Pull assistant text from OpenAI-compatible chat payloads."""
     if not isinstance(message, dict):
         raise ServiceFailingError("LLM", "unexpected response format")
 
@@ -47,14 +41,12 @@ def _extract_message_text(message: object) -> str:
         if parts:
             return "".join(parts)
 
-    # Fallback: reasoning-only / truncated outputs
     for key in ("reasoning_content", "reasoning", "text"):
         val = message.get(key)
         if isinstance(val, str) and val.strip():
             return val
 
     raise ServiceFailingError("LLM", "unexpected response format: empty message content")
-
 
 def complete(
     prompt: str,
@@ -91,8 +83,6 @@ def complete(
         prompt_version=prompt_meta.version if prompt_meta else None,
         prompt_hash=prompt_meta.content_hash if prompt_meta else None,
         check_llm_ceiling=True,
-        # Fail-closed preflight: charge worst-case output = full max_tokens budget
-        # (not max_tokens//4) so remaining budget cannot be overshot by ~4×.
         estimated_cost_usd=observability.estimate_llm_cost_usd(
             model=settings.LLM_MODEL, input_tokens=est_in, output_tokens=max_tokens
         ),
@@ -107,7 +97,7 @@ def complete(
                 response.raise_for_status()
                 data = response.json()
         except httpx.HTTPError as exc:
-            raise ServiceFailingError("LLM", str(exc)) from exc
+            raise ServiceFailingError("LLM", "upstream request failed") from exc
 
         try:
             message = data["choices"][0]["message"]
@@ -131,7 +121,6 @@ def complete(
         )
         return content
 
-
 def _extract_json(raw: str) -> str:
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
@@ -147,10 +136,8 @@ def _extract_json(raw: str) -> str:
         return text[start : end + 1]
     return text
 
-
 def _strip_trailing_commas(text: str) -> str:
     return re.sub(r",\s*([}\]])", r"\1", text)
-
 
 def _scan_balanced_objects(blob: str) -> list[str]:
     """Extract complete top-level {...} objects from a blob (handles strings)."""
@@ -190,13 +177,11 @@ def _scan_balanced_objects(blob: str) -> list[str]:
             break  # truncated object — stop
     return objects
 
-
 def _salvage_results_json(raw: str) -> str | None:
     """Rebuild {\"results\":[...]} from a truncated or messy LLM payload."""
     text = _extract_json(raw)
     marker = re.search(r'"results"\s*:\s*\[', text)
     if not marker:
-        # Whole payload might be a bare array of result objects
         objects = _scan_balanced_objects(text)
         if not objects:
             return None
@@ -205,7 +190,6 @@ def _salvage_results_json(raw: str) -> str | None:
     if not objects:
         return None
     return '{"results": [' + ",".join(objects) + "]}"
-
 
 def _loads_llm_json(raw: str) -> object:
     """Parse LLM JSON with repair for trailing commas and truncated results arrays."""
@@ -233,7 +217,6 @@ def _loads_llm_json(raw: str) -> object:
         raise last_exc
     raise json.JSONDecodeError("empty LLM JSON", raw, 0)
 
-
 def complete_json(
     prompt: str,
     model: type[T],
@@ -251,7 +234,6 @@ def complete_json(
     last_error = "invalid JSON"
 
     for attempt in range(max_retries + 1):
-        # On retry after truncation, allow a bit more room for complete objects.
         attempt_budget = budget if attempt == 0 else min(budget + 1500, max(budget, 8000))
         raw = complete(
             current_prompt,

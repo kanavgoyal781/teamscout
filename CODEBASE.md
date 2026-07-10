@@ -23,7 +23,7 @@
 | **M1** | Present | FastAPI shell, honesty errors, structured logging, health skeleton |
 | **M2** | Present | Resume parse/confirm, JSearch jobs + SQLite cache, hybrid ranking |
 | **M3** | Present | Team extract, Sumble people search, contacts + email reveal, Feature 1 UI |
-| **M4** | Present | Library ingest, Drive sync, paste-JD best-resume pick (primary UI), retained intent-search APIs, shared `hybrid_rank` |
+| **M4** | Present | Library ingest, Drive sync, paste-JD best-resume pick (primary UI), retained intent-search APIs; job `hybrid_rank`, resume MaxSim |
 | **M5** | Present (git: *Milestone 5: Fix Sumble to real API + cleanup*) | Sumble OpenAPI v6 rewrite; org domain heuristic; job-post match → related_people primary path; people filter fallback; `search_path` persisted/returned; jobs query uses ≤2 skills; frontend credit estimates + path label |
 | **M6** | Present (git: *Milestone 6* + review follow-up + test signature fix) | `SUMBLE_JOB_MATCH_LIMIT`; title-lookup slug preference; credit aggregation (org + path); email-reveal `not_found` commit-before-raise; expanded `test_sumble.py` |
 
@@ -199,12 +199,12 @@ flowchart TB
 | `parser` | `services/parser.py` | PyMuPDF (PDF) + python-docx (DOCX); SHA-256; max 10 MiB; LLM → `ResumeProfile` |
 | `llm` | `services/llm.py` | OpenAI-compatible chat completions; `complete_json()` with fence-stripping + schema validation + retry |
 | `embeddings` | `services/embeddings.py` | OpenAI-compatible embeddings; L2-normalized; single + batch |
-| `jobs` | `services/jobs.py` | JSearch RapidAPI; ~150 jobs; 14-day recency; ≤2 skills in query; intent remote flag; SQLite cache upsert |
+| `jobs` | `services/jobs.py` | JSearch RapidAPI; ~150 jobs; `SearchParams.date_window` recency; multi-query expand; hard/soft filters; SQLite cache upsert |
 | `jobs_store` | `services/jobs_store.py` | `resolve_job(job_id)` — indexed lookup on `jobs_cache.job_id` |
 | `ranking_math` | `services/ranking_math.py` | Tokenize, cosine, RRF (k=60), normalize, skill Jaccard, recency half-life, weighted fuse, weight validation |
-| `hybrid_rank` | `services/hybrid_rank.py` | Shared orchestrator: dense → BM25 → RRF → optional LLM top 30 → fuse → top N |
+| `hybrid_rank` | `services/hybrid_rank.py` | Job-search orchestrator: dense → BM25 → RRF → optional LLM top 30 → fuse → top N |
 | `ranking` | `services/ranking.py` | Profile → jobs; `score_pool="rerank_top_n"`; `rank_jobs_dense_only()` for eval baseline |
-| `resume_ranking` | `services/resume_ranking.py` | Job → library resumes; `score_pool="all"`; coverage + rationale validation (one retry) |
+| `resume_ranking` | `services/resume_ranking.py` | Job → library resumes via MaxSim coverage + tournament + justify |
 | `team_extract` | `services/team_extract.py` | LLM extracts `team_name`, `department`, `likely_hiring_titles` from JD (desc ≤6000 chars) |
 | `sumble` | `services/sumble.py` | Sumble REST v6: org lookup, title-lookup, people filter, job-post match, related people, email enrich |
 | `team_search` | `services/team_search.py` | Org lookup + `find_hiring_team` + persist contacts + `JobTeamSearch`; credits = org + search |
@@ -288,10 +288,10 @@ Loads repo-root `.env` first, then `backend/.env` if present (`_resolve_env_file
 | Jobs | `JOBS_API_KEY`, `JOBS_API_BASE`, `JOBS_API_HOST` | key or base unset → 503 on fetch |
 | Sumble | `SUMBLE_API_KEY`, `SUMBLE_BASE_URL`, `SUMBLE_SEARCH_LIMIT`, `SUMBLE_JOB_MATCH_LIMIT` | key unset → 503 on Sumble use |
 | Drive | `GOOGLE_DRIVE_API_KEY` **or** OAuth trio | both auth modes unset → 503 on Drive sync |
-| Ranking | `RANKING_WEIGHT_*`, `RRF_K`, `JOBS_FETCH_TARGET`, `JOBS_RECENCY_DAYS`, `RERANK_TOP_N`, `SEARCH_RESULTS_TOP_N`, `RECENCY_HALF_LIFE_DAYS`, `RESUME_RECOMMEND_TOP_N` | weights not ~1.0 → startup `ValidationError` |
+| Ranking | `RANKING_WEIGHT_*` (llm/rrf/skills/recency/experience/requirements), `RRF_K`, `JOBS_FETCH_TARGET`, `RERANK_TOP_N`, `SEARCH_RESULTS_TOP_N`, `RECENCY_HALF_LIFE_DAYS`, `RESUME_RECOMMEND_TOP_N` | weights not ~1.0 → startup `ValidationError` |
 | Frontend | `NEXT_PUBLIC_API_BASE` (default `http://localhost:8000`) | browser calls fail if wrong |
 
-Default ranking weights: LLM 0.5, RRF 0.3, skills 0.1, recency 0.1.
+Default ranking weights (job fuse): LLM 0.38, RRF 0.20, skills 0.12, experience 0.12, requirements 0.10, recency 0.08. `JOBS_RECENCY_DAYS` is legacy unused (recency window is `SearchParams.date_window`).
 
 ---
 
@@ -456,21 +456,22 @@ Conforms to Sumble OpenAPI **v6** (`https://docs.sumble.com/api`). Only document
 - Prefer host from `apply_url`, strip common ATS hosts (Greenhouse, Lever, Ashby, Workday, etc.), take registrable-ish domain.
 - Fallback: alnum slug of company name + `.com`.
 
-### 7.2 Jobs client notes (M5 cleanup)
+### 7.2 Jobs client notes (current)
 
-- Resume search query: `{title} {top 2 skills} in {location}` — not a long skill concat.
-- Intent search query: `{role} in {location}`; `remote_preference == "remote"` → `remote_jobs_only=true`.
-- `date_posted`: `"month"` if `JOBS_RECENCY_DAYS > 7`, else `"week"`.
-- Soft client filter still enforces `JOBS_RECENCY_DAYS` (default 14) on `posted_at`.
+- Default path: LLM query expand → 3–5 variants (`query_expand`, cached by profile+intent hash and prompt version). Deterministic fallback queries when `use_expand=false`: role/skills/location combinations via `build_jsearch_queries` (not a long skill concat).
+- Intent search: `build_jsearch_queries(role, location)`; `remote_preference == "remote"` → `remote_jobs_only=true`. Soft remote preference may also be set on `SearchParams`.
+- JSearch `date_posted` and client recency both come from `SearchParams.date_window` (`day|3days|week|month` → `today|3days|week|month` + day cutoff). **`JOBS_RECENCY_DAYS` is unused legacy config** (loaded for .env compatibility only).
+- Hard prefs exclude only *known* mismatches; unknown seniority/remote/salary are kept. Soft prefs never exclude — they add `soft_boost` points after fuse.
 - Empty result set after filters → `ServiceFailingError`.
+- Response: ranked jobs + `facets` + `dropped_counts` + `queries`.
 
 ---
 
 ## 8. Ranking Pipeline
 
-### Shared orchestrator (`services/hybrid_rank.py`)
+### Job orchestrator (`services/hybrid_rank.py`)
 
-Used by both job search and resume pick (M4 refactor).
+Used by **job search / intent search** only. Resume pick uses MaxSim (`resume_ranking` + `ranking_math_align`), not this hybrid path.
 
 ```
 Candidates + Query text
@@ -496,7 +497,8 @@ Candidates + Query text
 └─────────┬─────────┘
           │
 ┌─────────▼─────────┐
-│ Weighted fuse     │  0.5·(LLM/100) + 0.3·RRF + 0.1·skills + 0.1·recency
+│ Weighted fuse     │  0.38·(LLM/100)+0.20·RRF+0.12·skills+0.12·exp+0.10·req+0.08·recency
+│ soft boost + MMR  │  soft prefs +5 pts; diversify when embeddings configured
 │ → top N           │  result scale 0–100 via fuse_final_score
 └───────────────────┘
 ```
@@ -505,23 +507,27 @@ Candidates + Query text
 
 - Query: `ResumeProfile.search_text()` (title, location, skills, summary, work history).
 - Skill overlap: Jaccard(profile.skills, job.skills).
+- Requirements: token-aware `requirements_met_score` (Java ≠ JavaScript).
 - Recency: exponential half-life (`RECENCY_HALF_LIFE_DAYS=7`); missing `posted_at` → 0.5.
-- `score_pool="rerank_top_n"` — only top-30 RRF pool gets final fuse for returned ranking.
+- `score_pool="rerank_top_n"` — wider score pool then MMR slice to `SEARCH_RESULTS_TOP_N`.
+- Soft prefs via `soft_boost_score`; `ScoreBreakdown.soft_boost` records the delta.
 - Returns top `SEARCH_RESULTS_TOP_N` (10) as `RankedJob` with transparent `ScoreBreakdown`.
-- LLM must return **exact** set of requested `job_id`s (no missing/extra/duplicates) or raises `ServiceFailingError`.
+- LLM omitted job_ids: retry batch, then **explicit heuristic fill** (rationale labels the fill) — not silent fake success.
 
-### Resume pick (`services/resume_ranking.py`)
+### Resume pick (`services/resume_ranking.py` + `ranking_math_align.py`)
 
-- Query: job title + company + location + skills + description snippet (≤2000).
-- **Scores entire library** (`score_pool="all"`) — candidates beyond top 30 RRF still get RRF + skill + experience scores (LLM fit 0 if not reranked).
-- LLM rerank adds `coverage[]` (requirement hit/miss + evidence) and validates rationale references resume content (one retry then hard-fail).
-- Returns top `RESUME_RECOMMEND_TOP_N` (3).
-- **Weighting note:** Fusion still uses `RANKING_WEIGHT_RECENCY` via `fuse_final_score()`; `_experience_score()` is passed as `recency_fn`. API `ScoreBreakdown` exposes `experience_fit` (with `recency=0.0`) — no separate experience weight env var.
+- Does **not** use `hybrid_rank`. Path: `jd_decompose` → unit MaxSim coverage → optional pairwise tournament → justify.
+- Query side: atomic JD requirements (LLM or deterministic skills/phrases when `use_llm=False`).
+- Candidate side: resume units (bullets/skills) with embeddings; MaxSim evidence + token-aware lexical floor.
+- Near-dup clustering (`single_linkage_clusters`) labels variants.
+- Tournament only when top-2 coverage gap &lt; 0.05 (top-k=5); Borda + coverage tiebreak; cache includes prompt version.
+- Returns top `RESUME_RECOMMEND_TOP_N` (3) with `alignment[]`, `coverage_score`, `tournament`.
+- API reuses `ScoreBreakdown.rrf_normalized` for coverage (0–1); UI labels it “Coverage” on resume cards. `recency=0.0`.
 
 ### Eval scripts
 
-- `scripts/eval_ranking.py` — NDCG@10 and MRR on fixture personas. Always calls `ranking.rank_jobs(..., use_llm=False)` — retrieval hybrid (dense + BM25 + RRF + skills + recency) **without** LLM rerank. Compares against `rank_jobs_dense_only()`. Printed NOTE about missing LLM is informational; production LLM rerank is not exercised here.
-- `scripts/eval_resume_pick.py` — expects best resume #1 in ≥4/5 fixture cases. Degrades to `use_llm=False` when LLM unconfigured; still requires embeddings.
+- `scripts/eval_ranking.py` — NDCG@10 and MRR on fixture personas. Always calls `ranking.rank_jobs(..., use_llm=False)` — retrieval hybrid (dense + BM25 + RRF + skills + experience + requirements + recency) **without** LLM rerank. Compares against `rank_jobs_dense_only()`. Also records pure-math MMR/company-cap diversity checks. Printed NOTE about missing LLM is informational.
+- `scripts/eval_resume_pick.py` — MaxSim engine vs whole-doc baseline on fixture cases; floors from `evals/thresholds.json`. Offline path uses `use_llm=False` + deterministic requirements; still needs embeddings (or synthetic embed flag for CI).
 
 ---
 
@@ -638,7 +644,7 @@ make test     # pytest + pnpm test
 5. **User edits** title/location/skills, clicks **Confirm profile**.
 6. **`PUT /resumes/{id}/confirm`** sets `confirmed=true`, updates `parsed_json`.
 7. **User clicks Search jobs** → `POST /searches` with `{ resume_id }` (requires confirmed + title + ≥1 skill).
-8. **`jobs.fetch_jobs`** builds JSearch query (`title + top 2 skills + location`), fetches up to 150 jobs, filters 14-day recency, drops jobs missing apply URL, caches in `jobs_cache`.
+8. **`jobs.fetch_jobs`** expands queries (LLM when `use_expand`) or builds deterministic JSearch queries, fetches up to 150 jobs, applies `SearchParams.date_window` + hard prefs, drops jobs missing apply URL, dedupes, caches in `jobs_cache`.
 9. **`ranking.rank_jobs`** runs hybrid pipeline → top 10 `RankedJob` stored in `searches.results_json`.
 10. **Frontend** renders `JobResultsList` with scores, chips, rationale.
 11. **User opens Score breakdown** → `hydrateJobTeam` → `GET /jobs/{id}/team`.
@@ -654,7 +660,7 @@ make test     # pytest + pnpm test
 18. **User clicks Reveal email — preview** → `POST /contacts/{id}/reveal-email` → `cost_credits=10`, `status=preview`.
 19. **User confirms** → `POST ...?confirm=true` → billing lock → `sumble.reveal_email` → persist terminal status → show email or not_found error.
 
-**Library journey (abbreviated):** ingest → paste JD (`recommend-from-jd`) → hybrid rank with `score_pool=all` + coverage (top 3).
+**Library journey (abbreviated):** ingest → paste JD (`recommend-from-jd`) → JD decompose → MaxSim unit coverage → optional tournament → top 3 with alignment.
 
 ---
 

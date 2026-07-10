@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
-from app.api.routers import contacts, jobs, library, ops, resumes, searches
+from app.api.routers import contacts, feedback, jobs, library, ops, resumes, searches, stats
 from app.core.config import settings
 from app.core.exception_handlers import teamscout_error_handler, unhandled_exception_handler
 from app.core.logging import configure_logging, get_logger, log_configured_services
@@ -19,7 +19,6 @@ from app.services.ranking_math import validate_ranking_weights
 
 logger = get_logger(__name__)
 
-
 def _cors_origins() -> list[str]:
     # Prod: require explicit ALLOWED_ORIGINS (no localhost CORS_ORIGINS fallback).
     if settings.is_prod:
@@ -32,12 +31,10 @@ def _cors_origins() -> list[str]:
         origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
         if not origins or "*" in origins:
             raise RuntimeError(
-                "CORS: ALLOWED_ORIGINS must be an explicit origin list in prod "
-                "(wildcard '*' is not allowed)"
+                "CORS: ALLOWED_ORIGINS must be an explicit origin list in prod (wildcard '*' is not allowed)"
             )
         return origins
     return settings.allowed_origins_list
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,7 +45,6 @@ async def lifespan(app: FastAPI):
     logger.info("app.startup", env=settings.ENV, version=settings.app_version)
     yield
     logger.info("app.shutdown")
-
 
 app = FastAPI(title="TeamScout", version=settings.app_version, lifespan=lifespan)
 app.state.limiter = limiter
@@ -75,17 +71,14 @@ app.include_router(searches.router)
 app.include_router(jobs.router)
 app.include_router(contacts.router)
 app.include_router(library.router)
+app.include_router(feedback.router)
 app.include_router(ops.router)
-
+app.include_router(stats.router)
 
 @app.get("/livez")
 async def livez() -> dict[str, str]:
-    """Process liveness only (always 200 when the app responds).
-
-    Use for Fly/container probes. Readiness (integrations + DB) is GET /health.
-    """
+    """Process liveness only (always 200 when the app responds)."""
     return {"status": "alive"}
-
 
 @app.get("/health")
 async def health() -> JSONResponse:

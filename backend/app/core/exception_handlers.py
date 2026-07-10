@@ -10,13 +10,11 @@ from app.errors import TeamScoutError
 
 logger = get_logger(__name__)
 
-
 def _request_id(request: Request) -> str | None:
     rid = getattr(request.state, "request_id", None)
     if rid:
         return str(rid)
     return None
-
 
 async def teamscout_error_handler(_request: Request, exc: TeamScoutError) -> JSONResponse:
     return JSONResponse(
@@ -27,7 +25,6 @@ async def teamscout_error_handler(_request: Request, exc: TeamScoutError) -> JSO
             "details": exc.details,
         },
     )
-
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     request_id = _request_id(request)

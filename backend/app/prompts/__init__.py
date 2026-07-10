@@ -12,7 +12,6 @@ from typing import Any
 _FRONTMATTER = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 _PROMPTS_DIR = Path(__file__).resolve().parent
 
-
 @dataclass(frozen=True)
 class PromptTemplate:
     """Loaded prompt with version metadata for tracing."""
@@ -26,7 +25,6 @@ class PromptTemplate:
 
     def __str__(self) -> str:
         return self.body
-
 
 def _parse_frontmatter(fm: str) -> dict[str, Any]:
     """Minimal YAML subset: scalar key: value lines (no nested blocks)."""
@@ -53,7 +51,6 @@ def _parse_frontmatter(fm: str) -> dict[str, Any]:
             except ValueError:
                 data[key] = value
     return data
-
 
 @lru_cache(maxsize=32)
 def load_prompt(name: str) -> PromptTemplate:
@@ -89,7 +86,6 @@ def load_prompt(name: str) -> PromptTemplate:
         model_params=model_params,
         system=system,
     )
-
 
 def prompt_versions() -> dict[str, str]:
     """Map prompt name → version for eval history records."""

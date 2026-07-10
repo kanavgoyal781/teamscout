@@ -22,6 +22,7 @@ export default function LibraryPage() {
         syncing={state.syncing}
         driveUrl={state.driveUrl}
         syncStatus={state.syncStatus}
+        distinctVersions={state.distinctVersions}
         onDriveUrlChange={state.setDriveUrl}
         onUpload={state.handleUpload}
         onDriveSync={state.handleDriveSync}
@@ -45,6 +46,9 @@ export default function LibraryPage() {
         recommendations={state.recommendations}
         jdTitle={state.matchedJobTitle}
         jdCompany={state.matchedJobCompany}
+        tournamentRan={state.tournamentRan}
+        tournamentComparisons={state.tournamentComparisons}
+        jdHash={state.jdHash}
       />
     </AppShell>
   );
