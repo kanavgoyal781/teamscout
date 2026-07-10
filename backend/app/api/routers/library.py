@@ -23,7 +23,6 @@ from app.services import drive, jobs, library_store, ranking, resume_ranking
 from app.services.jobs_store import cache_pasted_job, resolve_job
 
 router = APIRouter(prefix="/library", tags=["library"])
-
 @router.get("/resumes", response_model=LibraryResumeListResponse)
 def list_resumes(db: Session = Depends(get_db)) -> LibraryResumeListResponse:
     resumes = library_store.list_library_resumes(db)
@@ -32,7 +31,6 @@ def list_resumes(db: Session = Depends(get_db)) -> LibraryResumeListResponse:
         total=len(resumes),
         distinct_versions=library_store.distinct_version_count(db),
     )
-
 @router.post("/upload", response_model=LibraryUploadResponse)
 @limiter.limit(upload_limit)
 async def upload_library(
@@ -54,7 +52,6 @@ async def upload_library(
             str(result["units_index_warning"]) if result.get("units_index_warning") else None
         ),
     )
-
 @router.post("/drive/sync", response_model=DriveSyncResponse)
 def sync_drive(
     payload: DriveSyncRequest,
@@ -63,7 +60,6 @@ def sync_drive(
     folder_id = drive.parse_folder_id(payload.folder_url)
     result = library_store.sync_drive_folder(folder_id, payload.folder_url, db)
     return DriveSyncResponse(**result)
-
 @router.post("/intent/search", response_model=IntentSearchResponse)
 @limiter.limit(search_limit)
 def intent_search(
@@ -97,7 +93,6 @@ def intent_search(
     db.refresh(row)
 
     return IntentSearchResponse(search_id=row.id, results=ranked)
-
 @router.post("/recommend-from-jd", response_model=RecommendFromJdResponse)
 @limiter.limit(llm_limit)
 def recommend_from_jd(
@@ -129,7 +124,6 @@ def recommend_from_jd(
         tournament_ran=tournament_ran,
         tournament_comparisons=comparisons,
     )
-
 @router.post("/jobs/{job_id}/recommend-resumes", response_model=RecommendResumesResponse)
 @limiter.limit(llm_limit)
 def recommend_resumes(

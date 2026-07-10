@@ -62,7 +62,6 @@ _SENIORITY_MATCH: dict[str, set[str]] = {
     "senior": {"senior"},
     "lead": {"lead", "staff", "principal", "director"},
 }
-
 def _parse_money_token(num: str, k_suffix: str | None) -> float | None:
     try:
         value = float(num.replace(",", ""))
@@ -76,7 +75,6 @@ def _parse_money_token(num: str, k_suffix: str | None) -> float | None:
         if value <= 500:
             value *= 1000.0  # "120-150" style without k
     return value
-
 def parse_salary_min(
     *,
     structured_min: float | None = None,
@@ -105,7 +103,6 @@ def parse_salary_min(
     if best is not None and best >= 1000:
         return best, False
     return None, True
-
 def infer_remote_mode(
     *,
     location: str,
@@ -125,7 +122,6 @@ def infer_remote_mode(
         if not _REMOTE_RE.search(location):
             return "onsite"
     return "unknown"
-
 def normalize_employment_type(raw: str | None) -> str | None:
     if not raw:
         return None
@@ -140,7 +136,6 @@ def normalize_employment_type(raw: str | None) -> str | None:
     if "part" in lowered:
         return "parttime"
     return "unknown"
-
 def annotate_job(
     job: Job,
     *,
@@ -182,7 +177,6 @@ def annotate_job(
             "salary_unknown": salary_unknown,
         }
     )
-
 def _seniority_matches(wanted: str, actual: str | None) -> bool:
     if wanted == "any":
         return True
@@ -190,14 +184,12 @@ def _seniority_matches(wanted: str, actual: str | None) -> bool:
         return False
     allowed = _SENIORITY_MATCH.get(wanted, {wanted})
     return actual.lower() in allowed
-
 def _employment_matches(wanted: str, actual: str | None) -> bool:
     if wanted == "any":
         return True
     if not actual:
         return False
     return actual == wanted
-
 def apply_hard_filters(
     jobs: list[Job],
     params: SearchParams,
@@ -248,7 +240,6 @@ def apply_hard_filters(
 
         kept.append(job)
     return kept, dropped
-
 def soft_boost_score(job: Job, params: SearchParams, base_score: float) -> float:
     """Reorder preference via additive boosts; does not exclude."""
     score = float(base_score)
@@ -265,7 +256,6 @@ def soft_boost_score(job: Job, params: SearchParams, base_score: float) -> float
         if not job.salary_unknown and job.salary_min is not None and job.salary_min >= float(params.min_salary):
             score += SOFT_BOOST_POINTS
     return min(100.0, round(score, 1))
-
 def jsearch_params_from_search(params: SearchParams) -> dict[str, str]:
     """Map structured search params → JSearch query string params."""
     date_posted = DATE_WINDOW_TO_JSEARCH.get(params.date_window, "month")

@@ -19,14 +19,12 @@ class Rankable:
     id: str
     dense_text: str
     lexical_text: str
-
 @dataclass
 class RerankResult:
     fit_score: float
     matched_skills: list[str] = field(default_factory=list)
     missing_skills: list[str] = field(default_factory=list)
     rationale: str = ""
-
 @dataclass
 class ScoredCandidate:
     id: str
@@ -40,7 +38,6 @@ class ScoredCandidate:
     experience_fit: float
     requirements_met: float
     final_score: float
-
 def dense_ranking(query_dense_text: str, candidates: list[Rankable]) -> list[str]:
     query_vec = embeddings.embed(query_dense_text)
     candidate_vecs = embeddings.embed_batch([candidate.dense_text for candidate in candidates])
@@ -50,7 +47,6 @@ def dense_ranking(query_dense_text: str, candidates: list[Rankable]) -> list[str
     ]
     scored.sort(key=lambda item: item[1], reverse=True)
     return [candidate_id for candidate_id, _ in scored]
-
 def lexical_ranking(query_lexical_text: str, candidates: list[Rankable]) -> list[str]:
     corpus = [tokenize(candidate.lexical_text) for candidate in candidates]
     if not corpus:
@@ -62,7 +58,6 @@ def lexical_ranking(query_lexical_text: str, candidates: list[Rankable]) -> list
     scores = bm25.get_scores(query)
     ranked = sorted(range(len(candidates)), key=lambda idx: scores[idx], reverse=True)
     return [candidates[idx].id for idx in ranked]
-
 def hybrid_rank(
     query_dense_text: str,
     query_lexical_text: str,

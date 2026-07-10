@@ -22,16 +22,13 @@ def jsearch_source_job_id(item: dict) -> str:
         if text:
             return text
     return ""
-
 def _jsearch_headers() -> dict[str, str]:
     return {
         "X-RapidAPI-Key": settings.JOBS_API_KEY or "",
         "X-RapidAPI-Host": settings.JOBS_API_HOST or "jsearch.p.rapidapi.com",
     }
-
 def _jsearch_search_url() -> str:
     return f"{(settings.JOBS_API_BASE or 'https://jsearch.p.rapidapi.com').rstrip('/')}/search-v2"
-
 def _extract_jsearch_items(payload: object) -> list[dict]:
     if not isinstance(payload, dict):
         raise ServiceFailingError("Jobs API", "unexpected response format")
@@ -47,7 +44,6 @@ def _extract_jsearch_items(payload: object) -> list[dict]:
             if isinstance(nested, list):
                 return [item for item in nested if isinstance(item, dict)]
     raise ServiceFailingError("Jobs API", "missing data.jobs array in search response")
-
 def jsearch_get(params: dict[str, str]) -> list[dict]:
     import json as _json
 
@@ -66,7 +62,6 @@ def jsearch_get(params: dict[str, str]) -> list[dict]:
         logger.warning("jobs.jsearch_http_error", error=type(exc).__name__)
         raise ServiceFailingError("Jobs API", "upstream request failed") from exc
     return _extract_jsearch_items(payload)
-
 def build_jsearch_queries(title: str, location: str, skills: list[str] | None = None) -> list[str]:
     role = (title or "").strip() or "software engineer"
     loc = (location or "").strip() or "United States"
@@ -90,7 +85,6 @@ def build_jsearch_queries(title: str, location: str, skills: list[str] | None = 
     if skill_bits:
         add(f"{' '.join(skill_bits)} {role} jobs")
     return queries[:4]
-
 def fetch_jsearch_raw(queries: list[str], *, base_params: dict[str, str]) -> tuple[list[dict], int]:
     """Return (merged items, failed_query_count). Partial failures soft-fail."""
     merged: list[dict] = []

@@ -20,7 +20,6 @@ NO_CLEAR_EVIDENCE = "No clear evidence"
 MAX_UNIT_CITATIONS = 3
 BORDA_DECISIVE = 1.0
 BORDA_SLIGHT = 0.5
-
 def _alias_map(groups: list[set[str]]) -> dict[str, frozenset[str]]:
     out: dict[str, frozenset[str]] = {}
     for g in groups:
@@ -38,26 +37,22 @@ _SKILL_ALIASES = _alias_map(
 )
 _SINGLE_CHAR_SKILLS = frozenset({"c", "r"})
 _SECTION_RANK = {"experience": 0, "summary": 1, "skills": 2, "title": 3}
-
 def tokenize_tech(text: str) -> list[str]:
     if not text:
         return []
     return re.findall(
         r"c\+\+|c#|node\.js|react\.js|[a-z0-9]+(?:\.[a-z0-9]+)*|\bc\b|\br\b", text.lower()
     )
-
 def _canonical_forms(token: str) -> frozenset[str]:
     t = token.strip().lower()
     if not t:
         return frozenset()
     return _SKILL_ALIASES[t] if t in _SKILL_ALIASES else frozenset({t})
-
 def tokens_match(req_token: str, hay_token: str) -> bool:
     a, b = req_token.strip().lower(), hay_token.strip().lower()
     if not a or not b:
         return False
     return a == b or bool(_canonical_forms(a) & _canonical_forms(b))
-
 def phrase_in_text(phrase: str, text: str) -> bool:
     req, hay = (phrase or "").strip().lower(), (text or "").strip().lower()
     if not req or not hay or (len(req) < 2 and req not in _SINGLE_CHAR_SKILLS):
@@ -72,7 +67,6 @@ def phrase_in_text(phrase: str, text: str) -> bool:
         return any(tokens_match(rt, ht) for ht in hay_tokens)
     n, m = len(req_tokens), len(hay_tokens)
     return any(all(tokens_match(req_tokens[j], hay_tokens[i + j]) for j in range(n)) for i in range(m - n + 1))
-
 def skill_match_level(req: str, skill: str) -> str | None:
     req_t, skill_t = tokenize_tech(req), tokenize_tech(skill)
     if not req_t or not skill_t or len(req_t) != len(skill_t):
@@ -82,10 +76,8 @@ def skill_match_level(req: str, skill: str) -> str | None:
     if all(tokens_match(a, b) for a, b in zip(req_t, skill_t, strict=True)):
         return "alias"
     return None
-
 def skill_equals(req: str, skill: str) -> bool:
     return skill_match_level(req, skill) is not None
-
 def apply_evidence_floor(raw: float, *, floor: float = DEFAULT_EVIDENCE_FLOOR) -> float:
     e = float(raw)
     if floor >= 1.0:
@@ -93,10 +85,10 @@ def apply_evidence_floor(raw: float, *, floor: float = DEFAULT_EVIDENCE_FLOOR) -
     if e < floor:
         return 0.0
     return max(0.0, min(1.0, (e - floor) / (1.0 - floor)))
-
 def skill_requirement_score(
     requirement_text: str, *, skills: list[str], unit_texts: list[str], semantic_score: float
 ) -> float:
+    """Exact/alias over skill list + all phrase-matching units (order-independent max)."""
     best = 0.0
     for skill in skills:
         level = skill_match_level(requirement_text, skill)
@@ -116,12 +108,13 @@ def skill_requirement_score(
             best = max(best, SKILL_EXACT_SCORE)
         else:
             best = max(best, SKILL_ALIAS_SCORE)
-        break
-    return best if best >= SKILL_ALIAS_SCORE else max(best, min(float(semantic_score), SKILL_SEMANTIC_CAP))
-
+    if best >= SKILL_ALIAS_SCORE:
+        return best
+    # Semantic-only (no list/phrase hit): capped; post-floor contribution is small (~0.11 at floor 0.55).
+    # Coverage gap ≥0.08 is guaranteed for exact/alias must diffs, not semantic-only near-misses.
+    return min(float(semantic_score), SKILL_SEMANTIC_CAP)
 def section_rank(section: str | None) -> int:
     return _SECTION_RANK.get((section or "").strip().lower(), 9)
-
 def unit_evidence_score(
     requirement_emb: list[float], unit_emb: list[float], *, requirement_text: str, unit_text: str,
     skills: list[str] | None = None, skill_bonus: float = SKILL_MATCH_BONUS, lexical_hit: float = 1.0,
@@ -131,7 +124,6 @@ def unit_evidence_score(
     if phrase_in_text(requirement_text, unit_text):
         score = max(score, lexical_hit)
     return max(0.0, min(1.0, score))
-
 def _better_unit(score, section, text, best_score, best_section, best_text) -> bool:
     if score > best_score + 1e-12:
         return True
@@ -139,7 +131,6 @@ def _better_unit(score, section, text, best_score, best_section, best_text) -> b
         return False
     sr, br = section_rank(section), section_rank(best_section)
     return sr < br if sr != br else len(text or "") > len(best_text or "")
-
 def maxsim_best_unit_index(
     requirement_emb: list[float], unit_embs: list[list[float]], *, requirement_text: str = "",
     unit_texts: list[str] | None = None, unit_sections: list[str] | None = None,
@@ -161,7 +152,6 @@ def maxsim_best_unit_index(
     if resume_has_skill(requirement_text, skills or []):
         best_s = min(1.0, best_s + skill_bonus)
     return best_i, float(best_s)
-
 def maxsim_evidence(
     requirement_emb: list[float], unit_embs: list[list[float]], *, requirement_text: str = "",
     unit_texts: list[str] | None = None, unit_sections: list[str] | None = None,
@@ -171,7 +161,6 @@ def maxsim_evidence(
         requirement_emb, unit_embs, requirement_text=requirement_text, unit_texts=unit_texts,
         unit_sections=unit_sections, skills=skills, skill_bonus=skill_bonus,
     )[1]
-
 def coverage_from_evidence(weights: list[float], evidences: list[float]) -> float:
     if not weights or not evidences:
         return 0.0
@@ -181,18 +170,15 @@ def coverage_from_evidence(weights: list[float], evidences: list[float]) -> floa
     if total_w <= 0:
         return 0.0
     return max(0.0, min(1.0, sum(float(w) * float(e) for w, e in zip(weights, evidences, strict=True)) / total_w))
-
 def resume_has_skill(requirement_text: str, skills: list[str]) -> bool:
     req = (requirement_text or "").strip()
     if not req or (len(req) < 2 and req.lower() not in _SINGLE_CHAR_SKILLS):
         return False
     return any(skill and skill_equals(req, skill) for skill in skills)
-
 def skill_match_bonus_applies(requirement_text: str, *, unit_text: str | None, skills: list[str] | None = None) -> bool:
     _ = skills
     req = (requirement_text or "").strip()
     return len(req) >= 2 and bool(unit_text) and phrase_in_text(req, unit_text)
-
 def align_resume(
     requirement_embs: list[list[float]], requirement_texts: list[str], weights: list[float],
     unit_embs: list[list[float]], unit_texts: list[str], skills: list[str], *,
@@ -246,7 +232,6 @@ def align_resume(
         })
         evidences.append(evidence)
     return coverage_from_evidence(weights, evidences), rows
-
 def single_linkage_clusters(
     ids: list[str], embeddings: list[list[float]], *, threshold: float = NEAR_DUP_COSINE_THRESHOLD,
 ) -> dict[str, str]:
@@ -276,17 +261,14 @@ def single_linkage_clusters(
     for i, item_id in enumerate(ids):
         components.setdefault(find(i), []).append(item_id)
     return {m: min(members) for members in components.values() for m in members}
-
 def cluster_variant_label(resume_id: str, cluster_id: str, members_sorted: list[str]) -> str:
     try:
         idx = members_sorted.index(resume_id) + 1
     except ValueError:
         idx = 1
     return f"variant {idx} of base version {cluster_id[:8] if cluster_id else '?'}"
-
 def borda_points_for_margin(margin: str | None) -> float:
     return BORDA_SLIGHT if (margin or "").strip().lower() == "slight" else BORDA_DECISIVE
-
 def borda_order(
     contested_ids: list[str], pairwise_wins: dict[tuple[str, str], str], *,
     coverage_tiebreak: dict[str, float] | None = None,
@@ -306,7 +288,6 @@ def borda_order(
             scores[winner] += pts
     tb = coverage_tiebreak or {}
     return sorted(contested_ids, key=lambda i: (-scores.get(i, 0.0), -tb.get(i, 0.0), i))
-
 def under_segmented_units(rows: list[dict], *, max_citations: int = MAX_UNIT_CITATIONS) -> list[str]:
     counts: dict[str, int] = {}
     for row in rows:
@@ -314,7 +295,6 @@ def under_segmented_units(rows: list[dict], *, max_citations: int = MAX_UNIT_CIT
         if unit and unit != NO_CLEAR_EVIDENCE and row.get("status") == "hit":
             counts[str(unit)] = counts.get(str(unit), 0) + 1
     return [u for u, n in counts.items() if n > max_citations]
-
 def close_call_band(
     ordered_by_coverage: list[tuple[str, float]], *, gap: float = TOURNAMENT_GAP, top_k: int = TOURNAMENT_TOP_K,
 ) -> list[str]:
@@ -325,7 +305,6 @@ def close_call_band(
     if leader_cov - head[1][1] >= gap:
         return []
     return [rid for rid, cov in head if leader_cov - cov < gap]
-
 def merge_tournament_order(full_ids_by_coverage: list[str], contested_ordered: list[str]) -> list[str]:
     contested = set(contested_ordered)
     if not contested:
@@ -340,6 +319,5 @@ def merge_tournament_order(full_ids_by_coverage: list[str], contested_ordered: l
         return list(contested_ordered) + full_ids_by_coverage[prefix_len:]
     t_iter = iter(contested_ordered)
     return [next(t_iter) if rid in contested else rid for rid in full_ids_by_coverage]
-
 def order_normalized_pair(hash_a: str, hash_b: str) -> tuple[str, str]:
     return (hash_a, hash_b) if hash_a <= hash_b else (hash_b, hash_a)

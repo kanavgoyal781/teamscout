@@ -41,7 +41,6 @@ class Job(BaseModel):
         # are less likely to merge at cosine > 0.97 (cross-post still matches when
         # company strings normalize similarly or descriptions dominate).
         return f"{self.company}\n{self.title}\n{self.description[:500]}"
-
 class ScoreBreakdown(BaseModel):
     llm_fit: float
     rrf_normalized: float
@@ -56,12 +55,10 @@ class ScoreBreakdown(BaseModel):
     matched_skills: list[str] = Field(default_factory=list)
     missing_skills: list[str] = Field(default_factory=list)
     rationale: str = ""
-
 class RankedJob(BaseModel):
     job: Job
     match_score: float
     score_breakdown: ScoreBreakdown
-
 class SearchParams(BaseModel):
     """Structured job search controls (API → JSearch + post-filters)."""
 
@@ -76,18 +73,15 @@ class SearchParams(BaseModel):
     min_salary_pref: PrefMode = "soft"
     # When true, LLM expands profile into 3–5 query variants (requires LLM).
     use_expand: bool = True
-
 class FacetBucket(BaseModel):
     value: str
     count: int
-
 class JobFacets(BaseModel):
     company: list[FacetBucket] = Field(default_factory=list)
     seniority: list[FacetBucket] = Field(default_factory=list)
     remote_mode: list[FacetBucket] = Field(default_factory=list)
     salary_bucket: list[FacetBucket] = Field(default_factory=list)
     posted_age: list[FacetBucket] = Field(default_factory=list)
-
 class DroppedCounts(BaseModel):
     """How many candidates were excluded, by cause. Zero keys may be omitted."""
 

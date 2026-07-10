@@ -20,7 +20,6 @@ def _require_llm_config() -> None:
         raise ServiceNotConfiguredError("LLM", "LLM_API_KEY")
     if not is_set(settings.LLM_API_BASE):
         raise ServiceNotConfiguredError("LLM", "LLM_API_BASE")
-
 def _extract_message_text(message: object) -> str:
     """Pull assistant text from OpenAI-compatible chat payloads."""
     if not isinstance(message, dict):
@@ -47,7 +46,6 @@ def _extract_message_text(message: object) -> str:
             return val
 
     raise ServiceFailingError("LLM", "unexpected response format: empty message content")
-
 def complete(
     prompt: str,
     *,
@@ -120,7 +118,6 @@ def complete(
             output_tokens=trace.output_tokens,
         )
         return content
-
 def _extract_json(raw: str) -> str:
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
@@ -135,10 +132,8 @@ def _extract_json(raw: str) -> str:
     if start != -1 and end != -1 and end > start:
         return text[start : end + 1]
     return text
-
 def _strip_trailing_commas(text: str) -> str:
     return re.sub(r",\s*([}\]])", r"\1", text)
-
 def _scan_balanced_objects(blob: str) -> list[str]:
     """Extract complete top-level {...} objects from a blob (handles strings)."""
     objects: list[str] = []
@@ -176,7 +171,6 @@ def _scan_balanced_objects(blob: str) -> list[str]:
         else:
             break  # truncated object — stop
     return objects
-
 def _salvage_results_json(raw: str) -> str | None:
     """Rebuild {\"results\":[...]} from a truncated or messy LLM payload."""
     text = _extract_json(raw)
@@ -190,7 +184,6 @@ def _salvage_results_json(raw: str) -> str | None:
     if not objects:
         return None
     return '{"results": [' + ",".join(objects) + "]}"
-
 def _loads_llm_json(raw: str) -> object:
     """Parse LLM JSON with repair for trailing commas and truncated results arrays."""
     candidates: list[str] = []
@@ -216,7 +209,6 @@ def _loads_llm_json(raw: str) -> object:
     if last_exc is not None:
         raise last_exc
     raise json.JSONDecodeError("empty LLM JSON", raw, 0)
-
 def complete_json(
     prompt: str,
     model: type[T],

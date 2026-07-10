@@ -20,17 +20,14 @@ def check_embeddings() -> CheckStatus:
     if not is_set(settings.EMBEDDINGS_API_KEY) or not embeddings_endpoint():
         return "missing"
     return "configured"
-
 def check_jobs_api() -> CheckStatus:
     if not is_set(settings.JOBS_API_KEY) or not is_set(settings.JOBS_API_BASE):
         return "missing"
     return "configured"
-
 def check_sumble() -> CheckStatus:
     if not is_set(settings.SUMBLE_API_KEY):
         return "missing"
     return "configured"
-
 def check_google_drive() -> CheckStatus:
     if is_set(settings.GOOGLE_DRIVE_API_KEY):
         return "configured"
@@ -42,7 +39,6 @@ def check_google_drive() -> CheckStatus:
     if all(is_set(v) for v in oauth):
         return "configured"
     return "missing"
-
 def run_health_checks() -> dict[str, object]:
     checks: dict[str, CheckStatus] = {
         "llm": check_llm(),

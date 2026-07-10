@@ -25,19 +25,16 @@ from app.services.job_filters import annotate_job, apply_hard_filters, jsearch_p
 logger = get_logger(__name__)
 
 _JSEARCH_CONCURRENCY = 3
-
 @dataclass
 class JobFetchResult:
     jobs: list[Job]
     dropped_counts: DroppedCounts = field(default_factory=DroppedCounts)
     queries: list[str] = field(default_factory=list)
-
 def _require_jobs_config() -> None:
     if not is_set(settings.JOBS_API_KEY):
         raise ServiceNotConfiguredError("Jobs API", "JOBS_API_KEY")
     if not is_set(settings.JOBS_API_BASE):
         raise ServiceNotConfiguredError("Jobs API", "JOBS_API_BASE")
-
 def _parse_posted_at(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -49,11 +46,9 @@ def _parse_posted_at(value: str | None) -> datetime | None:
     if posted.tzinfo is None:
         posted = posted.replace(tzinfo=UTC)
     return posted.astimezone(UTC)
-
 def _location_from_item(item: dict) -> str:
     parts = [item.get("job_city"), item.get("job_state"), item.get("job_country")]
     return ", ".join(str(part).strip() for part in parts if part)
-
 def extract_skills_from_description(description: str, profile_skills: list[str]) -> list[str]:
     if not description:
         return []
@@ -65,7 +60,6 @@ def extract_skills_from_description(description: str, profile_skills: list[str])
         if token and phrase_in_text(token, description) and token not in found:
             found.append(token)
     return found
-
 def _cached_job_id(db: Session, source: str, source_job_id: str) -> str | None:
     existing = (
         db.query(JobCache)
@@ -79,7 +73,6 @@ def _cached_job_id(db: Session, source: str, source_job_id: str) -> str | None:
     if existing.payload_json:
         return Job.model_validate_json(existing.payload_json).id
     return None
-
 def _float_or_none(value: object) -> float | None:
     if value is None:
         return None
@@ -87,7 +80,6 @@ def _float_or_none(value: object) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
-
 def _normalize_job(item: dict, profile: ResumeProfile, *, job_id: str | None = None) -> Job | None:
     title = (item.get("job_title") or "").strip()
     description = (item.get("job_description") or "").strip()
@@ -133,15 +125,12 @@ def _normalize_job(item: dict, profile: ResumeProfile, *, job_id: str | None = N
         structured_salary_min=_float_or_none(item.get("job_min_salary")),
         structured_salary_max=_float_or_none(item.get("job_max_salary")),
     )
-
 def _within_recency(posted_at: datetime | None, cutoff: datetime) -> bool:
     if posted_at is None:
         return True
     return posted_at >= cutoff
-
 def _content_dedupe_key(job: Job) -> str:
     return exact_dedupe_key(job)
-
 def _cache_jobs(db: Session, jobs: list[Job]) -> list[Job]:
     out: list[Job] = []
     for job in jobs:
@@ -177,16 +166,13 @@ def _cache_jobs(db: Session, jobs: list[Job]) -> list[Job]:
         out.append(job)
     db.commit()
     return out
-
 def _jsearch_headers() -> dict[str, str]:
     return {
         "X-RapidAPI-Key": settings.JOBS_API_KEY or "",
         "X-RapidAPI-Host": settings.JOBS_API_HOST or "jsearch.p.rapidapi.com",
     }
-
 def _jsearch_search_url() -> str:
     return f"{(settings.JOBS_API_BASE or 'https://jsearch.p.rapidapi.com').rstrip('/')}/search-v2"
-
 def _extract_jsearch_items(payload: object) -> list[dict]:
     if not isinstance(payload, dict):
         raise ServiceFailingError("Jobs API", "unexpected response format")
@@ -202,7 +188,6 @@ def _extract_jsearch_items(payload: object) -> list[dict]:
             if isinstance(nested, list):
                 return [item for item in nested if isinstance(item, dict)]
     raise ServiceFailingError("Jobs API", "missing data.jobs array in search response")
-
 def _jsearch_get(params: dict[str, str]) -> list[dict]:
     try:
         with httpx.Client(timeout=default_timeout()) as client:
@@ -216,7 +201,6 @@ def _jsearch_get(params: dict[str, str]) -> list[dict]:
     except httpx.HTTPError as exc:
         raise ServiceFailingError("Jobs API", str(exc)) from exc
     return _extract_jsearch_items(payload)
-
 def build_jsearch_queries(title: str, location: str, skills: list[str] | None = None) -> list[str]:
     role = (title or "").strip() or "software engineer"
     loc = (location or "").strip() or "United States"
@@ -240,7 +224,6 @@ def build_jsearch_queries(title: str, location: str, skills: list[str] | None = 
     if skill_bits:
         add(f"{' '.join(skill_bits)} {role} jobs")
     return queries[:4]
-
 def fetch_jsearch_raw(queries: list[str], *, base_params: dict[str, str]) -> list[dict]:
     merged: list[dict] = []
     seen_ids: set[str] = set()
@@ -271,7 +254,6 @@ def fetch_jsearch_raw(queries: list[str], *, base_params: dict[str, str]) -> lis
     if not merged and first_error is not None:
         raise first_error
     return merged
-
 def _assign_stable_ids(db: Session, jobs: list[Job]) -> list[Job]:
     assigned: list[Job] = []
     for job in jobs:
@@ -281,7 +263,6 @@ def _assign_stable_ids(db: Session, jobs: list[Job]) -> list[Job]:
             job_id = str(uuid.uuid4())
         assigned.append(job.model_copy(update={"id": job_id}))
     return assigned
-
 def _filter_and_cap(jobs: list[Job], *, cutoff: datetime, limit: int) -> list[Job]:
     out: list[Job] = []
     seen_source: set[tuple[str, str]] = set()
@@ -301,7 +282,6 @@ def _filter_and_cap(jobs: list[Job], *, cutoff: datetime, limit: int) -> list[Jo
         if len(out) >= limit:
             break
     return out
-
 def _normalize_raw_items(
     raw_items: list[dict],
     profile: ResumeProfile,
@@ -327,7 +307,6 @@ def _normalize_raw_items(
             continue
         jobs.append(job)
     return jobs, dropped
-
 def _merge_fetch(
     profile: ResumeProfile,
     db: Session,
@@ -401,7 +380,6 @@ def _merge_fetch(
         trace.output_tokens = len(deduped)
         _cache_jobs(db, deduped)
         return JobFetchResult(jobs=deduped, dropped_counts=dropped, queries=list(queries))
-
 def resolve_search_queries(
     profile: ResumeProfile,
     db: Session,
@@ -414,7 +392,6 @@ def resolve_search_queries(
 
         return expand_queries(profile, db, params=params)
     return build_jsearch_queries(profile.title, profile.location, profile.skills)
-
 def fetch_jobs(
     profile: ResumeProfile,
     db: Session,
@@ -422,7 +399,6 @@ def fetch_jobs(
     params: SearchParams | None = None,
 ) -> list[Job]:
     return fetch_jobs_detailed(profile, db, params=params).jobs
-
 def fetch_jobs_detailed(
     profile: ResumeProfile,
     db: Session,

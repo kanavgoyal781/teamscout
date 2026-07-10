@@ -43,7 +43,6 @@ FEATURE1_OPS = frozenset(
     }
 )
 FEATURE2_OPS = frozenset({"justify"})
-
 def current_request_id() -> str | None:
     try:
         ctx = structlog.contextvars.get_contextvars()
@@ -51,7 +50,6 @@ def current_request_id() -> str | None:
         return None
     rid = ctx.get("request_id")
     return str(rid) if rid else None
-
 def estimate_llm_cost_usd(
     *, model: str | None, input_tokens: int | None, output_tokens: int | None
 ) -> float:
@@ -61,16 +59,12 @@ def estimate_llm_cost_usd(
     return (inp / 1_000_000.0) * settings.LLM_PRICE_INPUT_PER_1M + (
         out / 1_000_000.0
     ) * settings.LLM_PRICE_OUTPUT_PER_1M
-
 def estimate_embedding_cost_usd(*, input_tokens: int | None) -> float:
     return (max(int(input_tokens or 0), 0) / 1_000_000.0) * settings.EMBEDDINGS_PRICE_PER_1M
-
 def approx_token_count(text: str) -> int:
     return 0 if not text else max(1, len(text) // 4)
-
 def _today_start_naive() -> datetime:
     return datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
-
 def llm_cost_today_usd(db: Session | None = None) -> float:
     own = db is None
     session = db or SessionLocal()
@@ -89,7 +83,6 @@ def llm_cost_today_usd(db: Session | None = None) -> float:
     finally:
         if own:
             session.close()
-
 def sumble_credits_today(db: Session | None = None) -> int:
     own = db is None
     session = db or SessionLocal()
@@ -108,7 +101,6 @@ def sumble_credits_today(db: Session | None = None) -> int:
     finally:
         if own:
             session.close()
-
 def assert_llm_budget_allows(*, estimated_cost_usd: float = 0.0) -> None:
     spent = llm_cost_today_usd()
     ceiling = float(settings.LLM_DAILY_COST_CEILING_USD)
@@ -117,7 +109,6 @@ def assert_llm_budget_allows(*, estimated_cost_usd: float = 0.0) -> None:
             f"Daily LLM cost ceiling exceeded (${spent:.4f} spent, ceiling ${ceiling:.2f})",
             details={"spent_usd": spent, "ceiling_usd": ceiling},
         )
-
 def assert_sumble_budget_allows(*, estimated_credits: int = 0) -> None:
     spent = sumble_credits_today()
     ceiling = int(settings.SUMBLE_DAILY_CREDIT_CEILING)
@@ -126,7 +117,6 @@ def assert_sumble_budget_allows(*, estimated_credits: int = 0) -> None:
             f"Daily Sumble credit ceiling exceeded ({spent} used, ceiling {ceiling})",
             details={"spent_credits": spent, "ceiling_credits": ceiling},
         )
-
 def record_trace(
     *,
     operation: str,
@@ -176,7 +166,6 @@ def record_trace(
     finally:
         session.close()
     _maybe_export_otlp(operation=op_name, status=op_status, request_id=op_rid)
-
 def _maybe_export_otlp(*, operation: str, status: str, request_id: str) -> None:
     endpoint = settings.OTEL_EXPORTER_OTLP_ENDPOINT
     if not is_set(endpoint):
@@ -212,7 +201,6 @@ def _maybe_export_otlp(*, operation: str, status: str, request_id: str) -> None:
             client.post(url, json=body, headers={"Content-Type": "application/json"})
     except httpx.HTTPError as exc:
         logger.warning("otlp.export_failed", error=str(exc), host=urlparse(url).netloc)
-
 @dataclass
 class TraceContext:
     operation: str
@@ -227,7 +215,6 @@ class TraceContext:
     cache_hit: bool = False
     status: str = "ok"
     error_type: str | None = None
-
 @contextmanager
 def traced_call(
     operation: str,
@@ -290,7 +277,6 @@ def traced_call(
             error_type=ctx.error_type,
             cache_hit=ctx.cache_hit,
         )
-
 def _percentile(sorted_vals: list[float], p: float) -> float:
     if not sorted_vals:
         return 0.0
@@ -302,7 +288,6 @@ def _percentile(sorted_vals: list[float], p: float) -> float:
     if f == c:
         return sorted_vals[f]
     return sorted_vals[f] + (sorted_vals[c] - sorted_vals[f]) * (k - f)
-
 def sumble_operation_from_path(path: str) -> str:
     p = path.strip().rstrip("/")
     if "title-lookup" in p:
@@ -314,7 +299,6 @@ def sumble_operation_from_path(path: str) -> str:
     if "/jobs" in p:
         return "sumble.jobs"
     return "sumble.unknown"
-
 def ops_stats(db: Session) -> dict[str, Any]:
     start = _today_start_naive()
     recent = db.query(Trace).order_by(Trace.created_at.desc()).limit(100).all()

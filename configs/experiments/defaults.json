@@ -13,6 +13,7 @@
   "use_mmr": true,
   "expansion": true,
   "tournament_threshold": 0.05,
+  "evidence_floor": 0.55,
   "recency_half_life_days": 7,
   "rerank_top_n": 30,
   "search_results_top_n": 10

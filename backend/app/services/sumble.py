@@ -22,7 +22,6 @@ find_best_matching_job_post = sumble_jobs.find_best_matching_job_post
 get_related_people_for_job = sumble_jobs.get_related_people_for_job
 
 logger = get_logger(__name__)
-
 def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str]) -> tuple[list[str], list[str], int]:
     """Small mapping helper: department + titles -> (job_functions, job_levels)."""
     funcs: list[str] = []
@@ -86,7 +85,6 @@ def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str
                 funcs.append(t)
 
     return ([f for f in funcs if f], levels, title_credits)
-
 def build_people_query(
     *,
     department: str,
@@ -109,7 +107,6 @@ def build_people_query(
             clauses.append(f"({ors})")
     query = " AND ".join(clauses) if clauses else None
     return query, title_credits
-
 def _derive_domain(company_name: str, apply_url: str | None = None) -> str | None:
     """Heuristic to derive domain for org resolve-by-url (per docs preference for url/domain)."""
     if apply_url:
@@ -148,7 +145,6 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
     if slug:
         return f"{slug}.com"
     return None
-
 def lookup_organization(company_name: str, apply_url: str | None = None) -> tuple[SumbleOrganization, int]:
     """Resolve org using documented /v6/organizations. Prefer url/domain per docs."""
     company_name = (company_name or "").strip()
@@ -190,7 +186,6 @@ def lookup_organization(company_name: str, apply_url: str | None = None) -> tupl
         "Sumble",
         f"organization could not be resolved for {company_name!r} (tried name and domain {dom!r}); provide better company/apply_url",
     )
-
 def search_people(
     *,
     organization_id: int,
@@ -242,7 +237,6 @@ def search_people(
     people_credits = int(data.get("credits_used") or 0)
     total_credits = people_credits + title_credits
     return results, total_credits
-
 def find_hiring_team(
     *,
     organization_id: int,
@@ -287,7 +281,6 @@ def find_hiring_team(
     path_label = "Matched by role filters"
     logger.info("sumble.team_path", path=path_label, count=len(people))
     return people, total_credits, path_label
-
 def reveal_email(person_id: int) -> tuple[str | None, int]:
     """Documented list-mode enrich for email (people list + email attr)."""
     data = sumble_client.post(

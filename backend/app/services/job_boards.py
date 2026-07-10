@@ -53,7 +53,6 @@ _STOP = frozenset(
         "contract",
     }
 )
-
 def _tokens_from_profile(profile: ResumeProfile) -> list[str]:
     raw: list[str] = []
     if profile.title:
@@ -70,7 +69,6 @@ def _tokens_from_profile(profile: ResumeProfile) -> list[str]:
         seen.add(token)
         out.append(token)
     return out
-
 def _matches_profile(title: str, description: str, profile: ResumeProfile) -> bool:
     """Require at least one meaningful profile token in title or description."""
     tokens = _tokens_from_profile(profile)
@@ -85,7 +83,6 @@ def _matches_profile(title: str, description: str, profile: ResumeProfile) -> bo
         if len(token) >= 3 and token in hay:
             return True
     return False
-
 def _parse_iso(value: object) -> datetime | None:
     if value is None:
         return None
@@ -105,12 +102,10 @@ def _parse_iso(value: object) -> datetime | None:
     if posted.tzinfo is None:
         posted = posted.replace(tzinfo=UTC)
     return posted.astimezone(UTC)
-
 def _search_query(profile: ResumeProfile) -> str:
     title = profile.title.strip() or "software engineer"
     skill = next((s.strip() for s in profile.skills if s.strip()), "")
     return f"{title} {skill}".strip()
-
 def fetch_remotive(profile: ResumeProfile, *, limit: int = 50) -> list[Job]:
     params = {"search": _search_query(profile), "limit": str(limit)}
     with httpx.Client(timeout=default_timeout()) as client:
@@ -158,7 +153,6 @@ def fetch_remotive(profile: ResumeProfile, *, limit: int = 50) -> list[Job]:
             )
         )
     return out
-
 def fetch_arbeitnow(profile: ResumeProfile, *, pages: int = 2) -> list[Job]:
     out: list[Job] = []
     with httpx.Client(timeout=default_timeout()) as client:
@@ -204,7 +198,6 @@ def fetch_arbeitnow(profile: ResumeProfile, *, pages: int = 2) -> list[Job]:
                     )
                 )
     return out
-
 def fetch_optional_boards(profile: ResumeProfile) -> list[Job]:
     """Fetch free boards; never raise — optional enrichment only."""
     sources: list[tuple[str, Callable[[ResumeProfile], list[Job]]]] = [

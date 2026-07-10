@@ -33,7 +33,6 @@ def _cluster_meta(rows: list[Resume]) -> dict[str, tuple[str | None, int, str | 
         mlist = members[cid]
         out[row.id] = (cid, len(mlist), cluster_variant_label(row.id, cid, mlist))
     return out
-
 def _resume_to_out(row: Resume, meta: dict[str, tuple[str | None, int, str | None]] | None = None) -> LibraryResumeOut:
     profile = ResumeProfile.model_validate_json(row.parsed_json or "{}")
     created = row.created_at.isoformat() if row.created_at else None
@@ -55,13 +54,11 @@ def _resume_to_out(row: Resume, meta: dict[str, tuple[str | None, int, str | Non
         cluster_label=label,
         cluster_size=size,
     )
-
 def _resume_out_by_hash(content_hash: str, db: Session) -> LibraryResumeOut:
     row = db.query(Resume).filter(Resume.content_hash == content_hash).one_or_none()
     if row is None:
         raise NotFoundError("resume", content_hash)
     return _resume_to_out(row)
-
 def _maybe_index_units(row: Resume, profile: ResumeProfile, db: Session) -> tuple[bool, str | None]:
     """Index bullet units when embeddings are configured."""
     if not is_set(settings.EMBEDDINGS_API_KEY):
@@ -83,7 +80,6 @@ def _maybe_index_units(row: Resume, profile: ResumeProfile, db: Session) -> tupl
             error=str(exc),
         )
         return False, str(exc)
-
 def load_candidates(db: Session) -> list[ResumeCandidate]:
     rows = db.query(Resume).filter(Resume.in_library.is_(True)).order_by(Resume.created_at.desc()).all()
     return [
@@ -96,19 +92,16 @@ def load_candidates(db: Session) -> list[ResumeCandidate]:
         )
         for row in rows
     ]
-
 def list_library_resumes(db: Session) -> list[LibraryResumeOut]:
     rows = db.query(Resume).filter(Resume.in_library.is_(True)).order_by(Resume.created_at.desc()).all()
     meta = _cluster_meta(rows)
     return [_resume_to_out(row, meta) for row in rows]
-
 def distinct_version_count(db: Session) -> int:
     rows = db.query(Resume).filter(Resume.in_library.is_(True)).all()
     if not rows:
         return 0
     clusters = {row.cluster_id or row.id for row in rows}
     return len(clusters)
-
 def ingest_resume_bytes(
     filename: str,
     data: bytes,
@@ -151,7 +144,6 @@ def ingest_resume_bytes(
     db.refresh(row)
     _maybe_index_units(row, profile, db)
     return _resume_to_out(row), True
-
 def _index_status_for_resumes(db: Session, resumes: list[LibraryResumeOut]) -> tuple[bool | None, str | None]:
     """Aggregate unit-index status for an upload batch (visible, non-silent)."""
     if not is_set(settings.EMBEDDINGS_API_KEY):
@@ -168,7 +160,6 @@ def _index_status_for_resumes(db: Session, resumes: list[LibraryResumeOut]) -> t
     if missing:
         return False, f"{missing} resume(s) missing unit index (will re-index at rank)"
     return True, None
-
 def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str, object]:
     listing = drive.list_folder_files(folder_id)
     parsed = 0

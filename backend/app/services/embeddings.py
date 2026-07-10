@@ -27,21 +27,17 @@ def embeddings_endpoint() -> str:
     if base.endswith("/embeddings"):
         return base
     return f"{base}/embeddings"
-
 def _require_embeddings_config() -> None:
     if not is_set(settings.EMBEDDINGS_API_KEY):
         raise ServiceNotConfiguredError("Embeddings", "EMBEDDINGS_API_KEY")
     if not embeddings_endpoint():
         raise ServiceNotConfiguredError("Embeddings", "EMBEDDINGS_API")
-
 def _normalize(vec: list[float]) -> list[float]:
     norm = math.sqrt(sum(x * x for x in vec)) or 1.0
     return [x / norm for x in vec]
-
 def _cache_key(text: str) -> str:
     raw = f"{settings.EMBEDDINGS_MODEL}\n{text}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
 def _cache_get(content_hash: str) -> list[float] | None:
     ensure_db()
     session = SessionLocal()
@@ -58,7 +54,6 @@ def _cache_get(content_hash: str) -> list[float] | None:
         return None
     finally:
         session.close()
-
 def _cache_put(content_hash: str, vector: list[float]) -> None:
     ensure_db()
     session = SessionLocal()
@@ -83,7 +78,6 @@ def _cache_put(content_hash: str, vector: list[float]) -> None:
         logger.warning("embedding_cache.put_failed", error=str(exc))
     finally:
         session.close()
-
 def _parse_single_embedding(data: object) -> list[float]:
     vec: list[float] | None = None
     if isinstance(data, dict):
@@ -96,7 +90,6 @@ def _parse_single_embedding(data: object) -> list[float]:
     if not vec:
         raise ServiceFailingError("Embeddings", "unexpected response format")
     return _normalize(vec)
-
 def embed(text: str) -> list[float]:
     if not text or not text.strip():
         raise ValueError("text must be non-empty")
@@ -149,7 +142,6 @@ def embed(text: str) -> list[float]:
         trace.cache_hit = False
         _cache_put(key, vec)
         return vec
-
 def embed_batch(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []

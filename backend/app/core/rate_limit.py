@@ -21,25 +21,18 @@ limiter = Limiter(
 
 def upload_limit() -> str:
     return settings.RATE_LIMIT_UPLOAD
-
 def search_limit() -> str:
     return settings.RATE_LIMIT_SEARCH
-
 def find_team_limit() -> str:
     return settings.RATE_LIMIT_FIND_TEAM
-
 def reveal_email_limit() -> str:
     return settings.RATE_LIMIT_REVEAL_EMAIL
-
 def llm_limit() -> str:
     return settings.RATE_LIMIT_LLM
-
 def feedback_limit() -> str:
     return settings.RATE_LIMIT_FEEDBACK
-
 def stats_limit() -> str:
     return "60/minute"
-
 def rate_limit_exceeded_handler(request: Request, exc: Exception) -> Response:
     """Return 429 JSON. X-Request-ID is set solely by RequestIdMiddleware."""
     message = "Rate limit exceeded — try again later"

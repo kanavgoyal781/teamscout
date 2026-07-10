@@ -35,7 +35,6 @@ def _cors_origins() -> list[str]:
             )
         return origins
     return settings.allowed_origins_list
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging(settings.LOG_LEVEL, env=settings.ENV)
@@ -74,12 +73,10 @@ app.include_router(library.router)
 app.include_router(feedback.router)
 app.include_router(ops.router)
 app.include_router(stats.router)
-
 @app.get("/livez")
 async def livez() -> dict[str, str]:
     """Process liveness only (always 200 when the app responds)."""
     return {"status": "alive"}
-
 @app.get("/health")
 async def health() -> JSONResponse:
     payload = run_health_checks()

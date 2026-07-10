@@ -21,12 +21,10 @@ class DriveFile:
     name: str
     mime_type: str
     modified_time: str
-
 @dataclass(frozen=True)
 class FolderListResult:
     supported_files: list[DriveFile]
     files_ignored: int
-
 def parse_folder_id(folder_url: str) -> str:
     url = folder_url.strip()
     if not url:
@@ -38,7 +36,6 @@ def parse_folder_id(folder_url: str) -> str:
             details={"folder_url": folder_url},
         )
     return match.group(1)
-
 def _require_drive_config() -> None:
     if is_set(settings.GOOGLE_DRIVE_API_KEY):
         return
@@ -53,7 +50,6 @@ def _require_drive_config() -> None:
         "Google Drive",
         "GOOGLE_DRIVE_API_KEY (public folder) or GOOGLE_DRIVE_CLIENT_ID/SECRET/REFRESH_TOKEN",
     )
-
 def _oauth_access_token() -> str:
     _require_drive_config()
     if not all(
@@ -84,17 +80,14 @@ def _oauth_access_token() -> str:
     if not token:
         raise ServiceFailingError("Google Drive", "OAuth token refresh returned no access_token")
     return str(token)
-
 def _auth_params() -> dict[str, str]:
     if is_set(settings.GOOGLE_DRIVE_API_KEY):
         return {"key": settings.GOOGLE_DRIVE_API_KEY or ""}
     return {}
-
 def _auth_headers() -> dict[str, str]:
     if is_set(settings.GOOGLE_DRIVE_API_KEY):
         return {}
     return {"Authorization": f"Bearer {_oauth_access_token()}"}
-
 def list_folder_files(folder_id: str) -> FolderListResult:
     _require_drive_config()
     query = f"'{folder_id}' in parents and trashed=false"
@@ -152,7 +145,6 @@ def list_folder_files(folder_id: str) -> FolderListResult:
         raise ServiceFailingError("Google Drive", str(exc)) from exc
 
     return FolderListResult(supported_files=supported, files_ignored=ignored)
-
 def download_file(file_id: str) -> bytes:
     _require_drive_config()
     params = {"alt": "media", **_auth_params()}

@@ -116,7 +116,7 @@ export default function ResumeRecommendations({
           <p className="meta" data-testid="tournament-override-badge" style={{ marginTop: 4 }}>
             <span
               className="chip"
-              title="Coverage scores were close; a pairwise LLM tournament reordered the card list. Coverage and the Overall match ring both remain MaxSim requirement coverage (the #1 contested winner may get a +1 ring nudge). Tournament does not recompute a separate overall score."
+              title="Coverage scores were close; a pairwise LLM tournament reordered the list. Coverage % is pure MaxSim. Overall match is coverage-based but adjusted so higher-ranked cards never show a lower ring than lower ranks after an override."
             >
               Ranked by close-call tournament
             </span>
@@ -181,6 +181,9 @@ export default function ResumeRecommendations({
                   <p className="meta font-num" data-testid={`tournament-${index}`}>
                     Tournament: {item.tournament.wins} win
                     {item.tournament.wins === 1 ? "" : "s"}
+                    {typeof item.tournament.borda_score === "number"
+                      ? ` · Borda ${item.tournament.borda_score.toFixed(1)}`
+                      : ""}
                     {reasonRaw ? ` — ${reasonRaw}` : ""}
                   </p>
                 ) : null}
@@ -218,7 +221,7 @@ export default function ResumeRecommendations({
                       <tr>
                         <th>Requirement</th>
                         <th>Kind</th>
-                        <th>Score</th>
+                        <th title="Post evidence-floor rescaled score (not raw cosine)">Evidence (after floor)</th>
                         <th>Best evidence unit</th>
                       </tr>
                     </thead>

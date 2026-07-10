@@ -26,7 +26,6 @@ def search_org_job_posts(organization_id: int, limit: int | None = None) -> tupl
     jobs = data.get("jobs")
     credits = int(data.get("credits_used") or 0)
     return (jobs if isinstance(jobs, list) else [], credits)
-
 def find_best_matching_job_post(organization_id: int, jd_title: str, company: str) -> tuple[int | None, int]:
     """Find Sumble job post for org whose title best matches cached JD (title sim + company)."""
     if not jd_title:
@@ -68,7 +67,6 @@ def find_best_matching_job_post(organization_id: int, jd_title: str, company: st
     if best_score >= 0.28 and best_id is not None:
         return best_id, search_credits
     return None, search_credits
-
 def get_related_people_for_job(
     sumble_job_id: int, limit: int | None = None
 ) -> tuple[list[sumble_client.SumblePerson], int]:

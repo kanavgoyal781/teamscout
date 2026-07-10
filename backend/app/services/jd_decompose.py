@@ -25,16 +25,13 @@ DEFAULT_NICE_WEIGHT = 1.0
 
 RequirementKind = Literal["must", "nice"]
 RequirementCategory = Literal["skill", "experience", "domain", "education"]
-
 class JdRequirement(BaseModel):
     text: str
     kind: RequirementKind = "must"
     category: RequirementCategory = "skill"
     weight: float = DEFAULT_MUST_WEIGHT
-
 class _DecomposeResponse(BaseModel):
     requirements: list[JdRequirement] = Field(default_factory=list)
-
 def jd_content_hash(job: Job) -> str:
     blob = json.dumps(
         {
@@ -49,7 +46,6 @@ def jd_content_hash(job: Job) -> str:
     tmpl = load_prompt("jd_decompose")
     raw = f"{tmpl.name}:{tmpl.version}\n{blob}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
 def _normalize_requirements(items: list[JdRequirement]) -> list[JdRequirement]:
     out: list[JdRequirement] = []
     seen: set[str] = set()
@@ -73,7 +69,6 @@ def _normalize_requirements(items: list[JdRequirement]) -> list[JdRequirement]:
         weight = max(0.5, min(3.0, weight))
         out.append(JdRequirement(text=text, kind=kind, category=category, weight=weight))
     return out
-
 def deterministic_requirements(job: Job) -> list[JdRequirement]:
     """Explicit offline path when use_llm=False — not a silent fallback."""
     terms: list[str] = []
@@ -102,7 +97,6 @@ def deterministic_requirements(job: Job) -> list[JdRequirement]:
             add(title)
     reqs = [JdRequirement(text=term, kind="must", category="skill", weight=DEFAULT_MUST_WEIGHT) for term in terms[:12]]
     return _normalize_requirements(reqs)
-
 def _cache_get(db: Session, content_hash: str, prompt_version: str) -> list[JdRequirement] | None:
     row = (
         db.query(JdRequirementsCache)
@@ -122,7 +116,6 @@ def _cache_get(db: Session, content_hash: str, prompt_version: str) -> list[JdRe
         return _normalize_requirements(items) or None
     except (json.JSONDecodeError, TypeError, ValueError):
         return None
-
 def _cache_put(db: Session, content_hash: str, prompt_version: str, reqs: list[JdRequirement]) -> None:
     payload = json.dumps([r.model_dump() for r in reqs], ensure_ascii=False)
     existing = db.query(JdRequirementsCache).filter(JdRequirementsCache.content_hash == content_hash).one_or_none()
@@ -143,7 +136,6 @@ def _cache_put(db: Session, content_hash: str, prompt_version: str, reqs: list[J
     except SQLAlchemyError as exc:
         db.rollback()
         logger.warning("jd_decompose.cache_put_failed", error=str(exc))
-
 def decompose_jd(
     job: Job,
     *,

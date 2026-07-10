@@ -22,18 +22,14 @@ class ResumeUnitData:
 def unit_hash(text: str, section: str) -> str:
     raw = f"{section}\n{text.strip()}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
 def units_stamp(units: list[ResumeUnitData]) -> str:
     """Stable hash of the unit set (order of extract_units)."""
     return hashlib.sha256("".join(u.unit_hash for u in units).encode("utf-8")).hexdigest()
-
 def profile_units_stamp(profile: ResumeProfile) -> str:
     return units_stamp(extract_units(profile))
-
 def _l2_normalize(vec: list[float]) -> list[float]:
     norm = math.sqrt(sum(x * x for x in vec)) or 1.0
     return [x / norm for x in vec]
-
 def split_into_sentences(text: str) -> list[str]:
     """Split paragraphs into sentences (summary/profile path)."""
     cleaned = (text or "").strip()
@@ -41,7 +37,6 @@ def split_into_sentences(text: str) -> list[str]:
         return []
     parts = [p.strip() for p in _SENTENCE_SPLIT.split(cleaned) if p and p.strip()]
     return parts or [cleaned]
-
 def cap_unit_words(text: str, *, max_words: int = MAX_UNIT_WORDS) -> list[str]:
     """Split text into chunks of at most ``max_words`` words (keeps short text intact)."""
     cleaned = " ".join((text or "").split()).strip()
@@ -56,14 +51,12 @@ def cap_unit_words(text: str, *, max_words: int = MAX_UNIT_WORDS) -> list[str]:
         if chunk:
             chunks.append(chunk)
     return chunks
-
 def segment_text_units(text: str, *, max_words: int = MAX_UNIT_WORDS) -> list[str]:
     """Sentence-split then word-cap — used for summary/profile paragraphs and long bullets."""
     out: list[str] = []
     for sentence in split_into_sentences(text):
         out.extend(cap_unit_words(sentence, max_words=max_words))
     return out
-
 def extract_units(profile: ResumeProfile) -> list[ResumeUnitData]:
     """Atomic units: sentence-split summary, word-capped (~40) bullets; hash-gated re-embed."""
     units: list[ResumeUnitData] = []
@@ -97,11 +90,9 @@ def extract_units(profile: ResumeProfile) -> list[ResumeUnitData]:
         if header_bits:
             add("experience", " at ".join(header_bits))
         for bullet in role.bullets:
-            # Long bullets: word-cap only (bullets are usually one sentence)
-            for part in cap_unit_words(bullet):
-                add("experience", part)
+            # Sentence-split then word-cap (avoids mid-phrase skill token splits when possible)
+            add_segmented("experience", bullet)
     return units
-
 def embed_units(units: list[ResumeUnitData]) -> list[ResumeUnitData]:
     if not units:
         return []
@@ -116,13 +107,11 @@ def embed_units(units: list[ResumeUnitData]) -> list[ResumeUnitData]:
         )
         for u, vec in zip(units, vectors, strict=True)
     ]
-
 def units_for_profile(profile: ResumeProfile, *, embed: bool = True) -> list[ResumeUnitData]:
     units = extract_units(profile)
     if embed and units:
         return embed_units(units)
     return units
-
 def load_units_for_resume(db: Session, resume_id: str) -> list[ResumeUnitData]:
     rows = (
         db.query(ResumeUnit)
@@ -149,7 +138,6 @@ def load_units_for_resume(db: Session, resume_id: str) -> list[ResumeUnitData]:
             )
         )
     return out
-
 def persist_units(db: Session, resume_id: str, units: list[ResumeUnitData]) -> None:
     db.query(ResumeUnit).filter(ResumeUnit.resume_id == resume_id).delete()
     for u in units:
@@ -163,7 +151,6 @@ def persist_units(db: Session, resume_id: str, units: list[ResumeUnitData]) -> N
             )
         )
     db.commit()
-
 def index_resume_units(
     db: Session,
     resume_id: str,
@@ -196,7 +183,6 @@ def index_resume_units(
         db.add(row)
         db.commit()
     return ordered
-
 def ensure_candidate_units(
     profile: ResumeProfile,
     *,

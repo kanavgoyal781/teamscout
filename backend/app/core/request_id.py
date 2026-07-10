@@ -21,7 +21,6 @@ def sanitize_request_id(raw: str | None) -> str:
     if _SAFE_REQUEST_ID.fullmatch(candidate):
         return candidate
     return str(uuid.uuid4())
-
 class RequestIdMiddleware:
     def __init__(self, app: Any) -> None:
         self.app = app

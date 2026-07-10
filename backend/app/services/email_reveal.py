@@ -25,7 +25,6 @@ def _begin_immediate(db: Session) -> None:
     if db.in_transaction():
         db.rollback()
     db.execute(text("BEGIN IMMEDIATE"))
-
 def _terminal_response(contact_id: str, reveal: EmailReveal) -> EmailRevealResponse:
     if reveal.status == "revealed" and reveal.email:
         return EmailRevealResponse(
@@ -42,7 +41,6 @@ def _terminal_response(contact_id: str, reveal: EmailReveal) -> EmailRevealRespo
         cost_credits=reveal.cost_credits,
         status=reveal.status,
     )
-
 def _cached_not_found_error(contact_id: str, reveal: EmailReveal) -> ValidationError:
     return ValidationError(
         "Email already attempted for this contact — no email found (cached)",
@@ -53,7 +51,6 @@ def _cached_not_found_error(contact_id: str, reveal: EmailReveal) -> ValidationE
             "cached": True,
         },
     )
-
 def preview_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
     existing = db.query(EmailReveal).filter(EmailReveal.contact_id == contact.id).one_or_none()
     if existing is not None and is_terminal(existing):
@@ -65,7 +62,6 @@ def preview_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
         cached=False,
         status="preview",
     )
-
 def confirm_reveal(db: Session, contact: Contact) -> EmailRevealResponse:
     _begin_immediate(db)
     not_found_err: ValidationError | None = None

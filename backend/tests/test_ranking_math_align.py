@@ -208,6 +208,24 @@ def test_skill_requirement_exact_alias_semantic_cap() -> None:
     assert soft == pytest.approx(0.6)
 
 
+def test_skill_requirement_score_order_independent_over_units() -> None:
+    """Phrase hits take max(exact, alias) across ALL units — no first-unit break."""
+    alias_first = skill_requirement_score(
+        "Go",
+        skills=[],
+        unit_texts=["Wrote Golang services", "Expert in Go systems"],
+        semantic_score=0.1,
+    )
+    exact_first = skill_requirement_score(
+        "Go",
+        skills=[],
+        unit_texts=["Expert in Go systems", "Wrote Golang services"],
+        semantic_score=0.1,
+    )
+    assert alias_first == pytest.approx(1.0)
+    assert exact_first == pytest.approx(1.0)
+
+
 def test_align_resume_rows_and_coverage() -> None:
     reqs = [_norm([1.0, 0.0, 0.0]), _norm([0.0, 1.0, 0.0])]
     units = [_norm([1.0, 0.0, 0.0]), _norm([0.0, 0.0, 1.0])]
@@ -283,8 +301,9 @@ def test_one_must_have_difference_coverage_gap_at_least_8_points() -> None:
     gap means absolute difference ≥ 0.08 on that scale (equivalent to 8 percentage
     points when displayed as percent).
 
-    Guarantee assumes a full hit vs miss on the differing must (exact skill list),
-    not a capped semantic near-miss (cap 0.6 → ~0.111 after floor).
+    Guarantee is for exact/alias skill list (or phrase) hits vs miss — NOT for
+    semantic-only near-misses (cap 0.6 → ~0.111 after floor → gap ≈0.028/must).
+    Close semantic-only skill deltas may still enter the tournament band (0.05).
     """
     # Abstract: four equal must-weights; only the first evidence differs.
     weights = [2.0, 2.0, 2.0, 2.0]

@@ -22,17 +22,14 @@ class ResumeUploadResponse(BaseModel):
     content_hash: str
     confirmed: bool
     profile: ResumeProfile
-
 class ResumeConfirmRequest(BaseModel):
     title: str = ""
     location: str = ""
     skills: list[str] = Field(default_factory=list)
-
 class ResumeConfirmResponse(BaseModel):
     id: str
     confirmed: bool
     profile: ResumeProfile
-
 @router.post("/upload", response_model=ResumeUploadResponse)
 @limiter.limit(upload_limit)
 async def upload_resume(
@@ -83,7 +80,6 @@ async def upload_resume(
         confirmed=row.confirmed,
         profile=profile,
     )
-
 @router.put("/{resume_id}/confirm", response_model=ResumeConfirmResponse)
 def confirm_resume(
     resume_id: str,

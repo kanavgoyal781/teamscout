@@ -41,15 +41,12 @@ _REQ_SECTION = re.compile(
     re.I | re.S,
 )
 _BULLET_SPLIT = re.compile(r"[\n•\-\*]+\s*")
-
 def tokenize(text: str) -> list[str]:
     return _TOKEN_PATTERN.findall(text.lower())
-
 def cosine_similarity(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
         raise ValueError("vector dimension mismatch")
     return sum(x * y for x, y in zip(a, b, strict=True))
-
 def reciprocal_rank_fusion(rankings: list[list[str]], k: int | None = None) -> dict[str, float]:
     rrf_k = k if k is not None else settings.RRF_K
     scores: dict[str, float] = {}
@@ -57,7 +54,6 @@ def reciprocal_rank_fusion(rankings: list[list[str]], k: int | None = None) -> d
         for rank, job_id in enumerate(ranking):
             scores[job_id] = scores.get(job_id, 0.0) + 1.0 / (rrf_k + rank + 1)
     return scores
-
 def normalize_scores(scores: dict[str, float]) -> dict[str, float]:
     if not scores:
         return {}
@@ -68,7 +64,6 @@ def normalize_scores(scores: dict[str, float]) -> dict[str, float]:
         return {key: 1.0 for key in scores}
     span = maximum - minimum
     return {key: (value - minimum) / span for key, value in scores.items()}
-
 def skill_jaccard(resume_skills: list[str], job_skills: list[str]) -> float:
     """Jaccard with token-aware equality (go≡golang; java≠javascript)."""
     from app.services.ranking_math_align import skill_equals
@@ -86,7 +81,6 @@ def skill_jaccard(resume_skills: list[str], job_skills: list[str]) -> float:
                 break
     union = len(resume) + len(job) - matched
     return matched / union if union else 0.0
-
 def recency_score(posted_at: datetime | None, *, half_life_days: int | None = None) -> float:
     if posted_at is None:
         return 0.5
@@ -95,7 +89,6 @@ def recency_score(posted_at: datetime | None, *, half_life_days: int | None = No
     posted = posted_at if posted_at.tzinfo else posted_at.replace(tzinfo=UTC)
     age_days = max((now - posted.astimezone(UTC)).total_seconds() / 86400.0, 0.0)
     return 0.5 ** (age_days / half_life)
-
 def parse_required_years(text: str) -> float | None:
     """Best-effort minimum years from JD/title text. Prefers range lows."""
     if not text:
@@ -117,14 +110,12 @@ def parse_required_years(text: str) -> float | None:
         except (TypeError, ValueError):
             continue
     return None
-
 def infer_seniority(title: str, description: str = "") -> str | None:
     blob = f"{title}\n{description[:800]}"
     for name, pattern, _band in _SENIORITY_RULES:
         if pattern.search(blob):
             return name
     return None
-
 def seniority_yoe_band(level: str | None) -> tuple[float, float] | None:
     if not level:
         return None
@@ -132,7 +123,6 @@ def seniority_yoe_band(level: str | None) -> tuple[float, float] | None:
         if name == level:
             return band
     return None
-
 def experience_fit_score(
     candidate_yoe: float,
     *,
@@ -188,7 +178,6 @@ def experience_fit_score(
     if yoe <= 0:
         return 0.45
     return 0.6
-
 def extract_requirement_terms(job_skills: list[str], description: str) -> list[str]:
     """Structured skills first, then JD requirement bullets as tech-ish tokens."""
     terms: list[str] = []
@@ -224,7 +213,6 @@ def extract_requirement_terms(job_skills: list[str], description: str) -> list[s
         if len(terms) >= 24:
             break
     return terms[:24]
-
 def requirements_met_score(
     *,
     profile_skills: list[str],
@@ -247,7 +235,6 @@ def requirements_met_score(
         if phrase_in_text(term, hay):
             hits += 1
     return round(hits / len(terms), 4)
-
 def validate_ranking_weights() -> None:
     total = (
         settings.RANKING_WEIGHT_LLM
@@ -269,7 +256,6 @@ def validate_ranking_weights() -> None:
                 "requirements": settings.RANKING_WEIGHT_REQUIREMENTS,
             },
         )
-
 def fuse_final_score(
     *,
     llm_fit: float,
@@ -288,7 +274,6 @@ def fuse_final_score(
         + settings.RANKING_WEIGHT_EXPERIENCE * experience_fit
         + settings.RANKING_WEIGHT_REQUIREMENTS * requirements_met
     ) * 100.0
-
 def mmr(
     item_ids: list[str],
     relevance: dict[str, float],
@@ -347,7 +332,6 @@ def mmr(
         selected.append(best_id)
         remaining.remove(best_id)
     return selected
-
 def apply_company_soft_cap(
     ordered_ids: list[str],
     company_by_id: dict[str, str],

@@ -45,7 +45,6 @@ _rationale_rank_consistent = rationale_rank_consistent
 _llm_justify = llm_justify
 _llm_rerank = llm_justify
 _ = (_ResumeRerankItem, _ResumeRerankResponse)
-
 def _whole_doc_baseline_order(job: Job, candidates: list[ResumeCandidate]) -> list[str]:
     """Whole-document dense cosine order (no unit MaxSim, no keyword requirements)."""
     from app.services.ranking_math import cosine_similarity
@@ -61,7 +60,6 @@ def _whole_doc_baseline_order(job: Job, candidates: list[ResumeCandidate]) -> li
     ]
     scored.sort(key=lambda item: (-item[1], item[0]))
     return [resume_id for resume_id, _ in scored]
-
 def recluster_library(db: Session) -> dict[str, str]:
     """Recompute near-dup clusters for all library resumes; persist cluster_id."""
     from app.db.models import Resume
@@ -83,7 +81,6 @@ def recluster_library(db: Session) -> dict[str, str]:
         db.add(row)
     db.commit()
     return mapping
-
 def rank_resumes_for_job(
     job: Job,
     candidates: list[ResumeCandidate],
@@ -221,9 +218,8 @@ def rank_resumes_for_job(
             description=job.description,
         )
         final_score = (0.55 * cov + 0.25 * (llm_fit / 100.0) + 0.10 * skill + 0.10 * exp) * 100.0
+        # Primary ring is coverage×100; post-pass enforces monotonicity if tournament reordered.
         match_score = cov * 100.0
-        if tournament.ran and rid in tournament.contested_ids and tournament.ordered_ids[:1] == [rid]:
-            match_score = min(100.0, match_score + 1.0)
         cid = cluster_map.get(rid, rid)
         mlist = members.get(cid, [rid])
         cov_rows = [
@@ -273,6 +269,9 @@ def rank_resumes_for_job(
                     cache_hits=tournament.cache_hits if tournament.ran else 0,
                     cost_usd=tournament.cost_usd if tournament.ran else None,
                     wins=tournament.wins.get(rid, 0) if tournament.ran else 0,
+                    borda_score=(
+                        float(tournament.borda_scores.get(rid, 0.0)) if tournament.ran else 0.0
+                    ),
                     contested=rid in tournament.contested_ids if tournament.ran else False,
                     overrode_coverage=bool(tournament.overrode_coverage) if tournament.ran else False,
                     reasons=[
@@ -283,4 +282,9 @@ def rank_resumes_for_job(
                 ),
             )
         )
+    # When tournament reorders, lift/cap Overall match so card order never shows inverted rings.
+    if tournament.ran and tournament.overrode_coverage and len(ranked) >= 2:
+        for i in range(len(ranked) - 2, -1, -1):
+            if ranked[i].match_score + 1e-9 < ranked[i + 1].match_score:
+                ranked[i].match_score = round(min(100.0, ranked[i + 1].match_score + 0.01), 2)
     return ranked

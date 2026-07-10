@@ -19,12 +19,10 @@ logger = get_logger(__name__)
 
 EMAIL_REVEAL_COST = 10
 DEFAULT_LIMIT = 10
-
 @dataclass(frozen=True)
 class SumbleOrganization:
     organization_id: int
     name: str | None
-
 @dataclass(frozen=True)
 class SumblePerson:
     person_id: int
@@ -33,21 +31,17 @@ class SumblePerson:
     team: str | None
     seniority: str | None
     job_function: str | None
-
 def require_sumble_config() -> None:
     if not is_set(settings.SUMBLE_API_KEY):
         raise ServiceNotConfiguredError("Hiring team lookup", "SUMBLE_API_KEY")
-
 def redact_url(url: str) -> str:
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-
 def auth_headers() -> dict[str, str]:
     return {
         "Authorization": f"Bearer {settings.SUMBLE_API_KEY}",
         "Content-Type": "application/json",
     }
-
 def post(
     path: str,
     payload: dict[str, Any],
@@ -102,10 +96,8 @@ def post(
                 credits_remaining=data.get("credits_remaining"),
             )
         return data
-
 def escape_query_value(value: str) -> str:
     return value.replace("'", "\\'")
-
 def title_similarity(a: str, b: str) -> float:
     if not a or not b:
         return 0.0

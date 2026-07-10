@@ -378,6 +378,13 @@ def test_rationale_rank_consistent_rejects_superlative_for_non_first() -> None:
         "strongest match citing FastAPI microservices evidence",
         "strongest candidate with FastAPI evidence unit here",
         "strongest overall match for this FastAPI role with evidence",
+        # #1 forms (word-boundary hole fixed — `#` is non-word)
+        "#1 overall for this role with FastAPI evidence",
+        "is #1 pick given FastAPI microservices evidence",
+        "This is the #1 resume for FastAPI coverage",
+        "# 1 among peers with FastAPI evidence unit",
+        "top resume with FastAPI microservices evidence unit",
+        "most suitable candidate citing FastAPI evidence",
     ):
         assert rationale_rank_consistent(phrase, final_rank=2) is False, phrase
     # Negative: ordinary English "strongest …" is NOT a rank claim
@@ -387,6 +394,119 @@ def test_rationale_rank_consistent_rejects_superlative_for_non_first() -> None:
         "Shows the strongest technical write-up of FastAPI microservices.",
     ):
         assert rationale_rank_consistent(phrase, final_rank=2) is True, phrase
+
+
+def test_tournament_override_match_scores_non_increasing() -> None:
+    """After tournament reorder, Overall match rings must not invert vs card order."""
+    from unittest.mock import MagicMock, patch
+
+    from app.services.jd_decompose import JdRequirement
+
+    job = Job(
+        id="ov-job",
+        source="fixture",
+        source_job_id="ov",
+        title="ML Engineer",
+        company="Co",
+        location="Remote",
+        description="Need antibody engineering and Python.",
+        apply_url="https://example.com",
+        posted_at=datetime.now(UTC),
+        skills=["antibody engineering", "Python"],
+    )
+    high_cov = _candidate(
+        "cov-leader",
+        "General",
+        ["Python"],
+        "Python analysis of sequencing data",
+        ["Python analysis of sequencing data"],
+    )
+    low_cov = _candidate(
+        "tour-winner",
+        "Antibody",
+        ["antibody engineering", "Python"],
+        "Led antibody engineering campaigns with phage display",
+        ["Led antibody engineering campaigns with phage display"],
+    )
+    # Force coverage order via deterministic bag embeddings + fixed requirements.
+    reqs = [
+        JdRequirement(text="Python", kind="must", category="skill", weight=2.0),
+        JdRequirement(text="antibody engineering", kind="must", category="skill", weight=2.0),
+    ]
+
+    def fake_complete(prompt, schema, **kwargs):
+        fields = getattr(schema, "model_fields", {}) or {}
+        if "results" in fields:
+            # justify path — rank-safe, monotonic fit
+            return schema(
+                results=[
+                    {
+                        "resume_id": "tour-winner",
+                        "fit_score": 90,
+                        "matched_skills": ["antibody engineering"],
+                        "missing_skills": [],
+                        "rationale": "Led antibody engineering campaigns with phage display.",
+                        "coverage": [],
+                    },
+                    {
+                        "resume_id": "cov-leader",
+                        "fit_score": 80,
+                        "matched_skills": ["Python"],
+                        "missing_skills": ["antibody engineering"],
+                        "rationale": "Python analysis of sequencing data without antibody campaigns.",
+                        "coverage": [],
+                    },
+                ]
+            )
+        # pairwise path — prefer tour-winner filename
+        if "tour-winner" in prompt and "Resume A (tour-winner" in prompt:
+            return schema(
+                winner="A",
+                margin="decisive",
+                key_differences=["antibody engineering depth"],
+                reason="tour-winner has antibody engineering campaigns",
+            )
+        if "tour-winner" in prompt:
+            return schema(
+                winner="B",
+                margin="decisive",
+                key_differences=["antibody engineering depth"],
+                reason="tour-winner has antibody engineering campaigns",
+            )
+        return schema(
+            winner="A",
+            margin="slight",
+            key_differences=["tie"],
+            reason="slight edge on shared skills",
+        )
+
+    prompt_meta = MagicMock(
+        body="Judge",
+        system="json",
+        version="2",
+        content_hash="ph",
+        name="pairwise_judge",
+        model_params={},
+    )
+    with patch("app.services.embeddings.embed_batch", side_effect=_embed_batch):
+        with patch("app.services.embeddings.embed", side_effect=lambda t: _norm_bag(t)):
+            with patch("app.services.resume_ranking.decompose_jd", return_value=reqs):
+                with patch("app.services.pairwise_tournament.llm.complete_json", side_effect=fake_complete):
+                    with patch("app.services.resume_justify.llm.complete_json", side_effect=fake_complete):
+                        with patch("app.services.pairwise_tournament.load_prompt", return_value=prompt_meta):
+                            with patch("app.services.resume_justify.load_prompt", return_value=prompt_meta):
+                                ranked = rank_resumes_for_job(
+                                    job, [high_cov, low_cov], use_llm=True
+                                )
+
+    assert len(ranked) >= 2
+    # If tournament overrode, enforce non-increasing match_score with final order.
+    if ranked[0].tournament and ranked[0].tournament.overrode_coverage:
+        assert ranked[0].match_score + 1e-9 >= ranked[1].match_score
+        assert ranked[0].resume_id == "tour-winner"
+    else:
+        # Coverage path alone still non-increasing by construction
+        assert ranked[0].match_score + 1e-9 >= ranked[1].match_score
 
 
 def test_generate_biomedicines_tournament_leads_and_justification_rank_safe() -> None:

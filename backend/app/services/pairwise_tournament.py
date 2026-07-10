@@ -25,7 +25,6 @@ from app.services.ranking_math_align import (
 )
 logger = get_logger(__name__)
 _WEIGHT_NOTATION = re.compile(r"\s*\(w=\d+(?:\.\d+)?\)")
-
 class _PairwiseResponse(BaseModel):
     winner: str
     margin: str = "decisive"
@@ -53,39 +52,35 @@ class TournamentResult:
     pairwise_winners: dict[tuple[str, str], str] = field(default_factory=dict)
     pairwise_margins: dict[tuple[str, str], str] = field(default_factory=dict)
     overrode_coverage: bool = False
-
 def tournament_jd_key(job: Job) -> str:
     """JD hash + pairwise_judge prompt version/hash so prompt edits invalidate cache."""
     jd = jd_content_hash(job)
     tmpl = load_prompt("pairwise_judge")
     raw = f"{jd}:pairwise_judge:{tmpl.version}:{tmpl.content_hash}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
 def pairwise_cache_key(jd_hash: str, hash_a: str, hash_b: str) -> str:
     """Order-normalized symmetric key. `jd_hash` should be `tournament_jd_key` output."""
     a, b = order_normalized_pair(hash_a, hash_b)
     return hashlib.sha256(f"{jd_hash}:{a}:{b}".encode()).hexdigest()
-
 def strip_weight_notation(text: str) -> str:
     return _WEIGHT_NOTATION.sub("", text or "").strip()
-
 def materialize_ab_labels(text: str, *, name_a: str, name_b: str) -> str:
+    """Replace Resume A/B and residual lone A/B labels with filenames (pair-local)."""
     out = text or ""
     for pat, rep in (
-        (r"\bResume A\b", name_a),
-        (r"\bResume B\b", name_b),
-        (r"\bresume A\b", name_a),
-        (r"\bresume B\b", name_b),
+        (r"\bResume A\b", name_a), (r"\bResume B\b", name_b),
+        (r"\bresume A\b", name_a), (r"\bresume B\b", name_b),
+        # Lone letter labels in comparison phrasing (after Resume A/B expansion).
+        (r"\bA\b(?=\s+(?:beats|wins|leads|shows|has|is|over|with))", name_a),
+        (r"\bB\b(?=\s+(?:beats|wins|leads|shows|has|is|over|with))", name_b),
     ):
         out = re.sub(pat, rep, out)
     return strip_weight_notation(out)
-
 def _cache_get(db: Session | None, key: str) -> tuple[str, str] | None:
     if db is None:
         return None
     row = db.query(PairwiseJudgeCache).filter(PairwiseJudgeCache.cache_key == key).one_or_none()
     return (row.winner_hash, row.reason or "") if row else None
-
 def _cache_put(
     db: Session | None,
     key: str,
@@ -115,7 +110,6 @@ def _cache_put(
     except SQLAlchemyError as exc:
         db.rollback()
         logger.warning("pairwise_tournament.cache_put_failed", error=str(exc))
-
 def _format_must_rows(rows: list[dict]) -> list[str]:
     lines: list[str] = []
     for r in rows:
@@ -128,13 +122,11 @@ def _format_must_rows(rows: list[dict]) -> list[str]:
             score_s = "?"
         lines.append(f"- {req} | evidence: {r.get('evidence_unit') or '(none)'} | score: {score_s}")
     return lines
-
 def _nice_summary(rows: list[dict]) -> str:
     nice = [r for r in rows if str(r.get("kind") or "") == "nice"]
     if not nice:
         return "nice-to-have: none listed"
     return f"nice-to-have: {sum(1 for r in nice if r.get('status') == 'hit')}/{len(nice)} hit"
-
 def _judge_pair(
     job: Job,
     requirements: list[JdRequirement],
@@ -198,12 +190,17 @@ def _judge_pair(
     diffs = [strip_weight_notation(d) for d in (response.key_differences or []) if d and str(d).strip()]
     reason_core = strip_weight_notation(response.reason or "") or "; ".join(diffs[:3])
     reason = materialize_ab_labels(reason_core, name_a=name_a, name_b=name_b)
+    # Soft structural guard: require at least one grounded key_difference or a non-trivial reason.
+    if not diffs and len(reason) < 24:
+        from app.errors import ServiceFailingError
+        raise ServiceFailingError(
+            "LLM", "pairwise_judge missing key_differences / substantive reason (anti skill-token-only)"
+        )
     _cache_put(
         db, key, jd_hash=jd_hash, hash_a=a.content_hash, hash_b=b.content_hash,
         winner_hash=winner_ev.content_hash, reason=f"[{margin}] {reason}",
     )
     return winner_ev.resume_id, reason, margin, False, float(est_cost)
-
 def maybe_run_tournament(
     job: Job,
     requirements: list[JdRequirement],

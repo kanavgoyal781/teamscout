@@ -79,6 +79,7 @@ def normalize_variant(raw: dict[str, Any]) -> dict[str, Any]:
         "use_mmr": bool(raw.get("use_mmr", DEFAULT_USE_MMR)),
         "expansion": bool(raw.get("expansion", DEFAULT_EXPANSION)),
         "tournament_threshold": float(raw.get("tournament_threshold", DEFAULT_TOURNAMENT_THRESHOLD)),
+        "evidence_floor": float(raw.get("evidence_floor", settings.EVIDENCE_FLOOR)),
         "recency_half_life_days": int(
             raw.get("recency_half_life_days", settings.RECENCY_HALF_LIFE_DAYS)
         ),
@@ -107,6 +108,7 @@ def apply_variant(variant: dict[str, Any]) -> dict[str, Any]:
         "RECENCY_HALF_LIFE_DAYS": settings.RECENCY_HALF_LIFE_DAYS,
         "RERANK_TOP_N": settings.RERANK_TOP_N,
         "SEARCH_RESULTS_TOP_N": settings.SEARCH_RESULTS_TOP_N,
+        "EVIDENCE_FLOOR": settings.EVIDENCE_FLOOR,
     }
     settings.RANKING_WEIGHT_LLM = w["llm"]
     settings.RANKING_WEIGHT_RRF = w["rrf"]
@@ -118,6 +120,7 @@ def apply_variant(variant: dict[str, Any]) -> dict[str, Any]:
     settings.RECENCY_HALF_LIFE_DAYS = variant["recency_half_life_days"]
     settings.RERANK_TOP_N = variant["rerank_top_n"]
     settings.SEARCH_RESULTS_TOP_N = variant["search_results_top_n"]
+    settings.EVIDENCE_FLOOR = float(variant.get("evidence_floor", settings.EVIDENCE_FLOOR))
     return prev
 
 
@@ -131,8 +134,8 @@ def run_synthetic(variant: dict[str, Any]) -> tuple[dict[str, float], dict[str, 
 
     Returns (metrics, variant_flags). Weights/rrf_k/recency/rerank already applied
     via apply_variant → settings. MMR params applied here to diversity + persona diversify.
-    expansion/tournament_threshold are production knobs (LLM paths); recorded in flags only
-    for this offline suite (no silent fake metric impact).
+    expansion/tournament_threshold/evidence_floor are production knobs (LLM/MaxSim paths);
+    recorded in flags only for this offline job-search suite (no silent fake metric impact).
     """
     from app.core.env_utils import is_set
     from app.services.embeddings import embeddings_endpoint

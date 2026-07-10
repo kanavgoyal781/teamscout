@@ -29,20 +29,16 @@ def normalize_company(company: str) -> str:
         if text.endswith(suffix):
             text = text[: -len(suffix)].strip()
     return text
-
 def normalize_title(title: str) -> str:
     return _WS.sub(" ", (title or "").lower()).strip()
-
 def exact_dedupe_key(job: Job) -> str:
     return f"{normalize_company(job.company)}|{normalize_title(job.title)}"
-
 def _posted_sort_key(job: Job) -> tuple[int, float]:
     """Earlier posted sorts first; undated last among ties (keep earliest known)."""
     if job.posted_at is None:
         return (1, 0.0)
     posted = job.posted_at if job.posted_at.tzinfo else job.posted_at.replace(tzinfo=UTC)
     return (0, posted.astimezone(UTC).timestamp())
-
 def dedupe_exact(jobs: list[Job]) -> tuple[list[Job], DroppedCounts]:
     """Collapse exact company+title matches; keep earliest-posted; tally duplicates_count."""
     dropped = DroppedCounts()
@@ -65,7 +61,6 @@ def dedupe_exact(jobs: list[Job]) -> tuple[list[Job], DroppedCounts]:
     return kept, dropped
 
 _CROSS_COMPANY_THRESHOLD = 0.99
-
 def _should_merge_embedding(
     job: Job,
     other: Job,
@@ -80,7 +75,6 @@ def _should_merge_embedding(
     if same_co:
         return True
     return sim > _CROSS_COMPANY_THRESHOLD
-
 def dedupe_embeddings(
     jobs: list[Job],
     *,
@@ -132,7 +126,6 @@ def dedupe_embeddings(
         total = job.duplicates_count + extra
         result.append(job.model_copy(update={"duplicates_count": total}))
     return result, dropped
-
 def dedupe_jobs(jobs: list[Job], *, use_embeddings: bool = True) -> tuple[list[Job], DroppedCounts]:
     """Exact then embedding dedup. embedding step skipped only when use_embeddings=False."""
     after_exact, dropped = dedupe_exact(jobs)

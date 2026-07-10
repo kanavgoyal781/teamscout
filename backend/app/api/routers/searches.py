@@ -25,7 +25,6 @@ class SearchResponse(BaseModel):
     results: list[RankedJob] = Field(default_factory=list)
     dropped_counts: dict[str, int] = Field(default_factory=dict)
     facets: JobFacets | None = None
-
 @router.post("", response_model=SearchResponse)
 @limiter.limit(search_limit)
 def create_search(

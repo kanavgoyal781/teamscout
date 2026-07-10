@@ -35,7 +35,6 @@ def extract_text(filename: str, data: bytes) -> str:
     if suffix == ".pdf":
         return _extract_pdf(data)
     return _extract_docx(data)
-
 def _extract_pdf(data: bytes) -> str:
     try:
         with fitz.open(stream=data, filetype="pdf") as doc:
@@ -46,7 +45,6 @@ def _extract_pdf(data: bytes) -> str:
     if not text:
         raise ValidationError("PDF contains no extractable text")
     return text
-
 def _extract_docx(data: bytes) -> str:
     try:
         document = Document(io.BytesIO(data))
@@ -57,7 +55,6 @@ def _extract_docx(data: bytes) -> str:
     if not text:
         raise ValidationError("DOCX contains no extractable text")
     return text
-
 def parse_resume_text(text: str) -> ResumeProfile:
     if not text.strip():
         raise ValidationError("Resume text is empty")
@@ -70,7 +67,6 @@ def parse_resume_text(text: str) -> ResumeProfile:
         prompt_meta=tmpl,
         max_tokens=int(tmpl.model_params.get("max_tokens") or settings.max_tokens_for_operation("parse_resume")),
     )
-
 def parse_resume_file(filename: str, data: bytes) -> tuple[str, ResumeProfile]:
     file_hash = content_hash(data)
     text = extract_text(filename, data)

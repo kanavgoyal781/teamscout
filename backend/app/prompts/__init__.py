@@ -25,7 +25,6 @@ class PromptTemplate:
 
     def __str__(self) -> str:
         return self.body
-
 def _parse_frontmatter(fm: str) -> dict[str, Any]:
     """Minimal YAML subset: scalar key: value lines (no nested blocks)."""
     data: dict[str, Any] = {}
@@ -51,7 +50,6 @@ def _parse_frontmatter(fm: str) -> dict[str, Any]:
             except ValueError:
                 data[key] = value
     return data
-
 @lru_cache(maxsize=32)
 def load_prompt(name: str) -> PromptTemplate:
     """Load `name.md` (or `name.txt`) with YAML frontmatter (name + version required)."""
@@ -89,7 +87,6 @@ def load_prompt(name: str) -> PromptTemplate:
         model_params=model_params,
         system=system,
     )
-
 def prompt_versions() -> dict[str, str]:
     """Map prompt name → version for eval history records."""
     out: dict[str, str] = {}

@@ -24,17 +24,14 @@ from app.services.ranking_math import (
 )
 
 logger = get_logger(__name__)
-
 class _RerankItem(BaseModel):
     job_id: str
     fit_score: float = Field(ge=0, le=100)
     matched_skills: list[str] = Field(default_factory=list)
     missing_skills: list[str] = Field(default_factory=list)
     rationale: str = ""
-
 class _RerankResponse(BaseModel):
     results: list[_RerankItem]
-
 def _job_to_rankable(job: Job) -> Rankable:
     return Rankable(
         id=job.id,
@@ -44,7 +41,6 @@ def _job_to_rankable(job: Job) -> Rankable:
 
 _RERANK_BATCH_SIZE = 6
 _RERANK_DESC_CHARS = 220
-
 def _alias_jobs(jobs: list[Job]) -> tuple[list[tuple[str, Job]], dict[str, str]]:
     """Map jobs to short ids j0..jn for the LLM; return (pairs, alias→real_id)."""
     pairs: list[tuple[str, Job]] = []
@@ -54,7 +50,6 @@ def _alias_jobs(jobs: list[Job]) -> tuple[list[tuple[str, Job]], dict[str, str]]
         pairs.append((alias, job))
         alias_to_real[alias] = job.id
     return pairs, alias_to_real
-
 def _build_rerank_prompt(
     profile: ResumeProfile,
     alias_jobs: list[tuple[str, Job]],
@@ -90,7 +85,6 @@ def _build_rerank_prompt(
             f"location={job.location}; {yoe_note}skills={skills}; desc={snippet}"
         )
     return "\n".join(lines)
-
 def _heuristic_rerank_item(profile: ResumeProfile, job: Job) -> _RerankItem:
     """Transparent non-LLM fit when the model omits a job_id (not a silent fake success)."""
     profile_text = profile.search_text()
@@ -124,7 +118,6 @@ def _heuristic_rerank_item(profile: ResumeProfile, job: Job) -> _RerankItem:
         missing_skills=missing,
         rationale="Heuristic fill: model omitted this job_id; used skills/experience/requirements.",
     )
-
 def _map_alias_results(
     response: _RerankResponse,
     alias_to_real: dict[str, str],
@@ -151,7 +144,6 @@ def _map_alias_results(
             continue  # first wins on duplicate
         real_to_item[real_id] = item.model_copy(update={"job_id": real_id})
     return real_to_item
-
 def _call_rerank_llm(
     profile: ResumeProfile,
     alias_jobs: list[tuple[str, Job]],
@@ -173,7 +165,6 @@ def _call_rerank_llm(
         operation="rerank",
         prompt_meta=tmpl,
     )
-
 def _llm_rerank_batch(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _RerankItem]:
     """One (or two) LLM JSON calls for a small job batch with alias ids + recovery."""
     if not jobs:
@@ -206,7 +197,6 @@ def _llm_rerank_batch(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _Rer
         mapped[mid] = _heuristic_rerank_item(profile, jobs_by_id[mid])
 
     return mapped
-
 def _llm_rerank(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _RerankItem]:
     """Rerank in batches so large top-N shortlists don't truncate mid-JSON."""
     if not jobs:
@@ -217,7 +207,6 @@ def _llm_rerank(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _RerankIte
         batch = jobs[offset : offset + _RERANK_BATCH_SIZE]
         merged.update(_llm_rerank_batch(profile, batch))
     return merged
-
 def _diversify_ranked(
     ranked: list[RankedJob],
     *,
@@ -254,7 +243,6 @@ def _diversify_ranked(
     limit = top_n if top_n is not None else len(order)
     order = order[:limit]
     return [by_id[i] for i in order if i in by_id]
-
 def rank_jobs(
     profile: ResumeProfile,
     jobs: list[Job],
@@ -355,7 +343,6 @@ def rank_jobs(
         if is_set(settings.EMBEDDINGS_API_KEY) and embeddings_endpoint():
             ranked = _diversify_ranked(ranked, lambda_=DEFAULT_MMR_LAMBDA, top_n=result_n)
     return ranked[:result_n]
-
 def rank_jobs_dense_only(profile: ResumeProfile, jobs: list[Job]) -> list[RankedJob]:
     from app.services.hybrid_rank import dense_ranking
 

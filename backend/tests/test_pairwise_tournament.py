@@ -61,7 +61,12 @@ def test_tournament_close_band_reorders_only_band() -> None:
     def fake_complete_json(prompt, schema, **kwargs):
         # Always prefer resume with higher lexical order of left evidence? Return B wins
         # Prompt contains Resume A then B evidence units; force winner B for each pair.
-        return schema(winner="B", reason="decisive unit")
+        return schema(
+            winner="B",
+            margin="decisive",
+            key_differences=["stronger must-requirement evidence on PyTorch"],
+            reason="decisive unit on must-have PyTorch evidence",
+        )
 
     with patch("app.services.pairwise_tournament.llm.complete_json", side_effect=fake_complete_json):
         with patch("app.services.pairwise_tournament.load_prompt") as lp:
@@ -123,7 +128,12 @@ def test_tournament_cache_hits_skip_second_llm() -> None:
 
         def fake_complete_json(prompt, schema, **kwargs):
             calls["n"] += 1
-            return schema(winner="A", reason="cached-path")
+            return schema(
+                winner="A",
+                margin="decisive",
+                key_differences=["clearer PyTorch production evidence"],
+                reason="cached-path decisive unit on PyTorch",
+            )
 
         with patch("app.services.pairwise_tournament.llm.complete_json", side_effect=fake_complete_json):
             with patch("app.services.pairwise_tournament.load_prompt") as lp:

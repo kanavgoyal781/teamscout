@@ -12,19 +12,23 @@ from app.services import llm
 from app.services.jd_decompose import JdRequirement
 _MIN_CITE_SPAN = 16
 _MIN_CITE_RATIO = 0.35
-# Require real superlative complements — do not match bare "strongest evidence/depth/…".
+# Superlatives for rank>1 rejection. `#1` is outside `\b` ( `#` is non-word).
+# Avoid bare "strongest evidence/depth" false positives.
 _RANK_SUPERLATIVE = re.compile(
-    r"\b("
+    r"(?:"
+    r"(?<!\w)#\s*1\b|"
+    r"\b(?:"
     r"best\s+match|best\s+fit|best\s+candidate|best\s+pick|best\s+resume|best\s+overall|"
-    r"strongest\s+(?:overall\s+)?(?:match|candidate|fit)|strongest\s+overall\b|"
-    r"top\s+choice|top\s+pick|preferred\s+choice|ideal\s+(?:candidate|match|pick)|"
-    r"number\s+one|#\s*1|rank\s*#?\s*1|"
-    r"the\s+best\s+(?:fit|candidate|pick|match|resume)|"
+    r"strongest\s+(?:overall\s+)?(?:match|candidate|fit)|strongest\s+overall|"
+    r"top\s+choice|top\s+pick|top\s+resume|preferred\s+choice|preferred\s+resume|"
+    r"ideal\s+(?:candidate|match|pick)|most\s+suitable|superior\s+match|"
+    r"number\s+one|rank\s*#?\s*1|stands\s+out\s+as\s+the\s+best|"
+    r"the\s+best\s+(?:fit|candidate|pick|match|resume|option)|"
     r"clearest\s+best|unambiguously\s+best"
-    r")\b",
+    r")\b"
+    r")",
     re.IGNORECASE,
 )
-
 class ResumeRerankItem(BaseModel):
     resume_id: str
     fit_score: float = Field(ge=0, le=100)
@@ -32,10 +36,8 @@ class ResumeRerankItem(BaseModel):
     missing_skills: list[str] = Field(default_factory=list)
     rationale: str = ""
     coverage: list[RequirementCoverage] = Field(default_factory=list)
-
 class ResumeRerankResponse(BaseModel):
     results: list[ResumeRerankItem]
-
 def evidence_units_from_alignment(rows: list[dict]) -> list[str]:
     units: list[str] = []
     for row in sorted(rows, key=lambda r: float(r.get("evidence_score") or 0), reverse=True):
@@ -46,7 +48,6 @@ def evidence_units_from_alignment(rows: list[dict]) -> list[str]:
         if len(units) >= 8:
             break
     return units
-
 def _span_in_text(unit: str, rationale: str) -> bool:
     u = " ".join(unit.strip().lower().split())
     text = " ".join(rationale.strip().lower().split())
@@ -58,7 +59,6 @@ def _span_in_text(unit: str, rationale: str) -> bool:
         return True
     min_span = min(len(u), max(_MIN_CITE_SPAN, int(len(u) * _MIN_CITE_RATIO)))
     return any(u[s : s + min_span] in text for s in range(0, len(u) - min_span + 1, 2))
-
 def rationale_cites_units(rationale: str, evidence_units: list[str]) -> bool:
     """Fail-closed; prefer long units when present (skill-name-only then insufficient)."""
     text = (rationale or "").strip()
@@ -69,7 +69,6 @@ def rationale_cites_units(rationale: str, evidence_units: list[str]) -> bool:
         return False
     long_units = [u for u in cleaned if len(u.strip()) >= _MIN_CITE_SPAN]
     return any(_span_in_text(unit, text) for unit in (long_units or cleaned))
-
 def rationale_references_resume(rationale: str, profile: ResumeProfile) -> bool:
     """Fallback when no alignment units: require span from bullets/summary/title."""
     units: list[str] = []
@@ -81,14 +80,29 @@ def rationale_references_resume(rationale: str, profile: ResumeProfile) -> bool:
     if profile.summary.strip():
         units.append(profile.summary.strip()[:200])
     return rationale_cites_units(rationale, units)
-
 def rationale_rank_consistent(rationale: str, *, final_rank: int) -> bool:
     """Reject comparative-superlative claims that contradict final rank (enforced)."""
     if final_rank <= 1:
         return True
     text = (rationale or "").strip()
     return not text or _RANK_SUPERLATIVE.search(text) is None
-
+def fit_scores_rank_monotonic(
+    items: list[ResumeRerankItem], ranks: dict[str, int]
+) -> bool:
+    """True when fit_score is non-increasing with final_rank (ties allowed)."""
+    ordered = sorted(items, key=lambda it: (ranks.get(it.resume_id, 99), it.resume_id))
+    for prev, cur in zip(ordered, ordered[1:], strict=False):
+        if float(cur.fit_score) > float(prev.fit_score) + 1e-9:
+            return False
+    return True
+def clamp_fit_scores_to_rank(
+    items: list[ResumeRerankItem], ranks: dict[str, int]
+) -> None:
+    """In-place: ensure fit_score non-increasing with final_rank."""
+    ordered = sorted(items, key=lambda it: (ranks.get(it.resume_id, 99), it.resume_id))
+    for i in range(1, len(ordered)):
+        if ordered[i].fit_score > ordered[i - 1].fit_score:
+            ordered[i].fit_score = float(ordered[i - 1].fit_score)
 def evidence_in_units(evidence: str | None, units: list[str]) -> bool:
     if not evidence or not evidence.strip():
         return False
@@ -100,7 +114,6 @@ def evidence_in_units(evidence: str | None, units: list[str]) -> bool:
         if ev in u or u in ev or _span_in_text(unit, evidence) or _span_in_text(evidence, unit):
             return True
     return False
-
 def filter_llm_coverage(
     llm_coverage: list[RequirementCoverage], units: list[str]
 ) -> list[RequirementCoverage]:
@@ -111,7 +124,6 @@ def filter_llm_coverage(
         else:
             out.append(row)
     return out
-
 def _build_justify_prompt(
     job: Job,
     candidates: list[ResumeCandidate],
@@ -144,7 +156,6 @@ def _build_justify_prompt(
         for u in evidence_units_from_alignment(rows):
             lines.append(f"    evidence: {u}")
     return "\n".join(lines)
-
 def llm_justify(
     job: Job,
     candidates: list[ResumeCandidate],
@@ -169,7 +180,8 @@ def llm_justify(
     if attempt > 0:
         prompt += (
             "\n\nPrevious response failed grounding or rank-consistency checks. "
-            "Quote evidence units; only final_rank=1 may use best-match superlatives."
+            "Quote evidence units; only final_rank=1 may use best-match superlatives; "
+            "fit_score must be non-increasing with final_rank."
         )
     response = llm.complete_json(
         prompt, ResumeRerankResponse,
@@ -208,4 +220,8 @@ def llm_justify(
             )
         if item.coverage:
             item.coverage = filter_llm_coverage(item.coverage, units)
+    if not fit_scores_rank_monotonic(response.results, ranks):
+        if attempt == 0:
+            return _retry("resume justify fit_score not monotonic with final_rank")
+        clamp_fit_scores_to_rank(response.results, ranks)
     return {item.resume_id: item for item in response.results}

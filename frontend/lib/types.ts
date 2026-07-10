@@ -241,6 +241,8 @@ export type TournamentRecord = {
   contested: boolean;
   /** True when tournament reordering differed from pure coverage order. */
   overrode_coverage?: boolean;
+  /** Borda points (decisive=1.0, slight=0.5); may diverge from win count. */
+  borda_score?: number;
   reasons: string[];
 };
 

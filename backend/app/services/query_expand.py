@@ -22,10 +22,8 @@ class _ExpandVariant(BaseModel):
     title: str = ""
     skills: list[str] = Field(default_factory=list)
     query: str = ""
-
 class _ExpandResponse(BaseModel):
     variants: list[_ExpandVariant] = Field(default_factory=list)
-
 def expansion_cache_key(profile: ResumeProfile, params: SearchParams | None = None) -> str:
     """Stable content hash of profile search text + structured intent."""
     params = params or SearchParams()
@@ -47,7 +45,6 @@ def expansion_cache_key(profile: ResumeProfile, params: SearchParams | None = No
     tmpl = load_prompt("query_expand")
     raw = f"{tmpl.name}:{tmpl.version}\n{blob}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
 def _cache_get(db: Session, content_hash: str, prompt_version: str) -> list[str] | None:
     row = (
         db.query(QueryExpansionCache)
@@ -67,7 +64,6 @@ def _cache_get(db: Session, content_hash: str, prompt_version: str) -> list[str]
         return None
     queries = [str(q).strip() for q in data if str(q).strip()]
     return queries or None
-
 def _cache_put(db: Session, content_hash: str, prompt_version: str, queries: list[str]) -> None:
     payload = json.dumps(queries, ensure_ascii=False)
     existing = db.query(QueryExpansionCache).filter(QueryExpansionCache.content_hash == content_hash).one_or_none()
@@ -88,7 +84,6 @@ def _cache_put(db: Session, content_hash: str, prompt_version: str, queries: lis
     except SQLAlchemyError as exc:
         db.rollback()
         logger.warning("query_expand.cache_put_failed", error=str(exc))
-
 def _build_prompt(profile: ResumeProfile, params: SearchParams) -> str:
     tmpl = load_prompt("query_expand")
     lines = [
@@ -104,7 +99,6 @@ def _build_prompt(profile: ResumeProfile, params: SearchParams) -> str:
         f"Intent seniority: {params.seniority}",
     ]
     return "\n".join(lines)
-
 def _variants_to_queries(variants: list[_ExpandVariant], profile: ResumeProfile) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
@@ -128,7 +122,6 @@ def _variants_to_queries(variants: list[_ExpandVariant], profile: ResumeProfile)
         else:
             add(title if not loc else f"{title} in {loc}")
     return out[:5]
-
 def expand_queries(
     profile: ResumeProfile,
     db: Session,

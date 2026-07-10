@@ -37,7 +37,6 @@ _TECH_ALLOW = frozenset({
     "ci/cd", "graphql", "rest", "grpc", "hadoop", "hive", "snowflake", "databricks",
     "prometheus", "grafana", "elasticsearch", "opensearch", "helm",
 })
-
 def extract_skills_from_jd_text(description: str, title: str = "") -> list[str]:
     """High-precision skill list for pasted JDs (allowlist + JD-derived tech tokens)."""
     from app.services.ranking_math import extract_requirement_terms
@@ -69,13 +68,11 @@ def extract_skills_from_jd_text(description: str, title: str = "") -> list[str]:
         if len(out) >= 16:
             break
     return out
-
 def resolve_job(job_id: str, db: Session) -> Job:
     row = db.query(JobCache).filter(JobCache.job_id == job_id).one_or_none()
     if row is None or not row.payload_json:
         raise NotFoundError("job", job_id)
     return Job.model_validate_json(row.payload_json)
-
 def cache_pasted_job(
     *,
     description: str,
