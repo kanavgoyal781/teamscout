@@ -1,22 +1,56 @@
+"""Sumble REST client — org lookup, people search, email reveal.
+
+Exact conformance to https://docs.sumble.com/api (OpenAPI v6):
+- POST /v6/organizations for resolve (name or url/domain)
+- POST /v6/people (filter mode for search; list mode for enrich/email)
+- POST /v6/jobs (filter for job posts; list + related_people for find-related)
+- POST /v6/jobs/title-lookup for vocab mapping
+No invented fields or endpoints. All request bodies and response parsing
+use only documented keys.
+"""
+
 from __future__ import annotations
+
 from typing import Any
 from urllib.parse import urlparse
+
 import httpx
+
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.errors import ServiceFailingError
 from app.services import sumble_client, sumble_jobs
+
+# Re-export public types/constants for callers: `from app.services import sumble`
 EMAIL_REVEAL_COST = sumble_client.EMAIL_REVEAL_COST
 DEFAULT_LIMIT = sumble_client.DEFAULT_LIMIT
 SumbleOrganization = sumble_client.SumbleOrganization
 SumblePerson = sumble_client.SumblePerson
+
+# Job-match path helpers (used by smoke_sumble + tests; orchestration via find_hiring_team)
 search_org_job_posts = sumble_jobs.search_org_job_posts
 find_best_matching_job_post = sumble_jobs.find_best_matching_job_post
 get_related_people_for_job = sumble_jobs.get_related_people_for_job
+
 logger = get_logger(__name__)
+
+
 def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str]) -> tuple[list[str], list[str], int]:
+    """Small mapping helper: department + titles -> (job_functions, job_levels).
+
+    Per https://docs.sumble.com/api/lookups/job-title-lookup.md the response
+    shapes are objects:
+      job_function: {id, slug, name} | null
+      job_level: {id, name, level_rank} | null
+
+    Prefers slug for job_function (docs DSL examples use slugs e.g. EQ '<slug>'),
+    falls back to name. This is validated by scripts/smoke_sumble.py.
+
+    A parse error must surface (narrow except); broad except is forbidden.
+    """
     funcs: list[str] = []
     levels: list[str] = []
+
     dept = (department or "").strip()
     if dept:
         dlow = dept.lower()
@@ -32,8 +66,12 @@ def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str
             funcs.append("Sales")
         else:
             funcs.append(dept)
+
     titles = [t.strip() for t in (likely_hiring_titles or []) if t and t.strip()]
-    if not titles: return ([f for f in funcs if f], levels, 0)
+    if not titles:
+        return ([f for f in funcs if f], levels, 0)
+
+    # Try title-lookup for canonical job_function / job_level
     title_credits = 0
     try:
         data = sumble_client.post(
@@ -50,6 +88,7 @@ def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str
                 continue
             jf_obj = r.get("job_function")
             jl_obj = r.get("job_level")
+            # Prefer slug for job_function (DSL uses slugs), fallback to name
             jf = None
             if isinstance(jf_obj, dict):
                 jf = jf_obj.get("slug") or jf_obj.get("name")
@@ -67,15 +106,27 @@ def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str
                 seen_l.add(jl)
                 levels.append(jl)
     except (httpx.HTTPError, ServiceFailingError):
+        # Only transient/network/config errors; parse defects must not be swallowed
+        # Fallback: pass titles through as functions (best effort)
         for t in titles[:5]:
             if t not in funcs:
                 funcs.append(t)
+
     return ([f for f in funcs if f], levels, title_credits)
+
+
 def build_people_query(
     *,
     department: str,
     likely_hiring_titles: list[str],
 ) -> tuple[str | None, int]:
+    """Build documented advanced query string for people filter.query.query .
+
+    Uses only supported fields from docs (job_function EQ, job_level EQ).
+    Never uses non-existent "team CONTAINS".
+    Prefers slugs (from title-lookup) for job_function values per DSL examples.
+    Validated via scripts/smoke_sumble.py.
+    """
     funcs, levels, title_credits = map_llm_extraction_to_sumble(department, likely_hiring_titles)
     clauses: list[str] = []
     if funcs:
@@ -92,11 +143,18 @@ def build_people_query(
             clauses.append(f"({ors})")
     query = " AND ".join(clauses) if clauses else None
     return query, title_credits
+
+
 def _derive_domain(company_name: str, apply_url: str | None = None) -> str | None:
+    """Heuristic to derive domain for org resolve-by-url (per docs preference for url/domain).
+
+    Uses apply_url host (stripping common job boards) or slug+ .com from company name.
+    """
     if apply_url:
         try:
             host = (urlparse(apply_url).netloc or "").lower().strip()
             if host:
+                # Strip common ATS / job board subdomains and hosts
                 for junk in (
                     "jobs.",
                     "careers.",
@@ -116,6 +174,7 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
                 ):
                     host = host.replace(junk, "")
                 host = host.strip(".")
+                # Take registrable domain-ish
                 parts = [p for p in host.split(".") if p]
                 if len(parts) >= 2:
                     candidate = ".".join(parts[-2:])
@@ -123,17 +182,28 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
                         return candidate
         except (ValueError, TypeError, AttributeError):
             pass
+    # fallback from name
     slug = "".join(c for c in (company_name or "").lower() if c.isalnum())
-    if slug: return f"{slug}.com"
+    if slug:
+        return f"{slug}.com"
     return None
+
+
 def lookup_organization(company_name: str, apply_url: str | None = None) -> tuple[SumbleOrganization, int]:
+    """Resolve org using documented /v6/organizations. Prefer url/domain per docs.
+
+    Tries name+url derived, then name. Raises clear error (no fabricated id) on failure.
+    """
     company_name = (company_name or "").strip()
-    if not company_name: raise ServiceFailingError("Hiring team lookup", "company name is required for organization lookup")
+    if not company_name:
+        raise ServiceFailingError("Sumble", "company name is required for organization lookup")
+
     orgs_inputs: list[dict[str, str]] = []
     dom = _derive_domain(company_name, apply_url)
     if dom:
         orgs_inputs.append({"name": company_name, "url": dom})
     orgs_inputs.append({"name": company_name})
+
     sumble_client.require_sumble_config()  # fail fast with correct error before any calls
     for inp in orgs_inputs:
         try:
@@ -157,11 +227,15 @@ def lookup_organization(company_name: str, apply_url: str | None = None) -> tupl
                         credits = int(data.get("credits_used") or 0)
                         return org, credits
         except ServiceFailingError:
+            # transient or no match for this candidate; try next
             continue
+
     raise ServiceFailingError(
         "Sumble",
         f"organization could not be resolved for {company_name!r} (tried name and domain {dom!r}); provide better company/apply_url",
     )
+
+
 def search_people(
     *,
     organization_id: int,
@@ -169,12 +243,18 @@ def search_people(
     department: str = "",
     likely_hiring_titles: list[str] | None = None,
 ) -> tuple[list[SumblePerson], int]:
+    """Documented filter-mode people search as fallback path.
+
+    Request body uses only documented keys: filter.organization_ids + filter.query.query (EQ),
+    select.attributes, limit (default 10).
+    """
     lim = getattr(settings, "SUMBLE_SEARCH_LIMIT", sumble_client.DEFAULT_LIMIT)
     titles = likely_hiring_titles or []
     filter_body: dict[str, Any] = {"organization_ids": [organization_id]}
     query, title_credits = build_people_query(department=department, likely_hiring_titles=titles)
     if query:
         filter_body["query"] = {"query": query}
+
     data = sumble_client.post(
         "/v6/people",
         {
@@ -184,13 +264,18 @@ def search_people(
         },
         credit_costing=True,
     )
+
     people_rows = data.get("people")
-    if not isinstance(people_rows, list): raise ServiceFailingError("Hiring team lookup", "missing people array")
+    if not isinstance(people_rows, list):
+        raise ServiceFailingError("Sumble", "missing people array")
+
     results: list[SumblePerson] = []
     for row in people_rows:
-        if not isinstance(row, dict): continue
+        if not isinstance(row, dict):
+            continue
         person_id = row.get("person_id")
-        if person_id is None: continue
+        if person_id is None:
+            continue
         attrs = row.get("attributes") or {}
         results.append(
             SumblePerson(
@@ -202,9 +287,12 @@ def search_people(
                 job_function=attrs.get("job_function"),
             )
         )
+
     people_credits = int(data.get("credits_used") or 0)
     total_credits = people_credits + title_credits
     return results, total_credits
+
+
 def find_hiring_team(
     *,
     organization_id: int,
@@ -214,8 +302,17 @@ def find_hiring_team(
     jd_title: str = "",
     company: str = "",
 ) -> tuple[list[SumblePerson], int, str]:
+    """Primary path: org job-posts match -> find-related-people.
+
+    Fallback: people filter by function/level.
+    Returns (people, credits_used, path_label)
+    Path labels exactly: "Matched Sumble job post" or "Filtered by function/level"
+    Credits aggregated for job match / people search + title-lookup inside fallback.
+    """
     lim = getattr(settings, "SUMBLE_SEARCH_LIMIT", sumble_client.DEFAULT_LIMIT)
     total_credits = 0
+
+    # Preferred: job post match
     if jd_title:
         try:
             matched_id, job_credits = sumble_jobs.find_best_matching_job_post(organization_id, jd_title, company)
@@ -224,16 +321,17 @@ def find_hiring_team(
                 people, related_credits = sumble_jobs.get_related_people_for_job(matched_id, limit=lim)
                 total_credits += related_credits
                 if people:
-                    path_label = "Matched posted role"
                     logger.info(
                         "sumble.team_path",
-                        path=path_label,
+                        path="Matched Sumble job post",
                         sumble_job_id=matched_id,
                         count=len(people),
                     )
-                    return people, total_credits, path_label
+                    return people, total_credits, "Matched Sumble job post"
         except (httpx.HTTPError, ServiceFailingError) as exc:
             logger.info("sumble.job_related_fallback", reason=str(exc)[:200])
+
+    # Fallback
     people, search_credits = search_people(
         organization_id=organization_id,
         team_name=team_name,
@@ -241,10 +339,15 @@ def find_hiring_team(
         likely_hiring_titles=likely_hiring_titles,
     )
     total_credits += search_credits
-    path_label = "Matched by role filters"
-    logger.info("sumble.team_path", path=path_label, count=len(people))
-    return people, total_credits, path_label
+    logger.info("sumble.team_path", path="Filtered by function/level", count=len(people))
+    return people, total_credits, "Filtered by function/level"
+
+
 def reveal_email(person_id: int) -> tuple[str | None, int]:
+    """Documented list-mode enrich for email (people list + email attr).
+
+    Keeps billing/terminal cache intact in callers. Matches current docs contract.
+    """
     data = sumble_client.post(
         "/v6/people",
         {
@@ -263,5 +366,6 @@ def reveal_email(person_id: int) -> tuple[str | None, int]:
             raw_email = attrs.get("email")
             if isinstance(raw_email, str) and raw_email.strip():
                 email = raw_email.strip()
+
     credits_used = int(data.get("credits_used") or 0)
     return email, credits_used

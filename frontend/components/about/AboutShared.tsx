@@ -131,7 +131,7 @@ export function SectionHead({
       <span className="about-section-icon" aria-hidden>
         <Icon size={16} strokeWidth={1.75} />
       </span>
-      <div>
+      <div className="about-section-copy">
         <p className="about-section-kicker">{kicker}</p>
         <h2 className="about-section-title">{title}</h2>
         <p className="about-section-lede">{lede}</p>

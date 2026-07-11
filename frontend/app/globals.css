@@ -1384,6 +1384,9 @@ html.light .about-root > .panel {
   margin: 0 0 var(--space-2);
   font-size: clamp(1.2rem, 2vw, 1.45rem);
   line-height: 1.28;
+  overflow-wrap: anywhere;
+  /* Display fonts can overshoot left bearings — keep first glyph visible */
+  padding-inline-start: 1px;
 }
 
 .about-hero-lede,
@@ -1393,6 +1396,7 @@ html.light .about-root > .panel {
   line-height: 1.65;
   font-size: 0.97rem;
   max-width: 40rem;
+  overflow-wrap: break-word;
 }
 
 .about-hero-lede + .about-hero-lede {
@@ -1681,6 +1685,7 @@ html.light .about-root > .panel {
   margin-bottom: var(--space-5);
   padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--about-ink-line);
+  min-width: 0;
 }
 
 .about-section-icon {
@@ -1697,18 +1702,32 @@ html.light .about-root > .panel {
   background: var(--about-brass-soft);
 }
 
+/* Flex child must shrink without clipping title/lede into the icon */
+.about-section-copy {
+  min-width: 0;
+  flex: 1;
+  overflow: visible;
+}
+
 /* —— Diagram —— */
 .about-diagram-panel {
-  overflow: hidden;
+  /* Allow focus rings / hover lift to show; captions live outside the canvas */
+  overflow: visible;
 }
 
 .about-diagram {
+  border-radius: 2px;
+  margin-bottom: var(--space-4);
+}
+
+/* SVG + absolute nodes only — captions must never sit under this layer */
+.about-diagram-canvas {
   position: relative;
   border-radius: 2px;
   border: 1px solid var(--about-ink-line);
   background: var(--bg-elevated);
-  min-height: 320px;
-  margin-bottom: var(--space-4);
+  min-height: 280px;
+  overflow: visible;
 }
 
 .about-svg {
@@ -2239,14 +2258,18 @@ html.light button.about-weight {
     grid-column: 2;
   }
 
-  .about-diagram {
-    min-height: 420px;
+  .about-diagram-canvas {
+    min-height: 380px;
   }
 
   .about-node {
     min-width: 100px;
     padding: 8px 10px;
     font-size: 0.85rem;
+  }
+
+  .about-section-head {
+    gap: var(--space-2);
   }
 
   .about-funnel-arrow {
@@ -2565,8 +2588,19 @@ html.light button.about-weight {
 .journey-connector {
   display: none;
 }
+.about-diagram-caption {
+  margin: var(--space-3) 0 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
 .about-diagram-tradeoff {
-  margin-top: var(--space-3);
+  margin-top: var(--space-2);
+  max-width: 48rem;
+  line-height: 1.5;
+  position: relative;
+  z-index: 1;
 }
 
 .about-principles-strip {
@@ -2625,9 +2659,12 @@ html.light button.about-weight {
 }
 
 .about-mlops-cycle {
-  position: relative;
   max-width: 420px;
   margin: 0 auto;
+}
+.about-mlops-canvas {
+  position: relative;
+  width: 100%;
 }
 .about-mlops-svg {
   width: 100%;
@@ -2651,9 +2688,16 @@ html.light button.about-weight {
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
+  z-index: 1;
 }
 .about-mlops-node.is-active {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-c) 40%, transparent);
+}
+.about-mlops-cycle > .about-diagram-tradeoff {
+  margin-top: var(--space-3);
+  text-align: center;
+  max-width: none;
 }
 .about-funnel-svg {
   width: 100%;

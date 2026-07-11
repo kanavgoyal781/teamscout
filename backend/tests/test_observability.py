@@ -8,13 +8,14 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
+
 from app.core.config import settings
 from app.db.models import EmbeddingCache, Trace
 from app.db.session import SessionLocal
 from app.errors import CostCeilingExceededError
 from app.prompts import load_prompt
 from app.services import embeddings, llm, observability, sumble, sumble_client
-from fastapi.testclient import TestClient
 
 
 def _clear_traces() -> None:
@@ -147,7 +148,9 @@ def test_llm_ceiling_uses_full_max_tokens_preflight(monkeypatch: pytest.MonkeyPa
 
     max_tokens = 4000
     # Worst-case cost for empty-ish prompt: ~0 + max_tokens/1e6 * $1
-    worst = observability.estimate_llm_cost_usd(model=settings.LLM_MODEL, input_tokens=1, output_tokens=max_tokens)
+    worst = observability.estimate_llm_cost_usd(
+        model=settings.LLM_MODEL, input_tokens=1, output_tokens=max_tokens
+    )
     optimistic = observability.estimate_llm_cost_usd(
         model=settings.LLM_MODEL, input_tokens=1, output_tokens=max_tokens // 4
     )
@@ -339,7 +342,7 @@ def test_record_trace_no_secrets_in_otlp(monkeypatch: pytest.MonkeyPatch) -> Non
     mock_client.__exit__.return_value = False
     mock_client.post.side_effect = _post
 
-    with patch("app.services.observability_otlp.httpx.Client", return_value=mock_client):
+    with patch("app.services.observability.httpx.Client", return_value=mock_client):
         observability.record_trace(operation="rerank", status="ok", cost_usd=0.01)
 
     assert seen

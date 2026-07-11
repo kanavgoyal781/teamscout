@@ -52,7 +52,7 @@ def main() -> int:
     matched_id, job_credits = sumble.find_best_matching_job_post(
         org.organization_id, jd_title, company
     )
-    path_used = "Matched posted role"
+    path_used = "Matched Sumble job post"
     people: list[sumble.SumblePerson] = []
     path_credits = job_credits
     if matched_id is not None:
@@ -64,10 +64,10 @@ def main() -> int:
             f"related_credits={related_credits} path_credits={path_credits}"
         )
         if not people:
-            path_used = "Matched by role filters"
+            path_used = "Filtered by function/level"
             print("  matched job but empty related_people — will fallback")
     else:
-        path_used = "Matched by role filters"
+        path_used = "Filtered by function/level"
         print(f"  no strong job post match (job_search_credits={job_credits}) — will fallback")
 
     # 2. Fallback people/find (always exercise when primary yielded no people)

@@ -20,63 +20,66 @@ export default function MlopsCycleDiagram({ selected, onSelect }: Props) {
 
   return (
     <div className="about-mlops-cycle" data-testid="mlops-cycle-diagram">
-      <svg viewBox="0 0 420 240" className="about-mlops-svg" aria-hidden>
-        <defs>
-          <marker id={`${uid}-arr`} markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
-            <path d="M0,0 L6,3 L0,6 Z" fill="#3a4154" />
-          </marker>
-        </defs>
-        <circle cx="210" cy="120" r="88" fill="none" stroke="#3a4154" strokeWidth="1.5" strokeDasharray="6 4" />
-        <path
-          d="M210 32 A88 88 0 0 1 298 150"
-          fill="none"
-          stroke="#5b8def"
-          strokeWidth="2"
-          markerEnd={`url(#${uid}-arr)`}
-          opacity="0.7"
-        />
-        <path
-          d="M298 150 A88 88 0 0 1 122 150"
-          fill="none"
-          stroke="#22d3ee"
-          strokeWidth="2"
-          markerEnd={`url(#${uid}-arr)`}
-          opacity="0.7"
-        />
-        <path
-          d="M122 150 A88 88 0 0 1 210 32"
-          fill="none"
-          stroke="#fb923c"
-          strokeWidth="2"
-          markerEnd={`url(#${uid}-arr)`}
-          opacity="0.7"
-        />
-        <text x="210" y="124" textAnchor="middle" fill="#a0a8b8" fontSize="12" fontFamily="var(--font-mono)">
-          learn → ship → observe
-        </text>
-      </svg>
-      <div className="about-mlops-nodes">
-        {NODES.map((n) => {
-          const active = selected === n.id;
-          return (
-            <button
-              key={n.id}
-              type="button"
-              className={`about-mlops-node pressable${active ? " is-active" : ""}`}
-              style={{
-                left: n.x,
-                top: n.y,
-                ["--node-c" as string]: n.c,
-              }}
-              onClick={(e) => onSelect(n.id, e.currentTarget)}
-              aria-expanded={active}
-              aria-controls={active ? DETAIL_PANEL_ID : undefined}
-              data-testid={`about-mlops-node-${n.id}`}
-            >
-              {n.label}
-            </button>
-          );
-        })}
+      {/* Canvas only — captions stay outside absolute node overlay */}
+      <div className="about-mlops-canvas">
+        <svg viewBox="0 0 420 240" className="about-mlops-svg" aria-hidden>
+          <defs>
+            <marker id={`${uid}-arr`} markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill="#3a4154" />
+            </marker>
+          </defs>
+          <circle cx="210" cy="120" r="88" fill="none" stroke="#3a4154" strokeWidth="1.5" strokeDasharray="6 4" />
+          <path
+            d="M210 32 A88 88 0 0 1 298 150"
+            fill="none"
+            stroke="#5b8def"
+            strokeWidth="2"
+            markerEnd={`url(#${uid}-arr)`}
+            opacity="0.7"
+          />
+          <path
+            d="M298 150 A88 88 0 0 1 122 150"
+            fill="none"
+            stroke="#22d3ee"
+            strokeWidth="2"
+            markerEnd={`url(#${uid}-arr)`}
+            opacity="0.7"
+          />
+          <path
+            d="M122 150 A88 88 0 0 1 210 32"
+            fill="none"
+            stroke="#fb923c"
+            strokeWidth="2"
+            markerEnd={`url(#${uid}-arr)`}
+            opacity="0.7"
+          />
+          <text x="210" y="124" textAnchor="middle" fill="#a0a8b8" fontSize="12" fontFamily="var(--font-mono)">
+            learn → ship → observe
+          </text>
+        </svg>
+        <div className="about-mlops-nodes">
+          {NODES.map((n) => {
+            const active = selected === n.id;
+            return (
+              <button
+                key={n.id}
+                type="button"
+                className={`about-mlops-node pressable${active ? " is-active" : ""}`}
+                style={{
+                  left: `${(n.x / 420) * 100}%`,
+                  top: `${(n.y / 240) * 100}%`,
+                  ["--node-c" as string]: n.c,
+                }}
+                onClick={(e) => onSelect(n.id, e.currentTarget)}
+                aria-expanded={active}
+                aria-controls={active ? DETAIL_PANEL_ID : undefined}
+                data-testid={`about-mlops-node-${n.id}`}
+              >
+                {n.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <p className="meta about-diagram-tradeoff">
         Tradeoff: offline JSONL history + CI gates instead of a remote experiment platform — enough

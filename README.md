@@ -2,13 +2,9 @@
 
 [![CI](https://github.com/OWNER/teamscout/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/teamscout/actions/workflows/ci.yml)
 
-Recruiting intelligence: resume→jobs→team and library→best-resume, with production hardening (containers, CI, rate limits, request IDs). See [ARCHITECTURE.md](./ARCHITECTURE.md).
-
-Private anonymous workspaces: cookie-scoped data auto-deletes after 7 days. New browser = new workspace.
+Recruiting intelligence — resume→jobs→team and library→best-resume, with production hardening (containers, CI, rate limits, request IDs). See [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 > Replace `OWNER/teamscout` in the badge URL with your GitHub org/repo.
-
-![About TeamScout](./frontend/public/screenshots/07-about.png)
 
 ## 3-minute demo (JobRight / Sumble)
 
@@ -28,13 +24,10 @@ make install
 make dev
 ```
 
-Optional frontend: `NEXT_PUBLIC_GITHUB_BASE=https://github.com/<org>/<repo>/blob/main` for About page repo links.
-
-
 - Backend: http://localhost:8000
 - Frontend: http://localhost:3000
 
-### 2. Feature 1: Resume → Jobs → Sumble team
+### 2. Feature 1 — Resume → Jobs → Sumble team
 
 1. Open http://localhost:3000 (sidebar: **Resume → Jobs → Team**)
 2. Upload `samples/sample_resume.pdf`
@@ -43,7 +36,7 @@ Optional frontend: `NEXT_PUBLIC_GITHUB_BASE=https://github.com/<org>/<repo>/blob
 5. On a job, click **Extract team from description** → **Confirm & search Sumble**
 6. Preview then confirm **Reveal email** per contact
 
-### 3. Feature 2: Resume library + best resume
+### 3. Feature 2 — Resume library + best resume
 
 1. Open http://localhost:3000/library (sidebar: **Resume Library**)
 2. Upload multiple PDF/DOCX files or a ZIP of resumes (or sync a public Drive folder — see below)
@@ -82,27 +75,23 @@ docker compose up --build
 See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for zero→live commands (`fly.toml`, secrets, Vercel `NEXT_PUBLIC_API_BASE`, Litestream/volume backups, CI deploy job, cost notes).
 
 ```bash
-make deploy-status         # CLIs + auth + app status (no mutations)
-make deploy-api            # flyctl deploy (requires fly auth + secrets)
-make deploy-web            # vercel --prod (requires vercel auth + project link)
 # After the API is live and secrets are set on the server:
 DEMO_API_BASE=https://YOUR-APP.fly.dev make demo-check
 ```
 
 Config-only PRs do not imply a public URL is already live — the runbook is the operator path.
+
 ## Development
 
 ```bash
 make test
-make pipeline              # scope → backend unit tests → fit-signal eval (+ ranking/resume-pick if embeddings in .env; + demo-check if DEMO_API_BASE)
-make pipeline-offline      # scope → backend unit tests → fit-signal eval only
-make eval-fit              # YOE + requirements order (no embeddings)
-make eval                  # hybrid ranking NDCG/MRR (needs embeddings; LLM optional)
-make eval-report           # trends from evals/history.jsonl
 cd backend && pytest -q
 cd frontend && pnpm build && pnpm test
-python3 scripts/smoke_sumble.py
+python scripts/eval_ranking.py
+python scripts/eval_resume_pick.py
+python scripts/smoke_sumble.py
 ```
+
 ## API (M4)
 
 | Endpoint | Description |
@@ -123,17 +112,14 @@ python3 scripts/smoke_sumble.py
 
 ## Ranking pipeline
 
-**Jobs (Feature 1)** — see [ARCHITECTURE.md](./ARCHITECTURE.md) for the full funnel:
-
-1. Multi-source fetch (~150): optional LLM query expand → job_sources registry (JSearch + free ATS boards + Remotive/RemoteOK + optional Adzuna); recency via `SearchParams.date_window` (default **month**); hard/soft prefs; exact/embedding dedupe (prefer direct_ats); SQLite `jobs_cache`
+1. Fetch ~150 jobs (JSearch), 14-day recency filter, cache in SQLite with indexed `job_id`
 2. Dense cosine similarity + BM25 lexical retrieval
 3. Reciprocal Rank Fusion (`k=60`)
-4. LLM rerank top 30 in batches of **6** (retry + labeled heuristic fill for omitted ids)
-5. Final score (defaults): `0.38·LLM + 0.20·RRF + 0.12·skills + 0.12·experience + 0.10·requirements + 0.08·recency`, then soft-pref boosts + MMR diversify
+4. LLM rerank top 30
+5. Final score: `0.5·LLM + 0.3·RRF + 0.1·skills + 0.1·recency`
 
-**Resume pick (Feature 2):** JD → atomic requirements → MaxSim unit coverage → optional close-call pairwise tournament → top 3 with alignment + justification. Not hybrid RRF.
+Resume pick inverts the pipeline: job description is the query, library resumes are candidates.
 
-**Deploy model:** single-operator demo. No multi-user auth; protect public deploys with network gates / secrets and daily cost ceilings (see DEPLOYMENT.md).
 
 ## UI screenshots (M10)
 

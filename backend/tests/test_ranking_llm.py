@@ -33,8 +33,8 @@ def _profile() -> ResumeProfile:
 def test_llm_rerank_fills_missing_aliases_with_heuristic() -> None:
     """Partial LLM results no longer hard-fail the search."""
     jobs = [_job("job-1"), _job("job-2")]
-    # First call: only j0. Retry (missing job-2 alone): empty → heuristic fill.
-    first = _RerankResponse(
+    # Model returns only j0 (alias for first job)
+    partial = _RerankResponse(
         results=[
             _RerankItem(
                 job_id="j0",
@@ -45,10 +45,7 @@ def test_llm_rerank_fills_missing_aliases_with_heuristic() -> None:
             )
         ]
     )
-    with patch(
-        "app.services.ranking.llm.complete_json",
-        side_effect=[first, _RerankResponse(results=[])],
-    ):
+    with patch("app.services.ranking.llm.complete_json", return_value=partial):
         out = _llm_rerank(_profile(), jobs)
     assert set(out) == {"job-1", "job-2"}
     assert out["job-1"].fit_score == 90
@@ -84,7 +81,7 @@ def test_rank_jobs_survives_partial_llm_rerank() -> None:
     with patch("app.services.hybrid_rank.dense_ranking", return_value=["job-1", "job-2"]):
         with patch("app.services.hybrid_rank.lexical_ranking", return_value=["job-2", "job-1"]):
             with patch("app.services.ranking.llm.complete_json", return_value=partial):
-                ranked = rank_jobs(_profile(), jobs, use_llm=True, diversify=False)
+                ranked = rank_jobs(_profile(), jobs, use_llm=True)
     assert len(ranked) >= 1
     ids = {r.job.id for r in ranked}
     assert ids <= {"job-1", "job-2"}
