@@ -1,10 +1,8 @@
 # TeamScout
 
-[![CI](https://github.com/OWNER/teamscout/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/teamscout/actions/workflows/ci.yml)
+[![CI](https://github.com/kanavgoyal781/teamscout/actions/workflows/ci.yml/badge.svg)](https://github.com/kanavgoyal781/teamscout/actions/workflows/ci.yml)
 
 Recruiting intelligence — resume→jobs→team and library→best-resume, with production hardening (containers, CI, rate limits, request IDs). See [ARCHITECTURE.md](./ARCHITECTURE.md).
-
-> Replace `OWNER/teamscout` in the badge URL with your GitHub org/repo.
 
 ## 3-minute demo (JobRight / Sumble)
 

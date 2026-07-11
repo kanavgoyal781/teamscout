@@ -83,13 +83,17 @@ export default function JobPasteTeamPanel({
         </label>
         <label className="field">
           <span className="field-label">
-            Company <span className="field-optional">optional · improves team match</span>
+            Company{" "}
+            <span className="field-optional" title="Optional — improves hiring-team match">
+              optional
+            </span>
           </span>
           <input
             value={company}
             onChange={(e) => setCompany(e.target.value)}
             placeholder="Company name"
             autoComplete="organization"
+            title="Optional — improves hiring-team match"
           />
         </label>
         <label className="field">

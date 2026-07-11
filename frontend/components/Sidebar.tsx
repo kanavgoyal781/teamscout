@@ -1,6 +1,14 @@
 "use client";
 
-import { useSyncExternalStore, useState, useEffect, useId, useRef } from "react";
+import {
+  useSyncExternalStore,
+  useState,
+  useEffect,
+  useId,
+  useRef,
+  useCallback,
+} from "react";
+import { createPortal } from "react-dom";
 import { BookOpen, Briefcase, Files, Library, Lock, Play, Send, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -87,6 +95,14 @@ function HealthDot() {
   );
 }
 
+/** Same selector set as DemoTour — keep keyboard traps consistent. */
+function focusableWithin(root: HTMLElement): HTMLElement[] {
+  const nodes = root.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  );
+  return Array.from(nodes).filter((el) => !el.hasAttribute("disabled"));
+}
+
 function BetaRoadmapModal({
   item,
   onClose,
@@ -96,21 +112,77 @@ function BetaRoadmapModal({
 }) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const Icon = item.icon;
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    closeRef.current?.focus();
+    setMounted(true);
+  }, []);
+
+  // Initial focus + Tab trap + Escape + return-focus.
+  // Depends only on `mounted` so parent re-renders / unstable onClose do not re-steal focus.
+  useEffect(() => {
+    if (!mounted) return;
+
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement &&
+      active !== document.body &&
+      !active.closest?.(".beta-modal")
+    ) {
+      returnFocusRef.current = active;
+    }
+
+    const focusClose = () => closeRef.current?.focus({ preventScroll: true });
+    focusClose();
+    const raf = window.requestAnimationFrame(focusClose);
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key === "Tab" && dialogRef.current) {
+        const list = focusableWithin(dialogRef.current);
+        if (list.length === 0) return;
+        const first = list[0];
+        const last = list[list.length - 1];
+        const activeEl = document.activeElement as HTMLElement | null;
+        if (e.shiftKey) {
+          if (activeEl === first || !dialogRef.current.contains(activeEl)) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else if (activeEl === last || !dialogRef.current.contains(activeEl)) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+      const el = returnFocusRef.current;
+      returnFocusRef.current = null;
+      if (el && document.contains(el)) {
+        window.setTimeout(() => el.focus?.(), 0);
+      }
+    };
+  }, [mounted]);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       className="beta-modal-backdrop"
       role="presentation"
@@ -118,6 +190,7 @@ function BetaRoadmapModal({
       data-testid={`beta-modal-${item.key}`}
     >
       <div
+        ref={dialogRef}
         className="beta-modal"
         role="dialog"
         aria-modal="true"
@@ -157,7 +230,8 @@ function BetaRoadmapModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -169,6 +243,7 @@ export default function Sidebar() {
   const [opsDraft, setOpsDraft] = useState("");
   const [betaOpen, setBetaOpen] = useState<BetaKey | null>(null);
   const opsFormId = useId();
+  const closeBeta = useCallback(() => setBetaOpen(null), []);
 
   function openOps() {
     if (!opsToken) {
@@ -320,7 +395,7 @@ export default function Sidebar() {
         </form>
       ) : null}
 
-      {openBeta ? <BetaRoadmapModal item={openBeta} onClose={() => setBetaOpen(null)} /> : null}
+      {openBeta ? <BetaRoadmapModal item={openBeta} onClose={closeBeta} /> : null}
 
       <DemoTour open={tourOpen} onClose={() => setTourOpen(false)} />
     </aside>

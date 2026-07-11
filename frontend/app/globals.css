@@ -1262,9 +1262,14 @@ details.why-match[open] summary {
 }
 
 
-/* Paste JD / paste job forms — stack labels cleanly on field-grid */
+/* Paste JD / paste job forms — labels above inputs; robust 3-col grid */
 .paste-form {
   margin-top: var(--space-2);
+  display: grid;
+  gap: var(--space-3);
+  /* Override .field-grid auto-fit so Title/Company/Location stay aligned */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
 }
 
 .paste-form .field,
@@ -1275,12 +1280,20 @@ details.why-match[open] summary {
   min-width: 0;
 }
 
+.paste-form .field {
+  /* Each field is its own column stack: label always above input */
+  width: 100%;
+}
+
 .field-label {
   display: block;
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--text-secondary);
   line-height: 1.3;
+  /* Never let long optional copy collide with the input row */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .field-optional {
@@ -1292,6 +1305,16 @@ details.why-match[open] summary {
 .field-span-all {
   grid-column: 1 / -1;
   min-width: 0;
+}
+
+.paste-form input,
+.paste-form textarea,
+.paste-form select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .paste-textarea {
@@ -1306,15 +1329,27 @@ details.why-match[open] summary {
 
 .paste-actions {
   display: flex;
+  flex-direction: column;
   gap: var(--space-3);
-  align-items: center;
+  align-items: stretch;
   margin-top: var(--space-1);
+  grid-column: 1 / -1;
+}
+
+.paste-actions > button {
+  width: 100%;
 }
 
 .paste-team-followup {
   margin-top: var(--space-5);
   padding-top: var(--space-4);
   border-top: 1px solid var(--border);
+}
+
+@media (max-width: 720px) {
+  .paste-form {
+    grid-template-columns: 1fr;
+  }
 }
 
 
@@ -1711,47 +1746,91 @@ html.light .about-root > .panel {
 
 /* —— Diagram —— */
 .about-diagram-panel {
-  /* Allow focus rings / hover lift to show; captions live outside the canvas */
   overflow: visible;
 }
 
 .about-diagram {
-  border-radius: 2px;
   margin-bottom: var(--space-4);
 }
 
-/* SVG + absolute nodes only — captions must never sit under this layer */
-.about-diagram-canvas {
-  position: relative;
+/*
+ * Architecture map: CSS grid in normal flow.
+ * Captions live in .about-diagram-footer AFTER the grid — never under nodes.
+ *
+ * Columns: browser | arrow | api | arrow | services stack
+ * Rows:    services rows 1–5 + sqlite under api
+ */
+.about-arch-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 28px minmax(120px, 1fr) 28px minmax(140px, 1.2fr);
+  grid-template-rows: repeat(5, auto);
+  grid-template-areas:
+    "browser arr1 api arr2 llm"
+    ".      .    api arr2 emb"
+    ".      .    api arr2 jobs"
+    ".      .    api arr2 team"
+    ".      .    sqlite .  drive";
+  gap: 10px 8px;
+  align-items: center;
+  padding: var(--space-5);
   border-radius: 2px;
   border: 1px solid var(--about-ink-line);
   background: var(--bg-elevated);
-  min-height: 280px;
-  overflow: visible;
 }
 
-.about-svg {
+.about-arch-node {
+  /* grid placement via style.gridArea — not absolute */
+  position: relative;
+  left: auto;
+  top: auto;
   width: 100%;
-  height: auto;
-  display: block;
-  opacity: 0.95;
+  min-width: 0;
+  justify-self: stretch;
+  align-self: stretch;
 }
 
-.about-diagram-nodes {
-  position: absolute;
-  inset: 0;
+/* FastAPI sits at the top of its multi-row span; SQLite has its own cell below */
+.about-arch-grid > [data-testid="about-arch-node-api"] {
+  align-self: start;
+}
+
+.about-arch-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  user-select: none;
   pointer-events: none;
 }
 
+.about-arch-arrow-browser-api {
+  grid-area: arr1;
+}
+
+.about-arch-arrow-api-services {
+  grid-area: arr2;
+  align-self: center;
+}
+
+.about-arch-arrow-api-sqlite {
+  display: none;
+}
+
 .about-node {
-  pointer-events: auto;
-  position: absolute;
-  transform: translateY(0);
-  min-width: 118px;
-  padding: 10px 12px;
+  position: relative;
+  min-width: 0;
+  padding: 12px 14px;
   border-radius: 2px;
   border: 1px solid color-mix(in srgb, var(--node-c, var(--border)) 55%, var(--border));
-  background: color-mix(in srgb, var(--surface) 94%, var(--node-c) 6%);
+  /* Opaque surface so nothing “bleeds through” a node */
+  background: var(--surface);
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--node-c) 12%, var(--surface)) 0%,
+    var(--surface) 70%
+  );
   color: var(--text);
   text-align: left;
   cursor: pointer;
@@ -1791,7 +1870,19 @@ html.light .about-root > .panel {
 
 .about-node.is-optional {
   border-style: dashed;
-  opacity: 0.9;
+  opacity: 0.95;
+}
+
+/* Captions: dedicated footer BELOW the grid (normal flow), solid surface */
+.about-diagram-footer {
+  margin-top: var(--space-4);
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--about-ink-line);
+  position: relative;
+  z-index: 1;
+  /* Opaque so nothing from the diagram can paint over caption text */
+  background: var(--surface);
+  isolation: isolate;
 }
 
 /* —— Detail panel —— */
@@ -2258,13 +2349,28 @@ html.light button.about-weight {
     grid-column: 2;
   }
 
-  .about-diagram-canvas {
-    min-height: 380px;
+  .about-arch-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-template-areas:
+      "browser"
+      "api"
+      "sqlite"
+      "llm"
+      "emb"
+      "jobs"
+      "team"
+      "drive";
+    gap: 10px;
+  }
+
+  .about-arch-arrow {
+    display: none;
   }
 
   .about-node {
-    min-width: 100px;
-    padding: 8px 10px;
+    min-width: 0;
+    padding: 10px 12px;
     font-size: 0.85rem;
   }
 
@@ -2589,18 +2695,17 @@ html.light button.about-weight {
   display: none;
 }
 .about-diagram-caption {
-  margin: var(--space-3) 0 0;
+  margin: 0 0 var(--space-2);
   font-size: 0.78rem;
   color: var(--text-muted);
   line-height: 1.45;
 }
 
 .about-diagram-tradeoff {
-  margin-top: var(--space-2);
+  margin: 0;
   max-width: 48rem;
   line-height: 1.5;
-  position: relative;
-  z-index: 1;
+  color: var(--text-secondary);
 }
 
 .about-principles-strip {
@@ -2665,6 +2770,8 @@ html.light button.about-weight {
 .about-mlops-canvas {
   position: relative;
   width: 100%;
+  /* Clip node pills so they cannot cover the tradeoff below */
+  overflow: hidden;
 }
 .about-mlops-svg {
   width: 100%;
@@ -2698,6 +2805,9 @@ html.light button.about-weight {
   margin-top: var(--space-3);
   text-align: center;
   max-width: none;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border-top: 1px solid var(--about-ink-line);
 }
 .about-funnel-svg {
   width: 100%;
@@ -2845,19 +2955,27 @@ html.light button.about-weight {
   background: var(--panel-2, rgba(255,255,255,0.03));
 }
 .filter-hint p { margin: 0 0 0.5rem; font-size: 0.875rem; }
+/* Portaled to document.body — above dropzones, panels, demo tour (~80–82) */
 .beta-modal-backdrop {
-  position: fixed; inset: 0; z-index: 80;
-  background: rgba(0,0,0,0.55);
-  display: flex; align-items: center; justify-content: center;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 1rem;
 }
 .beta-modal {
+  position: relative;
+  z-index: 201;
   width: min(420px, 100%);
-  background: var(--panel, #12151c);
-  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  /* Solid surface so page content cannot show through */
+  background: var(--surface, var(--panel, #12151c));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   border-radius: 12px;
   padding: 1rem 1.1rem 1.1rem;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
 }
 .beta-modal-head {
   display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;
