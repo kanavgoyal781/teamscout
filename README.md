@@ -1,6 +1,5 @@
 # TeamScout
 
-https://teamscout-opal.vercel.app/
 [![CI](https://github.com/kanavgoyal781/teamscout/actions/workflows/ci.yml/badge.svg)](https://github.com/kanavgoyal781/teamscout/actions/workflows/ci.yml)
 
 Recruiting intelligence: **resume → jobs → hiring team**, and **library → best resume for a pasted JD**. Production-hardened (containers, CI, rate limits, request IDs, scope gates). Architecture: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
