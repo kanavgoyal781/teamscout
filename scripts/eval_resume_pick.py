@@ -24,7 +24,7 @@ from app.core.env_utils import is_set
 from app.db.session import ensure_db
 from app.prompts import prompt_versions
 from app.schemas.library import ResumeCandidate
-from app.services.resume_ranking import rank_resumes_for_job, _whole_doc_baseline_order
+from app.services.resume.ranking import rank_resumes_for_job, _whole_doc_baseline_order
 from scripts.fixtures.resume_pick_fixtures import (
     CASES,
     assert_fixture_honesty,
@@ -108,8 +108,8 @@ def _run_case(case, *, use_llm: bool, synthetic: bool) -> tuple[bool, bool, floa
         return order[0] if order else ""
 
     if synthetic:
-        with patch("app.services.embeddings.embed_batch", side_effect=_synthetic_embed_batch):
-            with patch("app.services.embeddings.embed", side_effect=lambda t: _synthetic_embed_batch([t])[0]):
+        with patch("app.services.inference.embeddings.embed_batch", side_effect=_synthetic_embed_batch):
+            with patch("app.services.inference.embeddings.embed", side_effect=lambda t: _synthetic_embed_batch([t])[0]):
                 # baseline hybrid_rank also needs embeddings
                 top = _engine()
                 base = _baseline()
@@ -124,7 +124,7 @@ def main() -> int:
     ensure_db()
     assert_fixture_honesty()
 
-    from app.services.embeddings import embeddings_endpoint
+    from app.services.inference.embeddings import embeddings_endpoint
 
     has_emb = is_set(settings.EMBEDDINGS_API_KEY) and bool(embeddings_endpoint())
     synthetic = False

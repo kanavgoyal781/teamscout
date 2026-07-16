@@ -116,7 +116,7 @@ def test_create_search_uses_confirmed_snapshot_not_request_override(client: Test
         json={"title": "Confirmed Title", "location": "Confirmed City", "skills": ["Python"]},
     )
 
-    from app.services.jobs import JobFetchResult
+    from app.services.jobs_svc.fetch import JobFetchResult
 
     with patch("app.api.routers.searches.jobs.fetch_jobs_detailed") as fetch_mock:
         fetch_mock.return_value = JobFetchResult(jobs=[job])
@@ -182,7 +182,7 @@ def test_create_search_returns_ranked_jobs(client: TestClient) -> None:
     )
     assert confirm.status_code == 200
 
-    from app.services.jobs import JobFetchResult
+    from app.services.jobs_svc.fetch import JobFetchResult
 
     with patch(
         "app.api.routers.searches.jobs.fetch_jobs_detailed",

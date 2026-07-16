@@ -35,7 +35,7 @@ def _seed_library_resume(
     filename: str,
     profile: ResumeProfile,
 ) -> str:
-    with patch("app.services.library_store.parser.parse_resume_file", return_value=(file_hash, profile)):
+    with patch("app.services.library.store.parser.parse_resume_file", return_value=(file_hash, profile)):
         response = client.post(
             "/library/upload",
             files={"files": (filename, b"%PDF resume", "application/pdf")},
@@ -85,7 +85,7 @@ def test_library_upload_zip(client: TestClient) -> None:
         archive.writestr("notes.txt", b"ignore")
     buffer.seek(0)
 
-    with patch("app.services.library_store.parser.parse_resume_file", return_value=("zip-hash-1", profile)):
+    with patch("app.services.library.store.parser.parse_resume_file", return_value=("zip-hash-1", profile)):
         response = client.post(
             "/library/upload",
             files={"files": ("resumes.zip", buffer.read(), "application/zip")},
@@ -174,7 +174,7 @@ def test_drive_sync_ingests_files(client: TestClient, monkeypatch: pytest.Monkey
         return_value=httpx.Response(200, content=b"%PDF drive")
     )
 
-    with patch("app.services.library_store.ingest_resume_bytes") as ingest_mock:
+    with patch("app.services.library.store.ingest_resume_bytes") as ingest_mock:
         ingest_mock.return_value = (
             LibraryResumeOut(
                 id="resume-drive-1",
@@ -250,7 +250,7 @@ def test_drive_resync_skips_known_hashes(client: TestClient, monkeypatch: pytest
     )
     download_route = respx.get("https://www.googleapis.com/drive/v3/files/file-1")
 
-    with patch("app.services.library_store.ingest_resume_bytes") as ingest_mock:
+    with patch("app.services.library.store.ingest_resume_bytes") as ingest_mock:
         response = client.post(
             "/library/drive/sync",
             json={"folder_url": "https://drive.google.com/drive/folders/folder-resync"},
@@ -399,3 +399,92 @@ def test_recommend_resumes_ranking(client: TestClient) -> None:
     assert body["job_id"] == "pick-job-1"
     assert len(body["recommendations"]) == 1
     assert body["recommendations"][0]["coverage"][0]["status"] == "hit"
+
+
+def test_recommend_from_jd_happy_path(client: TestClient) -> None:
+    """Primary Feature 2 path: paste JD → cache job → rank library (mocked rank)."""
+    profile = _profile(
+        "Alex",
+        "Backend Engineer",
+        ["Python", "FastAPI", "PostgreSQL"],
+        "Python APIs and services",
+    )
+    _seed_library_resume(
+        client,
+        file_hash="from-jd-hash-1",
+        filename="alex.pdf",
+        profile=profile,
+    )
+
+    recommendations = [
+        RankedResumeRecommendation(
+            resume_id="seeded",
+            filename="alex.pdf",
+            match_score=88.0,
+            score_breakdown=ScoreBreakdown(
+                llm_fit=88,
+                rrf_normalized=0.85,
+                skill_jaccard=0.75,
+                recency=0.6,
+                final_score=88.0,
+                matched_skills=["Python", "FastAPI"],
+                missing_skills=[],
+                rationale="Strong backend match for the pasted JD.",
+            ),
+            coverage=[
+                RequirementCoverage(
+                    requirement="Python",
+                    status="hit",
+                    evidence="Python APIs and services",
+                )
+            ],
+        )
+    ]
+
+    jd = (
+        "Senior Backend Engineer role requiring Python, FastAPI, and PostgreSQL. "
+        "Build reliable APIs and data services for a product team."
+    )
+    with patch("app.api.routers.library.resume_ranking.rank_resumes_for_job") as rank_mock:
+        rank_mock.return_value = recommendations
+        response = client.post(
+            "/library/recommend-from-jd",
+            json={
+                "job_description": jd,
+                "title": "Senior Backend Engineer",
+                "company": "PastedCo",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["job_id"]
+    assert body["job_title"] == "Senior Backend Engineer"
+    assert body["job_company"] == "PastedCo"
+    assert len(body["recommendations"]) == 1
+    assert body["recommendations"][0]["filename"] == "alex.pdf"
+    assert body["recommendations"][0]["coverage"][0]["status"] == "hit"
+    assert body["tournament_ran"] is False
+    assert body["tournament_comparisons"] == 0
+    rank_mock.assert_called_once()
+    # Synthetic job was cached and passed into ranking
+    call_job = rank_mock.call_args.args[0]
+    assert call_job.source == "paste"
+    assert "Python" in call_job.description
+
+
+def test_recommend_from_jd_empty_library_400(client: TestClient) -> None:
+    response = client.post(
+        "/library/recommend-from-jd",
+        json={
+            "job_description": (
+                "A sufficiently long job description for a role that needs "
+                "at least forty characters of pasted text."
+            ),
+            "title": "Engineer",
+        },
+    )
+    assert response.status_code == 400
+    body = response.json()
+    assert body.get("error") == "validation_error"
+    assert "empty" in (body.get("message") or "").lower()

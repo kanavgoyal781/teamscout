@@ -13,8 +13,8 @@ from app.core.workspace import WorkspaceMiddleware, maybe_sweep_expired
 from app.core.upload_limit import UploadSizeLimitMiddleware
 from app.db.session import init_db
 from app.errors import TeamScoutError
-from app.services.health import run_health_checks
-from app.services.ranking_math import validate_ranking_weights
+from app.services.ops.health import run_health_checks
+from app.services.ranking.math import validate_ranking_weights
 logger = get_logger(__name__)
 def _cors_origins() -> list[str]:
     if settings.is_prod:

@@ -63,7 +63,7 @@ def test_llm_http_error_raises_service_failing(monkeypatch: pytest.MonkeyPatch) 
     mock_client.__exit__.return_value = False
     mock_client.post.side_effect = httpx.ConnectError("connection refused")
 
-    with patch("app.services.llm.httpx.Client", return_value=mock_client):
+    with patch("app.services.inference.llm.httpx.Client", return_value=mock_client):
         with pytest.raises(ServiceFailingError) as exc:
             llm.complete("hello")
 
@@ -85,7 +85,7 @@ def test_embeddings_http_error_raises_service_failing(monkeypatch: pytest.Monkey
     mock_client.__exit__.return_value = False
     mock_client.post.side_effect = httpx.ConnectError("connection refused")
 
-    with patch("app.services.embeddings.httpx.Client", return_value=mock_client):
+    with patch("app.services.inference.embeddings.httpx.Client", return_value=mock_client):
         with pytest.raises(ServiceFailingError) as exc:
             embeddings.embed("hello")
 
@@ -100,7 +100,7 @@ def test_complete_json_retries_once_on_schema_failure(monkeypatch: pytest.Monkey
     monkeypatch.setattr(settings, "LLM_API_BASE", "https://api.example.com/v1")
 
     responses = iter(["not json", '{"name": "alice", "score": 7}'])
-    with patch("app.services.llm.complete", side_effect=lambda *_args, **_kwargs: next(responses)) as mocked:
+    with patch("app.services.inference.llm.complete", side_effect=lambda *_args, **_kwargs: next(responses)) as mocked:
         result = llm.complete_json('{"name":"alice","score":7}', _SampleModel)
 
     assert mocked.call_count == 2
@@ -114,7 +114,7 @@ def test_complete_json_raises_after_retry_exhausted(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(settings, "LLM_API_KEY", "test-key")
     monkeypatch.setattr(settings, "LLM_API_BASE", "https://api.example.com/v1")
 
-    with patch("app.services.llm.complete", return_value="still not json"):
+    with patch("app.services.inference.llm.complete", return_value="still not json"):
         with pytest.raises(ServiceFailingError) as exc:
             llm.complete_json('{"name":"alice","score":7}', _SampleModel)
 

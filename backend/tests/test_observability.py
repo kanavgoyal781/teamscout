@@ -94,7 +94,7 @@ def test_llm_trace_written_on_success(monkeypatch: pytest.MonkeyPatch) -> None:
         request=httpx.Request("POST", "https://api.example.com/v1/chat/completions"),
     )
 
-    with patch("app.services.llm.httpx.Client", return_value=mock_client):
+    with patch("app.services.inference.llm.httpx.Client", return_value=mock_client):
         out = llm.complete("hi", operation="parse_resume")
 
     assert out == "hello"
@@ -200,7 +200,7 @@ def test_sumble_email_reveal_operation_label(monkeypatch: pytest.MonkeyPatch) ->
         request=httpx.Request("POST", "https://api.sumble.test/v6/people"),
     )
 
-    with patch("app.services.sumble_client.httpx.Client", return_value=mock_client):
+    with patch("app.services.team.client.httpx.Client", return_value=mock_client):
         email, credits = sumble.reveal_email(42)
 
     assert email == "a@example.com"
@@ -231,7 +231,7 @@ def test_embedding_cache_hit(monkeypatch: pytest.MonkeyPatch) -> None:
         request=httpx.Request("POST", "https://api.example.com/v1/embeddings"),
     )
 
-    with patch("app.services.embeddings.httpx.Client", return_value=mock_client):
+    with patch("app.services.inference.embeddings.httpx.Client", return_value=mock_client):
         v1 = embeddings.embed("cache me please")
         v2 = embeddings.embed("cache me please")
 
@@ -342,7 +342,7 @@ def test_record_trace_no_secrets_in_otlp(monkeypatch: pytest.MonkeyPatch) -> Non
     mock_client.__exit__.return_value = False
     mock_client.post.side_effect = _post
 
-    with patch("app.services.observability.httpx.Client", return_value=mock_client):
+    with patch("app.services.ops.observability.httpx.Client", return_value=mock_client):
         observability.record_trace(operation="rerank", status="ok", cost_usd=0.01)
 
     assert seen

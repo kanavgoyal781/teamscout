@@ -11,7 +11,7 @@ from app.schemas.jobs import Job
 from app.schemas.library import ResumeCandidate
 from app.schemas.resume import ResumeProfile, WorkExperience
 from app.services import resume_ranking
-from app.services.resume_ranking import (
+from app.services.resume.ranking import (
     _rationale_cites_units,
     _rationale_references_resume,
     _ResumeRerankItem,
@@ -79,10 +79,10 @@ def test_rank_resumes_for_job_orders_best_first() -> None:
         _candidate("mid", "Python Developer", ["Python", "Django"], "Django web apps", ["Django apps"]),
     ]
 
-    with patch("app.services.embeddings.embed_batch", side_effect=_embed_batch):
-        with patch("app.services.embeddings.embed", side_effect=lambda t: _norm_bag(t)):
-            with patch("app.services.resume_ranking.decompose_jd") as dec:
-                from app.services.jd_decompose import JdRequirement
+    with patch("app.services.inference.embeddings.embed_batch", side_effect=_embed_batch):
+        with patch("app.services.inference.embeddings.embed", side_effect=lambda t: _norm_bag(t)):
+            with patch("app.services.resume.ranking.decompose_jd") as dec:
+                from app.services.resume.jd_decompose import JdRequirement
 
                 dec.return_value = [
                     JdRequirement(text="Python", kind="must", category="skill", weight=2.0),
@@ -112,9 +112,9 @@ def test_rank_resumes_includes_alignment_matrix() -> None:
         skills=["Python"],
     )
     candidates = [_candidate("only", "Python Engineer", ["Python"], "Python services")]
-    with patch("app.services.embeddings.embed_batch", side_effect=_embed_batch):
-        with patch("app.services.resume_ranking.decompose_jd") as dec:
-            from app.services.jd_decompose import JdRequirement
+    with patch("app.services.inference.embeddings.embed_batch", side_effect=_embed_batch):
+        with patch("app.services.resume.ranking.decompose_jd") as dec:
+            from app.services.resume.jd_decompose import JdRequirement
 
             dec.return_value = [
                 JdRequirement(text="Python", kind="must", category="skill", weight=2.0),
@@ -184,7 +184,7 @@ def test_llm_justify_retries_then_rejects_generic_rationale() -> None:
             }
         ]
     }
-    from app.services.jd_decompose import JdRequirement
+    from app.services.resume.jd_decompose import JdRequirement
 
     reqs = [JdRequirement(text="Python", kind="must", category="skill", weight=2.0)]
     generic = _ResumeRerankItem(
@@ -205,7 +205,7 @@ def test_llm_justify_retries_then_rejects_generic_rationale() -> None:
     )
 
     with patch(
-        "app.services.resume_justify.llm.complete_json",
+        "app.services.resume.justify.llm.complete_json",
         side_effect=[
             _ResumeRerankResponse(results=[generic]),
             _ResumeRerankResponse(results=[concrete]),
@@ -241,7 +241,7 @@ def test_llm_justify_raises_after_generic_retry_exhausted() -> None:
             }
         ]
     }
-    from app.services.jd_decompose import JdRequirement
+    from app.services.resume.jd_decompose import JdRequirement
 
     reqs = [JdRequirement(text="Python", kind="must", category="skill", weight=2.0)]
     generic = _ResumeRerankItem(
@@ -254,7 +254,7 @@ def test_llm_justify_raises_after_generic_retry_exhausted() -> None:
     )
 
     with patch(
-        "app.services.resume_justify.llm.complete_json",
+        "app.services.resume.justify.llm.complete_json",
         return_value=_ResumeRerankResponse(results=[generic]),
     ):
         with pytest.raises(ServiceFailingError) as exc:
@@ -318,7 +318,7 @@ def test_pairwise_cache_key_includes_prompt_version_and_is_ab_symmetric() -> Non
 
     from app.prompts import load_prompt
     from app.schemas.jobs import Job
-    from app.services.pairwise_tournament import pairwise_cache_key, tournament_jd_key
+    from app.services.resume.tournament import pairwise_cache_key, tournament_jd_key
 
     job = Job(
         id="j1",
@@ -338,7 +338,7 @@ def test_pairwise_cache_key_includes_prompt_version_and_is_ab_symmetric() -> Non
     assert k1 == k2
     # Prompt version is folded into tournament_jd_key
     tmpl = load_prompt("pairwise_judge")
-    with patch("app.services.pairwise_tournament.load_prompt") as lp:
+    with patch("app.services.resume.tournament.load_prompt") as lp:
 
         class T:
             version = tmpl.version + "-mutated"
@@ -354,7 +354,7 @@ def test_pairwise_cache_key_includes_prompt_version_and_is_ab_symmetric() -> Non
 
 
 def test_rationale_rank_consistent_rejects_superlative_for_non_first() -> None:
-    from app.services.resume_justify import rationale_rank_consistent
+    from app.services.resume.justify import rationale_rank_consistent
 
     assert rationale_rank_consistent("Best match for this role with FastAPI evidence.", final_rank=1) is True
     assert (
@@ -400,7 +400,7 @@ def test_tournament_override_match_scores_non_increasing() -> None:
     """After tournament reorder, Overall match rings must not invert vs card order."""
     from unittest.mock import MagicMock, patch
 
-    from app.services.jd_decompose import JdRequirement
+    from app.services.resume.jd_decompose import JdRequirement
 
     job = Job(
         id="ov-job",
@@ -488,13 +488,13 @@ def test_tournament_override_match_scores_non_increasing() -> None:
         name="pairwise_judge",
         model_params={},
     )
-    with patch("app.services.embeddings.embed_batch", side_effect=_embed_batch):
-        with patch("app.services.embeddings.embed", side_effect=lambda t: _norm_bag(t)):
-            with patch("app.services.resume_ranking.decompose_jd", return_value=reqs):
-                with patch("app.services.pairwise_tournament.llm.complete_json", side_effect=fake_complete):
-                    with patch("app.services.resume_justify.llm.complete_json", side_effect=fake_complete):
-                        with patch("app.services.pairwise_tournament.load_prompt", return_value=prompt_meta):
-                            with patch("app.services.resume_justify.load_prompt", return_value=prompt_meta):
+    with patch("app.services.inference.embeddings.embed_batch", side_effect=_embed_batch):
+        with patch("app.services.inference.embeddings.embed", side_effect=lambda t: _norm_bag(t)):
+            with patch("app.services.resume.ranking.decompose_jd", return_value=reqs):
+                with patch("app.services.resume.tournament.llm.complete_json", side_effect=fake_complete):
+                    with patch("app.services.resume.justify.llm.complete_json", side_effect=fake_complete):
+                        with patch("app.services.resume.tournament.load_prompt", return_value=prompt_meta):
+                            with patch("app.services.resume.justify.load_prompt", return_value=prompt_meta):
                                 ranked = rank_resumes_for_job(
                                     job, [high_cov, low_cov], use_llm=True
                                 )
@@ -513,9 +513,9 @@ def test_generate_biomedicines_tournament_leads_and_justification_rank_safe() ->
     """Synthetic Generate Biomedicines JD: tournament #1 leads; non-#1 cannot claim best match."""
     from unittest.mock import MagicMock, patch
 
-    from app.services.jd_decompose import JdRequirement
-    from app.services.pairwise_tournament import AlignmentEvidence, maybe_run_tournament
-    from app.services.resume_justify import llm_justify, rationale_rank_consistent
+    from app.services.resume.jd_decompose import JdRequirement
+    from app.services.resume.tournament import AlignmentEvidence, maybe_run_tournament
+    from app.services.resume.justify import llm_justify, rationale_rank_consistent
 
     job = Job(
         id="gen-bio",
@@ -611,8 +611,8 @@ def test_generate_biomedicines_tournament_leads_and_justification_rank_safe() ->
             )
         return schema(winner="A", margin="slight", key_differences=["tie-break"], reason="slight edge")
 
-    with patch("app.services.pairwise_tournament.llm.complete_json", side_effect=fake_judge):
-        with patch("app.services.pairwise_tournament.load_prompt") as lp:
+    with patch("app.services.resume.tournament.llm.complete_json", side_effect=fake_judge):
+        with patch("app.services.resume.tournament.load_prompt") as lp:
             lp.return_value = MagicMock(
                 body="Judge holistically.",
                 system="json",
@@ -679,8 +679,8 @@ def test_generate_biomedicines_tournament_leads_and_justification_rank_safe() ->
             ]
         )
 
-    with patch("app.services.resume_justify.llm.complete_json", side_effect=fake_justify):
-        with patch("app.services.resume_justify.load_prompt") as lp:
+    with patch("app.services.resume.justify.llm.complete_json", side_effect=fake_justify):
+        with patch("app.services.resume.justify.load_prompt") as lp:
             lp.return_value = MagicMock(
                 body="Justify with ranks.",
                 system="json",
@@ -707,7 +707,7 @@ def test_generate_biomedicines_tournament_leads_and_justification_rank_safe() ->
 def test_llm_justify_rejects_rank2_best_match_claim() -> None:
     from unittest.mock import MagicMock, patch
 
-    from app.services.jd_decompose import JdRequirement
+    from app.services.resume.jd_decompose import JdRequirement
 
     job = Job(
         id="j-rank",
@@ -774,8 +774,8 @@ def test_llm_justify_rejects_rank2_best_match_claim() -> None:
             ]
         )
 
-    with patch("app.services.resume_justify.llm.complete_json", side_effect=bad_then_good):
-        with patch("app.services.resume_justify.load_prompt") as lp:
+    with patch("app.services.resume.justify.llm.complete_json", side_effect=bad_then_good):
+        with patch("app.services.resume.justify.load_prompt") as lp:
             lp.return_value = MagicMock(
                 body="Justify",
                 system="json",

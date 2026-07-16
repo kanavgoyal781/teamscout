@@ -1,7 +1,7 @@
 "use client";
 
-import AboutArchitecture from "../../components/AboutArchitecture";
-import AppShell from "../../components/AppShell";
+import AboutArchitecture from "../../components/about/AboutArchitecture";
+import AppShell from "../../components/layout/AppShell";
 
 export default function AboutPage() {
   return (

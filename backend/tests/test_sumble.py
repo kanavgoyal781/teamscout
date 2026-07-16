@@ -81,11 +81,11 @@ def _seed_contact(
     org = sumble.SumbleOrganization(organization_id=42, name="Acme")
     with patch("app.api.routers.jobs.resolve_job", return_value=job):
         with patch(
-            "app.services.team_search.sumble.lookup_organization",
+            "app.services.team.search.sumble.lookup_organization",
             return_value=(org, _CREDITS_ORG_LOOKUP),
         ):
             with patch(
-                "app.services.team_search.sumble.find_hiring_team",
+                "app.services.team.search.sumble.find_hiring_team",
                 return_value=([person], _CREDITS_FALLBACK_PATH, _PATH_FALLBACK),
             ):
                 response = client.post(
@@ -247,7 +247,7 @@ def test_email_reveal_cache_prevents_double_charge(
         reveal_calls.append(person_id)
         return "alex@acme.com", 10
 
-    with patch("app.services.email_reveal.sumble.reveal_email", side_effect=_fake_reveal):
+    with patch("app.services.team.email_reveal.sumble.reveal_email", side_effect=_fake_reveal):
         preview = client.post(f"/contacts/{contact_id}/reveal-email")
         assert preview.status_code == 200
         assert preview.json()["cost_credits"] == 10
@@ -269,9 +269,19 @@ def test_not_found_reveal_is_terminal_and_stores_credits(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     sample_extraction: TeamExtraction,
-    sample_person: sumble.SumblePerson,
 ) -> None:
     monkeypatch.setattr(settings, "SUMBLE_API_KEY", "test-key")
+    # Unique person_id: global reveal cache is keyed by sumble_person_id across
+    # jobs/contacts, so reusing sample_person (9001) after a successful reveal
+    # in an earlier test would short-circuit to a 200 cached hit.
+    person = sumble.SumblePerson(
+        person_id=9102,
+        name="Blake NotFound",
+        title="Engineering Manager",
+        team="Platform",
+        seniority="Manager",
+        job_function="Engineering",
+    )
     job = Job(
         id="job-not-found",
         source="fixture",
@@ -285,7 +295,7 @@ def test_not_found_reveal_is_terminal_and_stores_credits(
         skills=["Python"],
     )
     extraction_id = _seed_extraction(client, job, sample_extraction)
-    contact_id = _seed_contact(client, job, extraction_id, sample_person)
+    contact_id = _seed_contact(client, job, extraction_id, person)
 
     reveal_calls: list[int] = []
 
@@ -293,7 +303,7 @@ def test_not_found_reveal_is_terminal_and_stores_credits(
         reveal_calls.append(person_id)
         return None, 10
 
-    with patch("app.services.email_reveal.sumble.reveal_email", side_effect=_fake_reveal):
+    with patch("app.services.team.email_reveal.sumble.reveal_email", side_effect=_fake_reveal):
         first = client.post(f"/contacts/{contact_id}/reveal-email?confirm=true")
         assert first.status_code == 400
         assert (
@@ -310,7 +320,7 @@ def test_not_found_reveal_is_terminal_and_stores_credits(
         assert preview.json()["status"] == "not_found"
         assert preview.json()["cost_credits"] == 10
 
-    assert reveal_calls == [9001]
+    assert reveal_calls == [9102]
 
 
 def test_same_person_across_two_jobs(
@@ -353,11 +363,11 @@ def test_same_person_across_two_jobs(
         "app.api.routers.jobs.resolve_job", side_effect=lambda job_id, db: job_a if job_id == "job-a" else job_b
     ):
         with patch(
-            "app.services.team_search.sumble.lookup_organization",
+            "app.services.team.search.sumble.lookup_organization",
             return_value=(org, _CREDITS_ORG_LOOKUP),
         ):
             with patch(
-                "app.services.team_search.sumble.find_hiring_team",
+                "app.services.team.search.sumble.find_hiring_team",
                 return_value=([sample_person], _CREDITS_FALLBACK_PATH, _PATH_FALLBACK),
             ):
                 found_a = client.post(f"/jobs/{job_a.id}/find-team", json={"extraction_id": extraction_a})
@@ -393,11 +403,11 @@ def test_zero_result_find_team_persists_team_searched(
 
     with patch("app.api.routers.jobs.resolve_job", return_value=job):
         with patch(
-            "app.services.team_search.sumble.lookup_organization",
+            "app.services.team.search.sumble.lookup_organization",
             return_value=(org, _CREDITS_ORG_LOOKUP),
         ):
             with patch(
-                "app.services.team_search.sumble.find_hiring_team",
+                "app.services.team.search.sumble.find_hiring_team",
                 return_value=([], _CREDITS_FALLBACK_PATH, _PATH_FALLBACK),
             ):
                 found = client.post(
@@ -464,10 +474,10 @@ def test_find_team_ignores_client_supplied_extraction_fields(
     with patch("app.api.routers.jobs.resolve_job", return_value=sample_job):
         with patch("app.api.routers.jobs._load_confirmed_extraction", return_value=stored_extraction):
             with patch(
-                "app.services.team_search.sumble.lookup_organization",
+                "app.services.team.search.sumble.lookup_organization",
                 return_value=(org, _CREDITS_ORG_LOOKUP),
             ):
-                with patch("app.services.team_search.sumble.find_hiring_team", side_effect=_capture_find):
+                with patch("app.services.team.search.sumble.find_hiring_team", side_effect=_capture_find):
                     response = client.post(
                         f"/jobs/{sample_job.id}/find-team",
                         json={
@@ -525,7 +535,7 @@ def test_pending_reveal_blocks_second_confirm_without_sumble(
         reveal_calls.append(person_id)
         return "alex@acme.com", 10
 
-    with patch("app.services.email_reveal.sumble.reveal_email", side_effect=_fake_reveal):
+    with patch("app.services.team.email_reveal.sumble.reveal_email", side_effect=_fake_reveal):
         response = client.post(f"/contacts/{contact_id}/reveal-email?confirm=true")
 
     assert response.status_code == 400
@@ -588,7 +598,7 @@ def test_integrity_error_race_returns_cached_reveal(
             raise IntegrityError("insert conflict", {}, Exception("conflict"))
         return original_flush(*args, **kwargs)
 
-    with patch("app.services.email_reveal.sumble.reveal_email", side_effect=_fake_reveal):
+    with patch("app.services.team.email_reveal.sumble.reveal_email", side_effect=_fake_reveal):
         with patch.object(db, "flush", side_effect=_flush_conflict_on_pending_insert):
             result = email_reveal.confirm_reveal(db, contact)
 
@@ -886,7 +896,7 @@ def test_team_extract_calls_llm(monkeypatch: pytest.MonkeyPatch) -> None:
         assert "Backend Engineer" in prompt
         return expected
 
-    monkeypatch.setattr("app.services.team_extract.llm.complete_json", _fake_complete_json)
+    monkeypatch.setattr("app.services.team.extract.llm.complete_json", _fake_complete_json)
     assert team_extract.extract_team_from_job(job) == expected
 
 

@@ -17,7 +17,7 @@ sys.path.insert(0, str(BACKEND))
 sys.path.insert(0, str(ROOT))
 
 from app.core.config import settings  # noqa: E402
-from app.services.ranking_math import (  # noqa: E402
+from app.services.ranking.math import (  # noqa: E402
     experience_fit_score,
     fuse_final_score,
     recency_score,

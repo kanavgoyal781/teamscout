@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT))
 from app.core.config import settings  # noqa: E402
 from app.db.session import ensure_db  # noqa: E402
 from app.prompts import prompt_versions  # noqa: E402
-from app.services.ranking_config import (  # noqa: E402
+from app.services.ranking.config import (  # noqa: E402
     DEFAULT_EXPANSION,
     DEFAULT_MMR_LAMBDA,
     DEFAULT_TOURNAMENT_THRESHOLD,
@@ -163,7 +163,7 @@ def run_synthetic(variant: dict[str, Any]) -> tuple[dict[str, float], dict[str, 
     proxy (no DeepInfra) so weight rebalance remains measurable without live CE.
     """
     from app.core.env_utils import is_set
-    from app.services.embeddings import embeddings_endpoint
+    from app.services.inference.embeddings import embeddings_endpoint
     from app.services import cross_encoder as ce_mod
 
     totals = {"hybrid_ndcg10": 0.0, "hybrid_mrr": 0.0, "dense_ndcg10": 0.0, "dense_mrr": 0.0}

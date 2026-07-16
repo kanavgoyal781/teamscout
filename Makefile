@@ -58,7 +58,7 @@ test: check-scope
 	cd frontend && pnpm test
 
 # —— Deploy wrappers (operator CLIs; never commit tokens) ——
-# See DEPLOYMENT.md. Fail loudly if CLIs are missing or unauthenticated.
+# See docs/DEPLOYMENT.md. Fail loudly if CLIs are missing or unauthenticated.
 
 deploy-api:
 	@set -e; \

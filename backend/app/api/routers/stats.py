@@ -11,7 +11,7 @@ from app.core.rate_limit import limiter, stats_limit
 from app.db.models import JobTeamSearch, Resume, Trace
 from app.db.session import get_db
 from app.schemas.stats import PublicStats
-from app.services.observability import LLM_OPERATIONS
+from app.services.ops.observability import LLM_OPERATIONS
 router = APIRouter(tags=["stats"])
 _CACHE: dict[str, Any] = {"at": 0.0, "payload": None}
 _TTL, _MEDIAN_N = 60.0, 500

@@ -348,7 +348,7 @@ def test_weekly_workflow_yaml_mentions_feedback_and_experiment() -> None:
 
 
 def test_learning_file_stats_trends(tmp_path: Path) -> None:
-    from app.services.feedback_store import learning_file_stats
+    from app.services.feedback.store import learning_file_stats
 
     evals = tmp_path / "evals"
     evals.mkdir()
@@ -412,7 +412,7 @@ def test_threshold_gate_no_history(tmp_path: Path) -> None:
 
 def test_shared_ranking_config_hash_matches_experiment() -> None:
     sys.path.insert(0, str(ROOT))
-    from app.services.ranking_config import live_ranking_params, ranking_config_hash
+    from app.services.ranking.config import live_ranking_params, ranking_config_hash
     from scripts.experiment import config_hash, normalize_variant
 
     live = live_ranking_params()

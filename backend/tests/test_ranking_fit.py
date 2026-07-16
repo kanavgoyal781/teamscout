@@ -4,7 +4,7 @@ and hybrid path is stubbed — here we unit-test score assembly via pure math ra
 
 from app.schemas.jobs import Job
 from app.schemas.resume import ResumeProfile
-from app.services.ranking_math import (
+from app.services.ranking.math import (
     experience_fit_score,
     fuse_final_score,
     requirements_met_score,
@@ -102,7 +102,7 @@ def test_requirements_beat_keyword_title_only() -> None:
 def test_llm_rerank_batches_calls(monkeypatch) -> None:
     from app.schemas.jobs import Job
     from app.schemas.resume import ResumeProfile
-    from app.services import ranking
+    import app.services.ranking.engine as ranking
 
     jobs = [
         Job(
@@ -123,7 +123,7 @@ def test_llm_rerank_batches_calls(monkeypatch) -> None:
 
     def fake_batch(p, batch):
         calls.append(len(batch))
-        from app.services.ranking import _RerankItem
+        from app.services.ranking.engine import _RerankItem
 
         return {
             j.id: _RerankItem(job_id=j.id, fit_score=50.0, rationale="ok")
@@ -133,11 +133,11 @@ def test_llm_rerank_batches_calls(monkeypatch) -> None:
     monkeypatch.setattr(ranking, "_llm_rerank_batch", fake_batch)
     out = ranking._llm_rerank(profile, jobs)
     assert len(out) == 10
-    assert calls == [8, 2]
+    assert calls == [6, 4]  # _RERANK_BATCH_SIZE = 6
 
 
 def test_map_alias_results_maps_short_ids() -> None:
-    from app.services.ranking import _RerankItem, _RerankResponse, _map_alias_results
+    from app.services.ranking.engine import _RerankItem, _RerankResponse, _map_alias_results
 
     resp = _RerankResponse(
         results=[
@@ -155,7 +155,7 @@ def test_map_alias_results_maps_short_ids() -> None:
 def test_heuristic_rerank_item_uses_profile_skills() -> None:
     from app.schemas.jobs import Job
     from app.schemas.resume import ResumeProfile
-    from app.services.ranking import _heuristic_rerank_item
+    from app.services.ranking.engine import _heuristic_rerank_item
 
     profile = ResumeProfile(
         title="Data Scientist",
@@ -183,8 +183,8 @@ def test_heuristic_rerank_item_uses_profile_skills() -> None:
 def test_llm_rerank_batch_fills_missing_without_raising(monkeypatch) -> None:
     from app.schemas.jobs import Job
     from app.schemas.resume import ResumeProfile
-    from app.services import ranking
-    from app.services.ranking import _RerankItem, _RerankResponse
+    import app.services.ranking.engine as ranking
+    from app.services.ranking.engine import _RerankItem, _RerankResponse
 
     jobs = [
         Job(

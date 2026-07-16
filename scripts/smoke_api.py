@@ -115,13 +115,13 @@ def main() -> int:
                 rationale="Strong fit",
             ),
         )
-        from app.services.jobs import JobFetchResult
+        from app.services.jobs_svc.fetch import JobFetchResult
         with patch("app.api.routers.searches.jobs.fetch_jobs_detailed", return_value=JobFetchResult(jobs=[job])):
             with patch("app.api.routers.searches.ranking.rank_jobs", return_value=[ranked]):
                 search = client.post("/searches", json={"resume_id": resume_id})
         results.append(_step("POST /searches", search.status_code == 200 and len(search.json().get("results", [])) >= 1))
 
-        with patch("app.services.library_store.parser.parse_resume_file", return_value=("lib-smoke-hash", profile)):
+        with patch("app.services.library.store.parser.parse_resume_file", return_value=("lib-smoke-hash", profile)):
             library_upload = client.post(
                 "/library/upload",
                 files={"files": ("library.pdf", pdf_bytes, "application/pdf")},

@@ -105,8 +105,8 @@ def evaluate_diversity(
     Pure ranking_math (no embeddings I/O). Fixture where one company would dominate.
     When use_mmr=False, diversified order is pure relevance (no MMR / soft-cap).
     """
-    from app.services.ranking_config import DEFAULT_MMR_LAMBDA
-    from app.services.ranking_math import apply_company_soft_cap, mmr
+    from app.services.ranking.config import DEFAULT_MMR_LAMBDA
+    from app.services.ranking.math import apply_company_soft_cap, mmr
 
     if mmr_lambda is None:
         mmr_lambda = DEFAULT_MMR_LAMBDA
@@ -240,7 +240,7 @@ def evaluate_feedback_suite() -> int:
 def run_synthetic_suite() -> int:
     ensure_db()
 
-    from app.services.embeddings import embeddings_endpoint
+    from app.services.inference.embeddings import embeddings_endpoint
 
     div = evaluate_diversity()
     print(

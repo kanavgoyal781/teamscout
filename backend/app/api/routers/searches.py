@@ -10,7 +10,7 @@ from app.errors import NotFoundError, ValidationError
 from app.schemas.jobs import DroppedCounts, JobFacets, RankedJob, SearchParams
 from app.schemas.resume import ResumeProfile
 from app.services import jobs, ranking
-from app.services.job_facets import compute_facets
+from app.services.jobs_svc.facets import compute_facets
 router = APIRouter(prefix="/searches", tags=["searches"])
 class SearchRequest(BaseModel):
     resume_id: str

@@ -7,13 +7,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from app.errors import ServiceFailingError
 from app.schemas.jobs import Job
-from app.services.jd_decompose import JdRequirement
-from app.services.pairwise_tournament import (
+from app.services.resume.jd_decompose import JdRequirement
+from app.services.resume.tournament import (
     AlignmentEvidence,
     materialize_ab_labels,
     maybe_run_tournament,
 )
-from app.services.ranking_math_align import TOURNAMENT_GAP
+from app.services.ranking.math_align import TOURNAMENT_GAP
 
 
 def _job() -> Job:
@@ -72,8 +72,8 @@ def test_tournament_close_band_reorders_only_band() -> None:
             reason="decisive unit on must-have PyTorch evidence",
         )
 
-    with patch("app.services.pairwise_tournament.llm.complete_json", side_effect=fake_complete_json):
-        with patch("app.services.pairwise_tournament.load_prompt") as lp:
+    with patch("app.services.resume.tournament.llm.complete_json", side_effect=fake_complete_json):
+        with patch("app.services.resume.tournament.load_prompt") as lp:
             lp.return_value = MagicMock(
                 body="Judge which resume is better.",
                 system="json",
@@ -98,8 +98,8 @@ def test_tournament_invalid_winner_raises() -> None:
     def bad_json(prompt, schema, **kwargs):
         return schema(winner="maybe", reason="nope")
 
-    with patch("app.services.pairwise_tournament.llm.complete_json", side_effect=bad_json):
-        with patch("app.services.pairwise_tournament.load_prompt") as lp:
+    with patch("app.services.resume.tournament.llm.complete_json", side_effect=bad_json):
+        with patch("app.services.resume.tournament.load_prompt") as lp:
             lp.return_value = MagicMock(
                 body="Judge",
                 system="json",
@@ -139,8 +139,8 @@ def test_tournament_cache_hits_skip_second_llm() -> None:
                 reason="cached-path decisive unit on PyTorch",
             )
 
-        with patch("app.services.pairwise_tournament.llm.complete_json", side_effect=fake_complete_json):
-            with patch("app.services.pairwise_tournament.load_prompt") as lp:
+        with patch("app.services.resume.tournament.llm.complete_json", side_effect=fake_complete_json):
+            with patch("app.services.resume.tournament.load_prompt") as lp:
                 lp.return_value = MagicMock(
                     body="Judge",
                     system="json",

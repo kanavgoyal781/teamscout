@@ -8,12 +8,12 @@ import pytest
 from app.schemas.jobs import Job, SearchParams
 from app.schemas.resume import ResumeProfile
 from app.services import job_dedup, jobs
-from app.services.job_sources import FetchCriteria, fetch_from_registry
-from app.services.job_sources.sources import (
+from app.services.jobs_svc.sources import FetchCriteria, fetch_from_registry
+from app.services.jobs_svc.sources.sources import (
     AshbySource, GreenhouseSource, LeverSource, RemotiveSource, RemoteOKSource, AdzunaSource,
     _ashby_remote,
 )
-from app.services.job_sources.util import (
+from app.services.jobs_svc.sources.util import (
     board_cache_get, board_cache_set, filter_jobs, job_matches_criteria, load_ats_slugs, strip_html,
 )
 FIXTURES = Path(__file__).parent / "fixtures" / "job_sources"
@@ -45,11 +45,11 @@ class _FakeClient:
     def get(self, *a, **k):
         return _FakeResp(self._payload)
 def _patch_ats(monkeypatch, payload, slugs_key, slug):
-    monkeypatch.setattr("app.services.job_sources.sources.httpx.Client", lambda *a, **k: _FakeClient(payload))
-    monkeypatch.setattr("app.services.job_sources.sources.load_ats_slugs", lambda: {slugs_key: [slug]})
-    monkeypatch.setattr("app.services.job_sources.sources.board_cache_get", lambda *a, **k: None)
-    monkeypatch.setattr("app.services.job_sources.sources.board_cache_set", lambda *a, **k: None)
-    monkeypatch.setattr("app.services.job_sources.sources.board_cache_delete", lambda *a, **k: None)
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.httpx.Client", lambda *a, **k: _FakeClient(payload))
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.load_ats_slugs", lambda: {slugs_key: [slug]})
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.board_cache_get", lambda *a, **k: None)
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.board_cache_set", lambda *a, **k: None)
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.board_cache_delete", lambda *a, **k: None)
     class _Sess:
         def close(self):
             return None
@@ -58,7 +58,7 @@ def test_greenhouse_adapter_and_html_unescape(monkeypatch):
     payload = _load("greenhouse_stripe.json")
     _patch_ats(monkeypatch, payload, "greenhouse", "stripe")
     # Bypass criteria filter for raw parse; assert unescape
-    with patch("app.services.job_sources.registry.filter_jobs", side_effect=lambda jobs, c: jobs):
+    with patch("app.services.jobs_svc.sources.registry.filter_jobs", side_effect=lambda jobs, c: jobs):
         result = GreenhouseSource().fetch(_criteria(), db=None)
     assert result
     assert all(j.source == "greenhouse" and j.source_quality == "direct_ats" for j in result)
@@ -77,22 +77,22 @@ def test_ashby_hybrid_prefers_workplace_type(monkeypatch):
     assert hybrid.remote_mode == "hybrid"
     assert _ashby_remote({"workplaceType": "Hybrid", "isRemote": True}) == (None, "hybrid")
 def test_remotive_adapter_from_fixture(monkeypatch):
-    monkeypatch.setattr("app.services.job_sources.sources.httpx.Client", lambda *a, **k: _FakeClient(_load("remotive.json")))
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.httpx.Client", lambda *a, **k: _FakeClient(_load("remotive.json")))
     result = RemotiveSource().fetch(_criteria(), db=None)
     assert result and all(j.source == "remotive" for j in result)
 def test_remoteok_adapter_from_fixture(monkeypatch):
-    monkeypatch.setattr("app.services.job_sources.sources.httpx.Client", lambda *a, **k: _FakeClient(_load("remoteok.json")))
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.httpx.Client", lambda *a, **k: _FakeClient(_load("remoteok.json")))
     result = RemoteOKSource().fetch(_criteria(), db=None)
     assert result and all(j.source == "remoteok" for j in result)
 def test_adzuna_adapter_from_fixture(monkeypatch):
     from app.core.config import settings
     monkeypatch.setattr(settings, "ADZUNA_APP_ID", "app")
     monkeypatch.setattr(settings, "ADZUNA_APP_KEY", "key")
-    monkeypatch.setattr("app.services.job_sources.sources.httpx.Client", lambda *a, **k: _FakeClient(_load("adzuna.json")))
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.httpx.Client", lambda *a, **k: _FakeClient(_load("adzuna.json")))
     result = AdzunaSource().fetch(_criteria(), db=None)
     assert len(result) == 1 and result[0].source == "adzuna"
 def test_registry_isolation_one_source_raises(monkeypatch):
-    from app.services.job_sources import registry as reg
+    from app.services.jobs_svc.sources import registry as reg
     class Ok:
         name, cost_free, source_quality = "ok_src", True, "feed"
         def is_configured(self): return True
@@ -117,7 +117,7 @@ def test_registry_isolation_one_source_raises(monkeypatch):
         error_type = None
         def __enter__(self): return self
         def __exit__(self, *a): return None
-    monkeypatch.setattr("app.services.observability.traced_call", lambda *a, **k: Trace())
+    monkeypatch.setattr("app.services.ops.observability.traced_call", lambda *a, **k: Trace())
     jobs_out, counts, errors = fetch_from_registry(_criteria(), db=None)
     assert len(jobs_out) == 1
     assert counts["boom"].errors == 1
@@ -202,22 +202,22 @@ def test_strip_html_unescapes_entities():
 def test_board_cache_only_after_successful_parse(monkeypatch):
     """Invalid payload must not be cached; valid parse then cache."""
     set_calls: list = []
-    monkeypatch.setattr("app.services.job_sources.sources.board_cache_get", lambda *a, **k: None)
-    monkeypatch.setattr("app.services.job_sources.sources.board_cache_set", lambda *a, **k: set_calls.append(k if k else a))
-    monkeypatch.setattr("app.services.job_sources.sources.board_cache_delete", lambda *a, **k: None)
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.board_cache_get", lambda *a, **k: None)
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.board_cache_set", lambda *a, **k: set_calls.append(k if k else a))
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.board_cache_delete", lambda *a, **k: None)
     class _Sess:
         def close(self): return None
     monkeypatch.setattr("app.db.session.SessionLocal", lambda: _Sess())
-    monkeypatch.setattr("app.services.job_sources.sources.load_ats_slugs", lambda: {"greenhouse": ["x"]})
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.load_ats_slugs", lambda: {"greenhouse": ["x"]})
     # bad payload: no cache
-    monkeypatch.setattr("app.services.job_sources.sources.httpx.Client", lambda *a, **k: _FakeClient({"nope": 1}))
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.httpx.Client", lambda *a, **k: _FakeClient({"nope": 1}))
     with pytest.raises(Exception):
         GreenhouseSource().fetch(_criteria(), db=None)
     assert set_calls == []
     # good payload: cache once
     set_calls.clear()
     good = _load("greenhouse_stripe.json")
-    monkeypatch.setattr("app.services.job_sources.sources.httpx.Client", lambda *a, **k: _FakeClient(good))
+    monkeypatch.setattr("app.services.jobs_svc.sources.sources.httpx.Client", lambda *a, **k: _FakeClient(good))
     GreenhouseSource().fetch(_criteria(), db=None)
     assert len(set_calls) == 1
 def test_greenhouse_skips_bad_item_not_whole_board(monkeypatch):
@@ -274,7 +274,7 @@ def test_merge_fetch_uses_registry(monkeypatch):
             "jsearch": SourceCounts(fetched=1, kept_after_filters=1),
             "greenhouse": SourceCounts(fetched=1, kept_after_filters=1),
         }, [])
-    monkeypatch.setattr("app.services.job_sources.fetch_from_registry", fake_reg)
+    monkeypatch.setattr("app.services.jobs_svc.sources.fetch_from_registry", fake_reg)
     result = jobs.fetch_jobs(profile, db, params=SearchParams(use_expand=False))
     assert {j.source for j in result} >= {"jsearch", "greenhouse"}
 def test_token_boundary_no_ml_in_html():

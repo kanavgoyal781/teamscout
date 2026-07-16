@@ -363,7 +363,7 @@ def test_resume_prompt_lives_under_prompts_dir() -> None:
     assert "name:" in text.split("---", 2)[1]
     assert "version:" in text.split("---", 2)[1]
     # services must not embed the old multi-line schema constant
-    parser = (REPO_ROOT / "backend" / "app" / "services" / "parser.py").read_text()
+    parser = (REPO_ROOT / "backend" / "app" / "services" / "resume" / "parser.py").read_text()
     assert "Extract a structured resume profile" not in parser
     assert "load_prompt" in parser
 

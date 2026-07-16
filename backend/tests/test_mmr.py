@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.services.ranking_math import apply_company_soft_cap, mmr
+from app.services.ranking.math import apply_company_soft_cap, mmr
 
 
 def _sim_from_vectors(ids: list[str], vectors: dict[str, list[float]]) -> dict[tuple[str, str], float]:
@@ -122,7 +122,7 @@ def test_diversify_ranked_normalizes_0_100_scores() -> None:
     from unittest.mock import patch
 
     from app.schemas.jobs import Job, RankedJob, ScoreBreakdown
-    from app.services.ranking import _diversify_ranked
+    from app.services.ranking.engine import _diversify_ranked
 
     def _rj(jid: str, company: str, title: str, score: float, desc: str) -> RankedJob:
         job = Job(
@@ -164,7 +164,7 @@ def test_diversify_ranked_normalizes_0_100_scores() -> None:
                 out.append([1.0, 0.0, 0.0])
         return out
 
-    with patch("app.services.embeddings.embed_batch", side_effect=fake_embed_batch):
+    with patch("app.services.inference.embeddings.embed_batch", side_effect=fake_embed_batch):
         out = _diversify_ranked(ranked, lambda_=0.75, top_n=2)
     assert out[0].job.id == "a"
     assert out[1].job.id == "c"
@@ -180,7 +180,7 @@ def test_diversify_ranked_company_soft_cap_on_full_pool() -> None:
     from unittest.mock import patch
 
     from app.schemas.jobs import Job, RankedJob, ScoreBreakdown
-    from app.services.ranking import _diversify_ranked
+    from app.services.ranking.engine import _diversify_ranked
 
     def _rj(jid: str, company: str, score: float) -> RankedJob:
         # Distinct description per company so embed vectors can differ
@@ -237,7 +237,7 @@ def test_diversify_ranked_company_soft_cap_on_full_pool() -> None:
             normed.append([x / n for x in v])
         return normed
 
-    with patch("app.services.embeddings.embed_batch", side_effect=fake_embed_batch):
+    with patch("app.services.inference.embeddings.embed_batch", side_effect=fake_embed_batch):
         out = _diversify_ranked(ranked, lambda_=0.75, top_n=10)
 
     assert len(out) == 10
@@ -249,7 +249,7 @@ def test_diversify_ranked_company_soft_cap_on_full_pool() -> None:
 
 def test_company_soft_cap_uses_pool_company_count_gate() -> None:
     """Few unique companies in ordered_ids but large pool_company_count → still cap."""
-    from app.services.ranking_math import apply_company_soft_cap
+    from app.services.ranking.math import apply_company_soft_cap
 
     # Only 3 employers in this ordered list (would skip without pool_company_count).
     ordered = [f"m{i}" for i in range(5)] + [f"a{i}" for i in range(5)] + [f"b{i}" for i in range(5)]

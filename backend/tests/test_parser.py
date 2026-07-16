@@ -46,7 +46,7 @@ def test_parse_resume_text_uses_llm_json() -> None:
         work_experience=[WorkExperience(title="Backend Engineer", company="Acme", bullets=["Built APIs"])],
         summary="Backend specialist",
     )
-    with patch("app.services.parser.llm.complete_json", return_value=profile) as mocked:
+    with patch("app.services.resume.parser.llm.complete_json", return_value=profile) as mocked:
         parsed = parser.parse_resume_text("raw resume text")
     mocked.assert_called_once()
     assert parsed.title == "Senior Backend Engineer"

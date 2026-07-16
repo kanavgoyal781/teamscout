@@ -1,9 +1,9 @@
 "use client";
 
-import AppShell from "../../components/AppShell";
-import LibraryIngestPanel from "../../components/LibraryIngestPanel";
-import PasteJdPanel from "../../components/PasteJdPanel";
-import ResumeRecommendations from "../../components/ResumeRecommendations";
+import AppShell from "../../components/layout/AppShell";
+import LibraryIngestPanel from "../../components/feature2/LibraryIngestPanel";
+import PasteJdPanel from "../../components/feature2/PasteJdPanel";
+import ResumeRecommendations from "../../components/feature2/ResumeRecommendations";
 import { useLibraryPage } from "../../hooks/useLibraryPage";
 
 export default function LibraryPage() {

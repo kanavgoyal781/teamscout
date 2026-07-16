@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from app.errors import ValidationError
-from app.services.ranking_math import (
+from app.services.ranking.math import (
     experience_fit_score,
     extract_requirement_terms,
     fuse_final_score,

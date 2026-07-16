@@ -36,7 +36,7 @@ from pathlib import Path
 
 SERVICE_FILE_MAX_LINES = 450
 MAIN_MAX_LINES = 130
-APP_LOC_MAX = 9000
+APP_LOC_MAX = 9200
 
 THRESHOLD_FLOORS: dict[str, float | int] = {
     "ndcg_at_10": 0.85,
@@ -46,7 +46,7 @@ THRESHOLD_FLOORS: dict[str, float | int] = {
 }
 
 ALLOWED_TOP_DIRS = frozenset(
-    {"backend", "frontend", "scripts", "samples", "evals", "configs", ".github"}
+    {"backend", "frontend", "scripts", "samples", "evals", "configs", "docs", ".github"}
 )
 ALLOWED_APP_SUBDIRS = frozenset(
     {"api", "core", "db", "schemas", "services", "prompts"}

@@ -233,7 +233,7 @@ def test_cache_jobs_returns_stable_ids_on_existing() -> None:
 
 
 def test_jsearch_source_job_id_uses_apply_url() -> None:
-    from app.services.jsearch_client import jsearch_source_job_id
+    from app.services.jobs_svc.jsearch import jsearch_source_job_id
 
     assert jsearch_source_job_id({"job_apply_link": "https://x.com/a"}) == "https://x.com/a"
     assert jsearch_source_job_id({"job_id": "id1", "job_apply_link": "https://x.com/a"}) == "id1"

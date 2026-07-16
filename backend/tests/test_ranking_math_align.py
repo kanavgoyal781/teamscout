@@ -6,7 +6,7 @@ import math
 import random
 
 import pytest
-from app.services.ranking_math_align import (
+from app.services.ranking.math_align import (
     DEFAULT_EVIDENCE_FLOOR,
     NO_CLEAR_EVIDENCE,
     align_resume,
@@ -76,7 +76,7 @@ def test_phrase_in_text_rejects_substring_false_positives() -> None:
 
 
 def test_skill_bonus_rejects_java_for_javascript_requirement() -> None:
-    from app.services.ranking_math_align import resume_has_skill
+    from app.services.ranking.math_align import resume_has_skill
 
     assert skill_equals("JavaScript", "Java") is False
     assert skill_equals("Java", "Java") is True
@@ -482,7 +482,7 @@ def test_maxsim_empty_units_and_align_errors() -> None:
 
 
 def test_close_call_band_top_k_and_exact_gap() -> None:
-    from app.services.ranking_math_align import TOURNAMENT_GAP, close_call_band
+    from app.services.ranking.math_align import TOURNAMENT_GAP, close_call_band
 
     pairs = [("a", 0.9), ("b", 0.89), ("c", 0.88), ("d", 0.87), ("e", 0.86), ("f", 0.85)]
     band = close_call_band(pairs, gap=0.1, top_k=3)
@@ -493,6 +493,6 @@ def test_close_call_band_top_k_and_exact_gap() -> None:
 
 def test_evidence_floor_settings_matches_math_default() -> None:
     from app.core.config import settings
-    from app.services.ranking_math_align import DEFAULT_EVIDENCE_FLOOR
+    from app.services.ranking.math_align import DEFAULT_EVIDENCE_FLOOR
 
     assert settings.EVIDENCE_FLOOR == DEFAULT_EVIDENCE_FLOOR

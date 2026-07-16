@@ -7,7 +7,7 @@ from unittest.mock import patch
 from app.db.models import Contact, EmailReveal, JobCache
 from app.db.session import SessionLocal
 from app.prompts import load_prompt
-from app.services.outreach_draft import OutreachDraftResult
+from app.services.feedback.outreach_draft import OutreachDraftResult
 from fastapi.testclient import TestClient
 
 
@@ -140,7 +140,7 @@ def test_outreach_draft_calls_llm_with_prompt_meta(client: TestClient) -> None:
             body="Ada — " + ("word " * 100).strip(),
         )
 
-    with patch("app.services.outreach_draft.llm.complete_json", side_effect=fake_complete_json):
+    with patch("app.services.feedback.outreach_draft.llm.complete_json", side_effect=fake_complete_json):
         resp = client.post(f"/contacts/{contact_id}/outreach-draft")
     assert resp.status_code == 200, resp.text
     assert "Ada Lovelace" in captured["prompt"] or "Ada" in captured["prompt"]

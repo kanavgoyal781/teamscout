@@ -3,9 +3,58 @@
 https://teamscout-opal.vercel.app/
 [![CI](https://github.com/kanavgoyal781/teamscout/actions/workflows/ci.yml/badge.svg)](https://github.com/kanavgoyal781/teamscout/actions/workflows/ci.yml)
 
-Recruiting intelligence — resume→jobs→team and library→best-resume, with production hardening (containers, CI, rate limits, request IDs). See [ARCHITECTURE.md](./ARCHITECTURE.md).
+Recruiting intelligence: **resume → jobs → hiring team**, and **library → best resume for a pasted JD**. Production-hardened (containers, CI, rate limits, request IDs, scope gates). Architecture: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 
-## 3-minute demo (JobRight / Sumble)
+## Live demo
+
+| Surface | URL |
+|---|---|
+| **Frontend (Vercel)** | **https://teamscout-opal.vercel.app/** |
+| **API (Fly.io)** | **https://teamscout-api.fly.dev** |
+| Health | https://teamscout-api.fly.dev/health |
+| Liveness | https://teamscout-api.fly.dev/livez |
+
+```text
+Browser → Vercel (Next.js)  --NEXT_PUBLIC_API_BASE-->  Fly.io (FastAPI :8000)
+                                                         └─ SQLite volume /data
+```
+
+Deploy / secrets / rollback: **[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)**.
+
+```bash
+DEMO_API_BASE=https://teamscout-api.fly.dev make demo-check
+```
+
+## What it does
+
+1. **Feature 1 — Resume → jobs → team**  
+   Upload a resume, rank live jobs (JSearch + free boards), extract hiring signals from the JD, look up people via Sumble, reveal emails (credit-safe, no double-charge).  
+   Alternate path: paste a job description → extract team → Sumble (no job board required).
+
+2. **Feature 2 — Library → best resume**  
+   Load many resumes (upload / ZIP / optional Drive). Paste a full job description. Rank the library and pick the best fit with coverage + justification.
+
+Beta sidebar items (Outreach, Applications Tracker) are roadmap stubs only.
+
+## Repository layout
+
+```text
+backend/app/          FastAPI app
+  api/routers/        HTTP endpoints
+  services/           Domain packages: ranking, jobs_svc, team, resume,
+                      inference, library, ops, feedback
+                      (lazy aliases: from app.services import llm, …)
+  schemas/ db/ core/ prompts/
+frontend/
+  app/                Next.js routes (/, /library, /about)
+  components/         layout · feature1 · feature2 · email · about · ui · tour
+  hooks/ lib/ e2e/
+docs/                 ARCHITECTURE, DEPLOYMENT, CODEBASE, DEMO, SPEC
+scripts/              check_scope, evals, smoke, demo_check
+evals/ samples/ configs/
+```
+
+## Local development
 
 ### Prerequisites
 
@@ -13,118 +62,122 @@ Recruiting intelligence — resume→jobs→team and library→best-resume, with
 - Node.js 20+
 - [pnpm](https://pnpm.io/installation) 9+
 
-### 1. Configure and start
+### Configure and start
 
 ```bash
 cd /path/to/teamscout
 cp .env.example .env
-# Fill LLM_API_KEY, EMBEDDINGS_API_KEY, JOBS_API_KEY, SUMBLE_API_KEY
+# Fill at least: LLM_API_KEY, LLM_API_BASE, EMBEDDINGS_API_KEY, EMBEDDINGS_API,
+# JOBS_API_KEY, SUMBLE_API_KEY
+# Production-style CORS for local UI:
+# ALLOWED_ORIGINS=http://localhost:3000
+# NEXT_PUBLIC_API_BASE=http://localhost:8000
 make install
 make dev
 ```
 
-- Backend: http://localhost:8000
-- Frontend: http://localhost:3000
+| Service | URL |
+|---|---|
+| UI | http://localhost:3000 |
+| API | http://localhost:8000 |
+| Health | http://localhost:8000/health |
 
-### 2. Feature 1 — Resume → Jobs → Sumble team
+### Feature 1 (local)
 
-1. Open http://localhost:3000 (sidebar: **Resume → Jobs → Team**)
+1. Open http://localhost:3000 (**Feature 1**)
 2. Upload `samples/sample_resume.pdf`
-3. Confirm title, location, and skills
-4. Click **Search jobs** → review top 10 ranked matches
-5. On a job, click **Extract team from description** → **Confirm & search Sumble**
-6. Preview then confirm **Reveal email** per contact
+3. Confirm title, location, skills → **Search jobs**
+4. Expand **Why this match** on a card
+5. **Extract team** → **Confirm & find hiring team** → optional email reveal  
+   Or use **Paste a job → extract hiring team** without searching jobs
 
-### 3. Feature 2 — Resume library + best resume
+### Feature 2 (local)
 
-1. Open http://localhost:3000/library (sidebar: **Resume Library**)
-2. Upload multiple PDF/DOCX files or a ZIP of resumes (or sync a public Drive folder — see below)
-3. Fill the intent form (role, years, location, remote preference) → **Search jobs by intent**
-4. Click **Pick best resume** on a job
-5. Review top 3 resumes with score breakdown, JD coverage table, and LLM justification
+1. Open http://localhost:3000/library (**Feature 2**)
+2. Upload several resumes (or ZIP / Drive sync)
+3. **Paste a job description** → **Find best resume for this job**
+4. Review top 3: scores, coverage, justification (winner highlighted)
 
-### Google Drive sync (optional)
+### Google Drive (optional)
 
-Public shared-folder approach (recommended):
-
-1. Create a Google Cloud project and enable **Google Drive API**
-2. Create an API key and set `GOOGLE_DRIVE_API_KEY` in `.env`
-3. Share the Drive folder as **Anyone with the link**
-4. Paste the folder URL in the library UI → **Sync Drive folder**
-
-Without `GOOGLE_DRIVE_API_KEY` (or OAuth client credentials), Drive sync hard-fails with a clear 503 error.
-
+1. Enable **Google Drive API**, set `GOOGLE_DRIVE_API_KEY` in `.env`
+2. Share the folder as **Anyone with the link**
+3. Library UI → paste folder URL → **Sync Drive folder**  
+   Unconfigured Drive → clear 503 (no silent empty sync)
 
 ## Docker (production-style local)
 
 ```bash
-cp .env.example .env
-# Fill LLM_*, EMBEDDINGS_*, JOBS_*, SUMBLE_* (and optional Drive keys)
+cp .env.example .env   # fill keys
 docker compose up --build
 ```
 
-- API: http://localhost:8000  (`GET /health` includes `version`; `GET /livez` is process liveness)
-- UI: http://localhost:3000
-- SQLite + uploads persist in named volumes `teamscout-data` / `teamscout-uploads`
-- Set `NEXT_PUBLIC_API_BASE=http://localhost:8000` (browser → host-mapped backend)
-- Required env vars are documented in `.env.example` (compose uses `env_file: .env`)
+- API http://localhost:8000 · UI http://localhost:3000  
+- SQLite + uploads in volumes `teamscout-data` / `teamscout-uploads`  
+- `NEXT_PUBLIC_API_BASE=http://localhost:8000`
 
-## Public deploy (Fly.io + Vercel)
+## Public deploy (Fly + Vercel)
 
-See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for zero→live commands (`fly.toml`, secrets, Vercel `NEXT_PUBLIC_API_BASE`, Litestream/volume backups, CI deploy job, cost notes).
+| Piece | Where |
+|---|---|
+| Frontend | **https://teamscout-opal.vercel.app/** |
+| API | **https://teamscout-api.fly.dev** (`fly.toml` app `teamscout-api`) |
+| Runbook | [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) |
 
 ```bash
-# After the API is live and secrets are set on the server:
-DEMO_API_BASE=https://YOUR-APP.fly.dev make demo-check
+make deploy-status   # CLIs + auth + status (no mutations)
+make deploy-api      # flyctl deploy
+make deploy-web      # vercel --prod
 ```
 
-Config-only PRs do not imply a public URL is already live — the runbook is the operator path.
+On Fly, set `ALLOWED_ORIGINS=https://teamscout-opal.vercel.app` (no trailing slash).  
+On Vercel, set `NEXT_PUBLIC_API_BASE=https://teamscout-api.fly.dev` (build-time).
 
-## Development
+## Development commands
 
 ```bash
 make test
+python3 scripts/check_scope.py
 cd backend && pytest -q
-cd frontend && pnpm build && pnpm test
+cd frontend && pnpm typecheck && pnpm test
 python scripts/eval_ranking.py
 python scripts/eval_resume_pick.py
 python scripts/smoke_sumble.py
 ```
 
-## API (M4)
+## API surface (current)
 
 | Endpoint | Description |
 |---|---|
-| `GET /health` | Config presence for all integrations |
-| `POST /resumes/upload` | Parse PDF/DOCX → `ResumeProfile` |
-| `PUT /resumes/{id}/confirm` | Confirm editable profile fields |
-| `POST /searches` | Fetch jobs, hybrid rank, return top 10 |
-| `POST /jobs/{job_id}/extract-team` | LLM team extraction from cached job JD |
-| `POST /jobs/{job_id}/find-team` | Sumble people search with confirmed extraction |
-| `GET /jobs/{job_id}/team` | List cached contacts for a job |
-| `POST /contacts/{id}/reveal-email` | Preview or confirm email reveal (`?confirm=true`) |
-| `POST /library/drive/sync` | Sync PDF/DOCX from public Drive folder |
-| `POST /library/upload` | Upload multi-file or ZIP into resume library |
-| `GET /library/resumes` | List library resumes (hash-deduped) |
-| `POST /library/intent/search` | Fetch + rank jobs for intent form |
-| `POST /library/jobs/{job_id}/recommend-resumes` | Top 3 library resumes for a job |
+| `GET /health` | Config presence; `ok` false if required integrations missing |
+| `GET /livez` | Process liveness (deploy checks) |
+| `POST /resumes/upload` | Parse PDF/DOCX → profile |
+| `PUT /resumes/{id}/confirm` | Confirm profile |
+| `POST /searches` | Fetch + hybrid rank top jobs |
+| `POST /jobs/from-text` | Ingest pasted JD (team path without JSearch) |
+| `POST /jobs/{job_id}/extract-team` | LLM team extraction |
+| `POST /jobs/{job_id}/find-team` | Sumble people search |
+| `GET /jobs/{job_id}/team` | Cached contacts |
+| `POST /contacts/{id}/reveal-email` | Preview or confirm email reveal |
+| `POST /library/upload` | Multi-file / ZIP library ingest |
+| `POST /library/drive/sync` | Public Drive folder sync |
+| `GET /library/resumes` | List library resumes |
+| `POST /library/recommend-from-jd` | **Feature 2:** paste JD → top library resumes |
+| `POST /library/jobs/{job_id}/recommend-resumes` | Recommend for a cached job id |
+| `POST /library/intent/search` | Intent form → ranked jobs (secondary path) |
 
-## Ranking pipeline
+## Ranking (high level)
 
-1. Fetch ~150 jobs (JSearch), 14-day recency filter, cache in SQLite with indexed `job_id`
-2. Dense cosine similarity + BM25 lexical retrieval
-3. Reciprocal Rank Fusion (`k=60`)
-4. LLM rerank top 30
-5. Final score: `0.5·LLM + 0.3·RRF + 0.1·skills + 0.1·recency`
+1. Fetch jobs (JSearch + optional free boards), recency filter, SQLite cache  
+2. Dense embeddings + BM25 → RRF  
+3. LLM rerank shortlist  
+4. Weighted fuse (see `docs/ARCHITECTURE.md` for live weights / MaxSim resume pick)
 
-Resume pick inverts the pipeline: job description is the query, library resumes are candidates.
+## UI screenshots
 
+Playwright e2e with mocked API (`cd frontend && pnpm test:e2e`):
 
-## UI screenshots (M10)
-
-Generated by Playwright e2e (`cd frontend && pnpm test:e2e`) with a route-mocked API — not live production captures.
-
-| Screen | File |
+| Screen | Path |
 |---|---|
 | Wizard upload | `frontend/public/screenshots/01-wizard-upload.png` |
 | Profile confirm | `frontend/public/screenshots/02-profile-confirm.png` |
@@ -133,39 +186,37 @@ Generated by Playwright e2e (`cd frontend && pnpm test:e2e`) with a route-mocked
 | Resume library | `frontend/public/screenshots/05-library.png` |
 | Top-3 comparison | `frontend/public/screenshots/06-resume-comparison.png` |
 
-Embed after a local e2e run:
-
 ![Wizard upload](./frontend/public/screenshots/01-wizard-upload.png)
 ![Job matches](./frontend/public/screenshots/03-job-matches.png)
 ![Top-3 comparison](./frontend/public/screenshots/06-resume-comparison.png)
-
-### Frontend elevation notes
-
-- Dark-first theme + light toggle (cookie class strategy (no browser storage APIs))
-- `@tanstack/react-query` for server data; credit mutations use `retry: false`
-- Sonner toasts surface backend `message` and request id when present
-- Lighthouse scores were **not** measured in this milestone; manual targets remain Perf ≥85 / A11y ≥95 / BP ≥95 if you run a local audit
-
-## Architecture
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the ranking funnel, credit-safety, and deploy surface.
 
 ## Stack
 
 | Layer | Choice |
 |---|---|
 | Backend | FastAPI, Python 3.12, Pydantic v2 |
-| Frontend | Next.js, pnpm, Tailwind |
-| Database | SQLite via SQLAlchemy |
-| Secrets | Repo-root `.env` only |
+| Frontend | Next.js, pnpm, Tailwind, React Query |
+| Database | SQLite (SQLAlchemy) |
+| Deploy | Fly.io (API) + Vercel (UI) |
+| Secrets | Repo-root `.env` / platform secrets only |
 
-## Milestone 4 scope
+## Honesty / anti-bloat
 
-- Google Drive + local/ZIP resume library with content-hash dedup
-- Intent form → ranked job list
-- Best-resume pick with coverage table + LLM justification
-- Sidebar navigation with disabled Beta tabs (tooltip: "Coming soon")
-- `scripts/eval_resume_pick.py` + pytest coverage
-- M3 structural debt: decomposed frontend, indexed job lookup, `team_search` service
+- No mocks in app code; unconfigured integrations → typed 503  
+- No silent LLM / jobs / Sumble fallbacks  
+- Scope gate: `scripts/check_scope.py` / `make check-scope`  
+- Contract: [CONSTRAINTS.md](./CONSTRAINTS.md)
 
-Not implemented: outreach, applications tracker, auto-submit.
+Not in product: outreach send, applications tracker, queues, K8s/Terraform as product infra.
+
+## Docs
+
+| Doc | Purpose |
+|---|---|
+| [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Funnel, scores, credit-safety, SQLite tradeoffs |
+| [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Zero → live Fly + Vercel |
+| [docs/DEMO.md](./docs/DEMO.md) | Timed demo script |
+| [docs/CODEBASE.md](./docs/CODEBASE.md) | Deep architecture map |
+| [docs/SPEC.md](./docs/SPEC.md) | Product spec history |
+| [AGENTS.md](./AGENTS.md) | Contributor / agent rules |
+

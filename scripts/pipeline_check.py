@@ -90,7 +90,7 @@ def _embeddings_ready() -> bool:
 
     from app.core.config import settings
     from app.core.env_utils import is_set
-    from app.services.embeddings import embeddings_endpoint
+    from app.services.inference.embeddings import embeddings_endpoint
 
     return bool(is_set(settings.EMBEDDINGS_API_KEY) and embeddings_endpoint())
 

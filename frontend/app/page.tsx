@@ -2,16 +2,16 @@
 
 import { useMemo, useState } from "react";
 
-import AppShell from "../components/AppShell";
+import AppShell from "../components/layout/AppShell";
 import JobFacetsSidebar, {
   EMPTY_FACET_SELECTION,
   postedAgeBucket,
   salaryBucket,
   type FacetSelection,
-} from "../components/JobFacetsSidebar";
-import JobPasteTeamPanel from "../components/JobPasteTeamPanel";
-import JobResultsList from "../components/JobResultsList";
-import ResumeWizard from "../components/ResumeWizard";
+} from "../components/feature1/JobFacetsSidebar";
+import JobPasteTeamPanel from "../components/feature1/JobPasteTeamPanel";
+import JobResultsList from "../components/feature1/JobResultsList";
+import ResumeWizard from "../components/feature1/ResumeWizard";
 import { useJobTeam } from "../hooks/useJobTeam";
 import type { JobFacets, RankedJob } from "../lib/types";
 

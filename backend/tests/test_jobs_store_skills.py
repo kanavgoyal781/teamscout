@@ -1,7 +1,7 @@
 """Paste-JD skill extraction quality."""
 
-from app.services.jobs_store import extract_skills_from_jd_text
-from app.services.ranking_math import skill_jaccard
+from app.services.jobs_svc.store import extract_skills_from_jd_text
+from app.services.ranking.math import skill_jaccard
 
 
 def test_extract_skills_rejects_filler_tokens() -> None:

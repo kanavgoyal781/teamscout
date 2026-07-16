@@ -10,9 +10,9 @@ from app.core.config import settings
 from app.errors import ServiceFailingError, ServiceNotConfiguredError
 from app.schemas.jobs import Job
 from app.schemas.resume import ResumeProfile
-from app.services.cross_encoder import normalize_cross_encoder_scores, _validated_model
-from app.services.hybrid_rank import Rankable, hybrid_rank
-from app.services.listwise import (
+from app.services.ranking.cross_encoder import normalize_cross_encoder_scores, _validated_model
+from app.services.ranking.hybrid import Rankable, hybrid_rank
+from app.services.ranking.listwise import (
     ListwiseItem,
     ListwiseResponse,
     PermutationError,
@@ -23,8 +23,8 @@ from app.services.listwise import (
     ranks_to_fit_scores,
     validate_permutation,
 )
-from app.services.ranking import _llm_rerank_listwise
-from app.services.ranking_math import fuse_final_score, validate_ranking_weights
+from app.services.ranking.engine import _llm_rerank_listwise
+from app.services.ranking.math import fuse_final_score, validate_ranking_weights
 from app.prompts import load_prompt
 
 
@@ -120,7 +120,7 @@ def test_listwise_retry_call_count_then_success() -> None:
         ]
     )
     mock = MagicMock(side_effect=[bad, good])
-    with patch("app.services.ranking.llm.complete_json", mock):
+    with patch("app.services.ranking.engine.llm.complete_json", mock):
         out = _llm_rerank_listwise(profile, jobs)
     assert mock.call_count == 2
     assert set(out) == {"job-a", "job-b"}
@@ -133,8 +133,9 @@ def test_listwise_fallback_heuristic_no_extra_llm() -> None:
     profile = ResumeProfile(title="Eng", skills=["Python"], location="R", years_of_experience=3)
     bad = ListwiseResponse(ranking=[ListwiseItem(job_id="hallucinated", reason="x")])
     mock = MagicMock(side_effect=[bad, bad])
-    with patch("app.services.ranking.llm.complete_json", mock):
-        with patch("app.services.ranking._llm_rerank_pointwise") as pw:
+    with patch("app.services.ranking.engine.llm.complete_json", mock):
+        # Must patch engine module — package-level ranking._llm_rerank_pointwise is a no-op after reorg.
+        with patch("app.services.ranking.engine._llm_rerank_pointwise") as pw:
             out = _llm_rerank_listwise(profile, jobs)
     assert mock.call_count == 2
     assert not pw.called
@@ -182,8 +183,8 @@ def test_hybrid_ce_missing_fn_hard_fails(monkeypatch: pytest.MonkeyPatch) -> Non
         Rankable(id="a", dense_text="a", lexical_text="a"),
         Rankable(id="b", dense_text="b", lexical_text="b"),
     ]
-    with patch("app.services.hybrid_rank.dense_ranking", return_value=["a", "b"]):
-        with patch("app.services.hybrid_rank.lexical_ranking", return_value=["b", "a"]):
+    with patch("app.services.ranking.hybrid.dense_ranking", return_value=["a", "b"]):
+        with patch("app.services.ranking.hybrid.lexical_ranking", return_value=["b", "a"]):
             with pytest.raises(ServiceFailingError, match="cross_encode_fn"):
                 hybrid_rank(
                     "q", "q", cands,
@@ -204,8 +205,8 @@ def test_hybrid_ce_shortlist_only_when_weight_positive(monkeypatch: pytest.Monke
     def ce_fn(cs: list[Rankable]) -> dict[str, float]:
         return {c.id: float(i) for i, c in enumerate(cs)}
 
-    with patch("app.services.hybrid_rank.dense_ranking", return_value=[c.id for c in cands]):
-        with patch("app.services.hybrid_rank.lexical_ranking", return_value=[c.id for c in cands]):
+    with patch("app.services.ranking.hybrid.dense_ranking", return_value=[c.id for c in cands]):
+        with patch("app.services.ranking.hybrid.lexical_ranking", return_value=[c.id for c in cands]):
             monkeypatch.setattr(settings, "RANKING_WEIGHT_CROSS_ENCODER", 0.0)
             monkeypatch.setattr(settings, "CROSS_ENCODER_SHORTLIST", False)
             monkeypatch.setattr(settings, "RERANK_TOP_N", 3)
@@ -485,7 +486,7 @@ def test_feedback_score_components_sanitized() -> None:
 
 
 def test_skills_chips_uses_skill_equals_aliases() -> None:
-    from app.services.ranking import _skills_chips
+    from app.services.ranking.engine import _skills_chips
 
     profile = ResumeProfile(
         title="Eng", skills=["Go", "PostgreSQL"], location="R", years_of_experience=3,
@@ -506,8 +507,8 @@ def test_listwise_clamps_shortlist(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "LLM_RERANK_TOP_N", 15)
     cands = [Rankable(id=f"j{i}", dense_text=f"t{i}", lexical_text=f"t{i}") for i in range(40)]
     order = [c.id for c in cands]
-    with patch("app.services.hybrid_rank.dense_ranking", return_value=order):
-        with patch("app.services.hybrid_rank.lexical_ranking", return_value=order):
+    with patch("app.services.ranking.hybrid.dense_ranking", return_value=order):
+        with patch("app.services.ranking.hybrid.lexical_ranking", return_value=order):
             scored = hybrid_rank(
                 "q", "q", cands,
                 skill_overlap_fn=lambda _: 0.5,
