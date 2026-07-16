@@ -45,6 +45,8 @@ Not used for: section kickers, body links, principle marks, default funnel/node 
 
 - Component TS/TSX: **near-zero** hex (enforced by `theme.tokens.test.ts`).  
 - Hex lives in `globals.css` token block only.  
+- Product CSS body: no neon/indigo/sky/emerald chip literals; facets use `--surface-hover` / `--accent-soft` only. Remaining raw `rgba(0,0,0,…)` is overlay scrim (tour/modal) only.  
+- Single radius token `--radius: 10px` for facets, filter-hint, cards (no 6px/8px leftovers).  
 - Orphaned old palette removed from tokens (see PR list).
 
 ## Orphaned old hex (deleted)

@@ -31,6 +31,18 @@ describe("M23 design tokens", () => {
     expect(css.toLowerCase()).not.toMatch(/#1f8f5a/);
   });
 
+  it("has no neon chip / indigo facet fallbacks in CSS body", () => {
+    expect(css).not.toMatch(/rgba\(\s*56\s*,\s*189\s*,\s*248/);
+    expect(css).not.toMatch(/rgba\(\s*251\s*,\s*191\s*,\s*36/);
+    expect(css).not.toMatch(/rgba\(\s*52\s*,\s*211\s*,\s*153/);
+    expect(css).not.toMatch(/rgba\(\s*99\s*,\s*102\s*,\s*241/);
+    expect(css).toMatch(/\.chip-dup\s*\{[^}]*var\(--accent-soft\)/s);
+    expect(css).toMatch(/\.chip-salary-unknown\s*\{[^}]*var\(--warning-soft\)/s);
+    expect(css).toMatch(/\.chip-salary\s*\{[^}]*var\(--success-soft\)/s);
+    expect(css).toMatch(/\.facet-group button:hover\s*\{[^}]*var\(--surface-hover\)/s);
+    expect(css).toMatch(/\.filter-hint\s*\{[^}]*border-radius:\s*var\(--radius\)/s);
+  });
+
   it("uses single 10px radius and no decorative card shadows by default", () => {
     expect(css).toMatch(/--radius:\s*10px/);
     expect(css).toMatch(/\.panel\s*\{[^}]*box-shadow:\s*none/s);
