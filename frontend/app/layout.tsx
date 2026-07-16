@@ -53,7 +53,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`light ${geistSans.variable} ${geistMono.variable} ${fraunces.variable}`}
+      // Font vars only — light/dark class is applied by themeInitScript (cookie)
+      // before paint. Hardcoding "light" here re-hydrates over dark cookie.
+      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable}`}
       suppressHydrationWarning
     >
       <head>

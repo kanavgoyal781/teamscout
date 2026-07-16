@@ -15,12 +15,15 @@ function getThemeSnapshot(): ThemeMode {
 }
 
 function getServerThemeSnapshot(): ThemeMode {
-  return "dark";
+  // SSR default matches light-first product; client hydrate uses cookie.
+  return "light";
 }
 
 function ensureThemeStore(): void {
   if (themeSnapshot == null) {
     themeSnapshot = resolveInitialTheme();
+    // Keep class in sync after React hydrates font variables on <html>
+    applyThemeClass(themeSnapshot);
   }
 }
 
