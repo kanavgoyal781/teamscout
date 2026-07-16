@@ -107,15 +107,23 @@ def _cache_put(
         db.rollback()
         logger.warning("pairwise_tournament.cache_put_failed", error=str(exc))
 def _format_must_rows(rows: list[dict]) -> list[str]:
+    """Format must-rows with strength buckets (not raw 0.xx scores — M15 hygiene)."""
+    from app.services.ranking.math_align import evidence_strength
+
     lines: list[str] = []
     for r in rows:
-        if str(r.get("kind") or "must") != "must": continue
+        if str(r.get("kind") or "must") != "must":
+            continue
         req = strip_weight_notation(str(r.get("requirement") or ""))
-        try:
-            score_s = f"{float(r.get('evidence_score')):.2f}"
-        except (TypeError, ValueError):
-            score_s = "?"
-        lines.append(f"- {req} | evidence: {r.get('evidence_unit') or '(none)'} | score: {score_s}")
+        strength = str(r.get("strength") or "").strip().lower()
+        if strength not in {"none", "weak", "solid", "strong"}:
+            try:
+                strength = evidence_strength(float(r.get("evidence_score") or 0.0))
+            except (TypeError, ValueError):
+                strength = "none"
+        status = str(r.get("status") or "miss")
+        ev = r.get("evidence_unit") or "(none)"
+        lines.append(f"- {req} | evidence: {ev} | strength: {strength} | status: {status}")
     return lines
 def _nice_summary(rows: list[dict]) -> str:
     nice = [r for r in rows if str(r.get("kind") or "") == "nice"]

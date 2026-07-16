@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.logging import get_logger
+from app.schemas.job_metadata import JobMetadata
 from app.schemas.jobs import Job, ScoreBreakdown
 from app.schemas.library import (
     AlignmentRow,
@@ -20,6 +21,7 @@ from app.services.ranking.math import skill_jaccard
 from app.services.ranking.math_align import (
     align_resume,
     cluster_variant_label,
+    evidence_strength,
     single_linkage_clusters,
     under_segmented_units,
 )
@@ -73,10 +75,11 @@ def rank_resumes_for_job(
     *,
     use_llm: bool = True,
     db: Session | None = None,
+    metadata_hints: JobMetadata | None = None,
 ) -> list[RankedResumeRecommendation]:
     if not candidates: return []
     by_id = {c.resume_id: c for c in candidates}
-    requirements = decompose_jd(job, use_llm=use_llm, db=db)
+    requirements = decompose_jd(job, use_llm=use_llm, db=db, metadata_hints=metadata_hints)
     req_texts = [r.text for r in requirements]
     weights = [r.weight for r in requirements]
     categories = [r.category for r in requirements]
@@ -179,18 +182,25 @@ def rank_resumes_for_job(
         rows = alignment_by_id[rid]
         item = justify_lookup.get(rid)
         units_preview = evidence_units_from_alignment(rows) or ["—"]
+        must_n = sum(1 for r in requirements if r.kind == "must")
+        must_hit_preview = sum(
+            1 for r in rows if str(r.get("kind") or "must") == "must" and r.get("status") == "hit"
+        )
         rationale = (
             item.rationale
             if item
-            else f"Coverage {cov:.0%} on {len(requirements)} requirements; best evidence: {units_preview[0][:160]}"
+            else (
+                f"{must_hit_preview} of {must_n or len(requirements)} must-haves evidenced; "
+                f"best evidence: {units_preview[0][:160]}"
+            )
         )
         if not rationale_rank_consistent(rationale, final_rank=rank_idx + 1):
             if rank_idx == 0:
                 pass
             else:
                 rationale = (
-                    f"Rank #{rank_idx + 1} with {cov:.0%} requirement coverage; "
-                    f"evidence: {units_preview[0][:160]}"
+                    f"Rank #{rank_idx + 1}: {must_hit_preview} of {must_n or len(requirements)} "
+                    f"must-haves evidenced; evidence: {units_preview[0][:160]}"
                 )
         matched = item.matched_skills if item else [r["requirement"] for r in rows if r.get("status") == "hit"][:12]
         missing = item.missing_skills if item else [r["requirement"] for r in rows if r.get("status") == "miss"][:12]
@@ -203,8 +213,11 @@ def rank_resumes_for_job(
             description=job.description,
         )
         final_score = (0.55 * cov + 0.25 * (llm_fit / 100.0) + 0.10 * skill + 0.10 * exp) * 100.0
-        # Primary ring is coverage×100; post-pass enforces monotonicity if tournament reordered.
-        match_score = cov * 100.0
+        # Headline match = weighted final blend (one coherent scale with table/justification).
+        match_score = round(final_score, 2)
+        must_rows = [r for r in rows if str(r.get("kind") or "must") == "must"]
+        must_hit = sum(1 for r in must_rows if r.get("status") == "hit")
+        must_total = len(must_rows)
         cid = cluster_map.get(rid, rid)
         mlist = members.get(cid, [rid])
         cov_rows = [
@@ -217,7 +230,7 @@ def rank_resumes_for_job(
             RankedResumeRecommendation(
                 resume_id=c.resume_id,
                 filename=c.filename,
-                match_score=round(match_score, 2),
+                match_score=match_score,
                 content_hash=c.content_hash,
                 score_breakdown=ScoreBreakdown(
                     llm_fit=llm_fit,
@@ -233,6 +246,8 @@ def rank_resumes_for_job(
                 ),
                 coverage=cov_rows,
                 coverage_score=round(cov, 4),
+                must_haves_hit=must_hit,
+                must_haves_total=must_total,
                 alignment=[
                     AlignmentRow(
                         requirement=r["requirement"],
@@ -241,6 +256,7 @@ def rank_resumes_for_job(
                         weight=float(r.get("weight") or 1.0),
                         evidence_unit=r.get("evidence_unit"),
                         evidence_score=float(r.get("evidence_score") or 0.0),
+                        strength=str(r.get("strength") or evidence_strength(float(r.get("evidence_score") or 0.0))),
                         status=r["status"],
                     )
                     for r in rows
@@ -267,9 +283,6 @@ def rank_resumes_for_job(
                 ),
             )
         )
-    # When tournament reorders, lift/cap Overall match so card order never shows inverted rings.
-    if tournament.ran and tournament.overrode_coverage and len(ranked) >= 2:
-        for i in range(len(ranked) - 2, -1, -1):
-            if ranked[i].match_score + 1e-9 < ranked[i + 1].match_score:
-                ranked[i].match_score = round(min(100.0, ranked[i + 1].match_score + 0.01), 2)
+    # Tournament only reorders cards; match_score stays the weighted final blend
+    # (never fudge rings to hide inverted scores — badge explains tournament order).
     return ranked

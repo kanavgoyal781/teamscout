@@ -31,8 +31,10 @@ def require_sumble_config() -> None:
     if not is_set(settings.SUMBLE_API_KEY):
         raise ServiceNotConfiguredError("Sumble", "SUMBLE_API_KEY")
 def redact_url(url: str) -> str:
+    from app.core.redact import redact_error
+
     parsed = urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    return redact_error(f"{parsed.scheme}://{parsed.netloc}{parsed.path}")
 def auth_headers() -> dict[str, str]:
     return {
         "Authorization": f"Bearer {settings.SUMBLE_API_KEY}",
@@ -45,6 +47,7 @@ def post(
     credit_costing: bool = False,
     operation: str | None = None,
 ) -> dict[str, Any]:
+    from app.core.redact import format_httpx_error
     from app.services import observability
     require_sumble_config()
     url = f"{settings.SUMBLE_BASE_URL.rstrip('/')}{path}"
@@ -62,10 +65,9 @@ def post(
                 response.raise_for_status()
                 data = response.json()
         except httpx.HTTPStatusError as exc:
-            detail = exc.response.text[:500] if exc.response is not None else str(exc)
-            raise ServiceFailingError("Sumble", f"HTTP {exc.response.status_code}: {detail}") from exc
+            raise ServiceFailingError("Sumble", format_httpx_error(exc)) from exc
         except httpx.HTTPError as exc:
-            raise ServiceFailingError("Sumble", str(exc)) from exc
+            raise ServiceFailingError("Sumble", format_httpx_error(exc)) from exc
         if not isinstance(data, dict):
             raise ServiceFailingError("Sumble", "unexpected response format")
         credits = data.get("credits_used")

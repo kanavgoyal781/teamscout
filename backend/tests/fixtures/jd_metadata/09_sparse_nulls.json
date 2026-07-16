@@ -1,0 +1,17 @@
+{
+  "id": "09_sparse_nulls",
+  "shape": "sparse — no company/salary/location (nulls required)",
+  "raw": "We need someone who can write clean Python services and care about tests.\nYou will ship APIs and own on-call. Kubernetes experience is helpful but not required.\n",
+  "expected": {
+    "title": null,
+    "company": null,
+    "location": null,
+    "remote_mode": null,
+    "salary_min": null,
+    "salary_max": null,
+    "salary_currency": null,
+    "seniority": null,
+    "department": null
+  },
+  "sparse": true
+}

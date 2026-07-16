@@ -45,6 +45,37 @@ function evidenceCell(status: string, evidence: string | null | undefined): stri
   return evidence;
 }
 
+function strengthFromScore(score: number | undefined, status: string): "none" | "weak" | "solid" | "strong" {
+  if (status === "miss" || score == null || score <= 0) return "none";
+  if (score < 0.35) return "weak";
+  if (score < 0.7) return "solid";
+  return "strong";
+}
+
+function StrengthBar({ strength }: { strength: "none" | "weak" | "solid" | "strong" }) {
+  const fill = { none: 0, weak: 33, solid: 66, strong: 100 }[strength];
+  return (
+    <span className="strength-bar" data-strength={strength} title={strength} aria-label={`Strength ${strength}`}>
+      <span className="strength-bar-track" aria-hidden>
+        <span className="strength-bar-fill" style={{ width: `${fill}%` }} />
+      </span>
+      <span className="strength-bar-label meta">{strength}</span>
+    </span>
+  );
+}
+
+function coverageLabel(item: RankedResumeRecommendation): string {
+  if (typeof item.must_haves_total === "number" && item.must_haves_total > 0) {
+    const hit = item.must_haves_hit ?? 0;
+    return `${hit} of ${item.must_haves_total} must-haves evidenced`;
+  }
+  if (typeof item.coverage_score === "number") {
+    // Fallback only when must-have counts absent
+    return `Coverage ${Math.round(item.coverage_score * 100)}%`;
+  }
+  return "";
+}
+
 function highlightCited(text: string, phrases: string[]): React.ReactNode {
   if (!text || phrases.length === 0) return text;
   const escaped = phrases
@@ -117,7 +148,7 @@ export default function ResumeRecommendations({
           <p className="meta" data-testid="tournament-override-badge" style={{ marginTop: 4 }}>
             <span
               className="chip"
-              title="Coverage scores were close; a pairwise LLM tournament reordered the list. Coverage % is pure MaxSim. Overall match is coverage-based but adjusted so higher-ranked cards never show a lower ring than lower ranks after an override."
+              title="Coverage scores were close; a pairwise LLM tournament reordered the list. Overall match is always the weighted final blend (not adjusted to force non-increasing rings). Must-haves show as X of N evidenced."
             >
               Ranked by close-call tournament
             </span>
@@ -167,9 +198,9 @@ export default function ResumeRecommendations({
                           : ""}
                       </p>
                     ) : null}
-                    {typeof item.coverage_score === "number" ? (
+                    {coverageLabel(item) ? (
                       <p className="meta font-num" style={{ margin: "4px 0 0" }} data-testid={`coverage-label-${index}`}>
-                        Coverage {(item.coverage_score * 100).toFixed(0)}%
+                        {coverageLabel(item)}
                       </p>
                     ) : null}
                   </div>
@@ -189,6 +220,8 @@ export default function ResumeRecommendations({
                   breakdown={item.score_breakdown}
                   variant="resumes"
                   coverageScore={item.coverage_score ?? null}
+                  mustHavesHit={item.must_haves_hit}
+                  mustHavesTotal={item.must_haves_total}
                 />
                 <div className="actions" style={{ marginTop: 10 }}>
                   <FeedbackButtons
@@ -219,25 +252,29 @@ export default function ResumeRecommendations({
                       <tr>
                         <th>Requirement</th>
                         <th>Kind</th>
-                        <th>Score</th>
+                        <th>Strength</th>
                         <th>Best evidence unit</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {align.map((row) => (
-                        <tr key={`${item.resume_id}-${row.requirement}`}>
-                          <td>{row.requirement}</td>
-                          <td className="meta">{row.kind}</td>
-                          <td
-                            className={
-                              row.status === "hit" ? "coverage-hit font-num" : "coverage-miss font-num"
-                            }
-                          >
-                            {(row.evidence_score * 100).toFixed(0)}%
-                          </td>
-                          <td>{row.evidence_unit ?? "—"}</td>
-                        </tr>
-                      ))}
+                      {align.map((row) => {
+                        const strength =
+                          row.strength ?? strengthFromScore(row.evidence_score, row.status);
+                        return (
+                          <tr key={`${item.resume_id}-${row.requirement}`}>
+                            <td>{row.requirement}</td>
+                            <td className="meta">{row.kind}</td>
+                            <td
+                              className={
+                                row.status === "hit" ? "coverage-hit font-num" : "coverage-miss font-num"
+                              }
+                            >
+                              <StrengthBar strength={strength} />
+                            </td>
+                            <td>{evidenceCell(row.status, row.evidence_unit)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 ) : item.coverage.length > 0 ? (

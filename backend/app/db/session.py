@@ -105,7 +105,7 @@ def _migrate_jobs_cache_unique() -> None:
                 "ON jobs_cache (workspace_id, source, source_job_id)"
             ))
         conn.commit()
-_REQUIRED_SQLITE_TABLES = frozenset({"traces", "embedding_cache", "workspaces"})
+_REQUIRED_SQLITE_TABLES = frozenset({"traces", "embedding_cache", "workspaces", "jd_metadata_cache"})
 def _sqlite_tables() -> set[str]:
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()

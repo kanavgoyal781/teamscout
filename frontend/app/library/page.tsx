@@ -23,6 +23,10 @@ export default function LibraryPage() {
         driveUrl={state.driveUrl}
         syncStatus={state.syncStatus}
         distinctVersions={state.distinctVersions}
+        lastIngestResults={state.lastIngestResults}
+        newlyParsedIds={state.newlyParsedIds}
+        cachedCount={state.cachedCount}
+        parsedCount={state.parsedCount}
         onDriveUrlChange={state.setDriveUrl}
         onUpload={state.handleUpload}
         onDriveSync={state.handleDriveSync}

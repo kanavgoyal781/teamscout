@@ -1,0 +1,16 @@
+{
+  "id": "05_startup_three_sentences",
+  "shape": "ultra-short startup",
+  "raw": "Founding engineer at OrbitMail (SF). Build the MVP email agent in TypeScript. Equity heavy, cash light.\n",
+  "expected": {
+    "title": "Founding engineer",
+    "company": "OrbitMail",
+    "location": "SF",
+    "remote_mode": null,
+    "salary_min": null,
+    "salary_max": null,
+    "salary_currency": null,
+    "seniority": null,
+    "department": null
+  }
+}

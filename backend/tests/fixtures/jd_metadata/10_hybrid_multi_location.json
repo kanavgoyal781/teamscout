@@ -1,0 +1,16 @@
+{
+  "id": "10_hybrid_multi_location",
+  "shape": "hybrid multi-location",
+  "raw": "Engineering Manager, Payments\nRiverbank Fintech\nLocations: London, UK or Dublin, IE — Hybrid (3 days in office)\nDepartment: Payments Engineering\nReports to: Director of Engineering\n\n£90k–£110k base + RSUs.\n",
+  "expected": {
+    "title": "Engineering Manager, Payments",
+    "company": "Riverbank Fintech",
+    "location": "London, UK or Dublin, IE",
+    "remote_mode": "hybrid",
+    "salary_min": 90000,
+    "salary_max": 110000,
+    "salary_currency": "GBP",
+    "seniority": null,
+    "department": "Payments Engineering"
+  }
+}

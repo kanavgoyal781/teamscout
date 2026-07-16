@@ -112,6 +112,7 @@ class Settings(BaseSettings):
             "parse_resume": self.LLM_MAX_TOKENS_PARSE_RESUME,
             "rerank": self.LLM_MAX_TOKENS_RERANK,
             "team_extract": self.LLM_MAX_TOKENS_TEAM_EXTRACT,
+            "jd_metadata": self.LLM_MAX_TOKENS_TEAM_EXTRACT,
             "justify": self.LLM_MAX_TOKENS_JUSTIFY,
             "jd_decompose": self.LLM_MAX_TOKENS_JD_DECOMPOSE,
             "pairwise_judge": self.LLM_MAX_TOKENS_PAIRWISE_JUDGE,

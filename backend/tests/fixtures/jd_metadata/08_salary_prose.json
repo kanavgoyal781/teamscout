@@ -1,0 +1,16 @@
+{
+  "id": "08_salary_prose",
+  "shape": "salary range in prose",
+  "raw": "Principal Security Engineer\nCobalt Forge Inc. — Austin, TX (Hybrid 2 days/week)\n\nWe pay a base salary of up to $300K depending on experience, plus bonus.\nJoin the security architecture group.\n",
+  "expected": {
+    "title": "Principal Security Engineer",
+    "company": "Cobalt Forge Inc",
+    "location": "Austin, TX",
+    "remote_mode": "hybrid",
+    "salary_min": null,
+    "salary_max": 300000,
+    "salary_currency": "USD",
+    "seniority": "Principal",
+    "department": null
+  }
+}

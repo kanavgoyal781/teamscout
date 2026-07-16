@@ -1,0 +1,16 @@
+{
+  "id": "06_non_us_eur_gbp",
+  "shape": "non-US EUR salary",
+  "raw": "Data Platform Engineer\nBerlin, Germany — Nimbus Data GmbH\nCompensation: €75,000 – €95,000 per year\nFull-time, Engineering\n\nYou will design streaming pipelines with Kafka and Spark.\nLanguage: English required; German is a plus.\n",
+  "expected": {
+    "title": "Data Platform Engineer",
+    "company": "Nimbus Data GmbH",
+    "location": "Berlin, Germany",
+    "remote_mode": null,
+    "salary_min": 75000,
+    "salary_max": 95000,
+    "salary_currency": "EUR",
+    "seniority": null,
+    "department": "Engineering"
+  }
+}

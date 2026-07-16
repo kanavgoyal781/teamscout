@@ -34,13 +34,19 @@ def _seed_library_resume(
     file_hash: str,
     filename: str,
     profile: ResumeProfile,
+    data: bytes | None = None,
 ) -> str:
-    with patch("app.services.library.store.parser.parse_resume_file", return_value=(file_hash, profile)):
+    payload = data if data is not None else f"%PDF resume {file_hash}".encode()
+    with (
+        patch("app.services.library.store.parser.content_hash", return_value=file_hash),
+        patch("app.services.library.store.parser.extract_text", return_value="seed resume text"),
+        patch("app.services.library.store.parser.parse_resume_text", return_value=profile),
+    ):
         response = client.post(
             "/library/upload",
-            files={"files": (filename, b"%PDF resume", "application/pdf")},
+            files={"files": (filename, payload, "application/pdf")},
         )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     body = response.json()
     assert body["files_parsed"] >= 1 or body["files_skipped"] >= 1
     return body["resumes"][0]["id"]
@@ -85,12 +91,16 @@ def test_library_upload_zip(client: TestClient) -> None:
         archive.writestr("notes.txt", b"ignore")
     buffer.seek(0)
 
-    with patch("app.services.library.store.parser.parse_resume_file", return_value=("zip-hash-1", profile)):
+    with (
+        patch("app.services.library.store.parser.content_hash", return_value="zip-hash-1"),
+        patch("app.services.library.store.parser.extract_text", return_value="zip resume text"),
+        patch("app.services.library.store.parser.parse_resume_text", return_value=profile),
+    ):
         response = client.post(
             "/library/upload",
             files={"files": ("resumes.zip", buffer.read(), "application/zip")},
         )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     body = response.json()
     assert body["files_parsed"] == 1
     assert body["files_ignored"] == 1
@@ -445,7 +455,17 @@ def test_recommend_from_jd_happy_path(client: TestClient) -> None:
         "Senior Backend Engineer role requiring Python, FastAPI, and PostgreSQL. "
         "Build reliable APIs and data services for a product team."
     )
-    with patch("app.api.routers.library.resume_ranking.rank_resumes_for_job") as rank_mock:
+    from app.schemas.job_metadata import JobMetadata
+
+    fake_meta = JobMetadata(
+        title="Senior Backend Engineer",
+        company="PastedCo",
+        confidence={"title": "high", "company": "high"},
+    )
+    with (
+        patch("app.api.routers.library.extract_job_metadata", return_value=(fake_meta, False, "h")),
+        patch("app.api.routers.library.resume_ranking.rank_resumes_for_job") as rank_mock,
+    ):
         rank_mock.return_value = recommendations
         response = client.post(
             "/library/recommend-from-jd",

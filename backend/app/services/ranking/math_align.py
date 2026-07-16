@@ -30,6 +30,14 @@ _SKILL_ALIASES = _alias_map(
     ]
 )
 _SINGLE_CHAR_SKILLS = frozenset({"c", "r"})
+_SKILL_STOPWORDS = frozenset({
+    "strong", "skills", "skill", "experience", "proficient", "proficiency", "knowledge",
+    "working", "with", "using", "and", "or", "the", "a", "an", "required", "preferred",
+    "solid", "excellent", "good", "advanced", "basic", "intermediate", "expert", "years",
+    "year", "plus", "of", "in", "ability", "to", "demonstrated", "hands", "on",
+    "familiarity", "deep", "proven", "track", "record", "must", "have", "nice", "for",
+    "etc", "including", "such", "as", "well", "highly", "very", "extensive", "prior",
+})
 _SECTION_RANK = {"experience": 0, "summary": 1, "skills": 2, "title": 3}
 def tokenize_tech(text: str) -> list[str]:
     if not text: return []
@@ -55,42 +63,81 @@ def phrase_in_text(phrase: str, text: str) -> bool:
         return any(tokens_match(rt, ht) for ht in hay_tokens)
     n, m = len(req_tokens), len(hay_tokens)
     return any(all(tokens_match(req_tokens[j], hay_tokens[i + j]) for j in range(n)) for i in range(m - n + 1))
-def skill_match_level(req: str, skill: str) -> str | None:
-    req_t, skill_t = tokenize_tech(req), tokenize_tech(skill)
+def skill_tokens_from_requirement(requirement_text: str) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for tok in tokenize_tech(requirement_text):
+        if tok in _SKILL_STOPWORDS or (len(tok) < 2 and tok not in _SINGLE_CHAR_SKILLS) or tok in seen:
+            continue
+        seen.add(tok)
+        out.append(tok)
+    return out
+def _phrase_level_in_tokens(needle: list[str], hay: list[str]) -> str | None:
+    if not needle or not hay or len(needle) > len(hay): return None
+    best: str | None = None
+    n = len(needle)
+    for i in range(len(hay) - n + 1):
+        window = hay[i : i + n]
+        if all(a == b for a, b in zip(needle, window, strict=True)): return "exact"
+        if all(tokens_match(a, b) for a, b in zip(needle, window, strict=True)): best = "alias"
+    return best
+def skill_phrase_level(skill: str, text: str) -> str | None:
+    return _phrase_level_in_tokens(tokenize_tech(skill), tokenize_tech(text))
+def skill_match_level_atomic(req_atom: str, skill: str) -> str | None:
+    req_t, skill_t = tokenize_tech(req_atom), tokenize_tech(skill)
     if not req_t or not skill_t or len(req_t) != len(skill_t): return None
-    if all(a == b for a, b in zip(req_t, skill_t, strict=True)):
-        return "exact"
+    if all(a == b for a, b in zip(req_t, skill_t, strict=True)): return "exact"
     if all(tokens_match(a, b) for a, b in zip(req_t, skill_t, strict=True)): return "alias"
+    return None
+def skill_match_level(req: str, skill: str) -> str | None:
+    """Atomic/alias equality, or skill contained in phrased req ('SQL' ⊂ 'Strong SQL skills')."""
+    req_t, skill_t = tokenize_tech(req), tokenize_tech(skill)
+    if not req_t or not skill_t: return None
+    if len(req_t) == len(skill_t):
+        level = skill_match_level_atomic(req, skill)
+        if level is not None: return level
+    contained = skill_phrase_level(skill, req)
+    if contained is not None: return contained
+    for atom in skill_tokens_from_requirement(req):
+        level = skill_match_level_atomic(atom, skill)
+        if level is not None: return level
     return None
 def skill_equals(req: str, skill: str) -> bool:
     return skill_match_level(req, skill) is not None
 def apply_evidence_floor(raw: float, *, floor: float = DEFAULT_EVIDENCE_FLOOR) -> float:
     e = float(raw)
     if floor >= 1.0: return 1.0 if e >= 1.0 else 0.0
-    if e < floor:
-        return 0.0
+    if e < floor: return 0.0
     return max(0.0, min(1.0, (e - floor) / (1.0 - floor)))
+def is_hard_skill_match(raw: float) -> bool:
+    return float(raw) + 1e-12 >= SKILL_ALIAS_SCORE
+def evidence_strength(score: float) -> str:
+    s = float(score)
+    if s < DEFAULT_HIT_THRESHOLD: return "none"
+    if s < 0.35: return "weak"
+    if s < 0.70: return "solid"
+    return "strong"
 def skill_requirement_score(
     requirement_text: str, *, skills: list[str], unit_texts: list[str], semantic_score: float
 ) -> float:
+    """Exact 1.0 / alias 0.9 short-circuit before semantic cap (floor applied only for semantic)."""
     best = 0.0
     for skill in skills:
         level = skill_match_level(requirement_text, skill)
-        if level == "exact":
-            best = max(best, SKILL_EXACT_SCORE)
-        elif level == "alias":
-            best = max(best, SKILL_ALIAS_SCORE)
-    req_t = tokenize_tech(requirement_text)
+        if level == "exact": return SKILL_EXACT_SCORE
+        if level == "alias": best = max(best, SKILL_ALIAS_SCORE)
+    atoms = skill_tokens_from_requirement(requirement_text)
     for ut in unit_texts:
-        if not phrase_in_text(requirement_text, ut): continue
-        hay_t = tokenize_tech(ut)
-        if req_t and any(
-            all(req_t[j] == hay_t[i + j] for j in range(len(req_t)))
-            for i in range(len(hay_t) - len(req_t) + 1)
-        ):
-            best = max(best, SKILL_EXACT_SCORE)
-        else:
+        if not ut: continue
+        if phrase_in_text(requirement_text, ut):
+            if _phrase_level_in_tokens(tokenize_tech(requirement_text), tokenize_tech(ut)) == "exact":
+                return SKILL_EXACT_SCORE
             best = max(best, SKILL_ALIAS_SCORE)
+            continue
+        for atom in atoms:
+            level = skill_phrase_level(atom, ut)
+            if level == "exact": return SKILL_EXACT_SCORE
+            if level == "alias": best = max(best, SKILL_ALIAS_SCORE)
     if best >= SKILL_ALIAS_SCORE: return best
     return min(float(semantic_score), SKILL_SEMANTIC_CAP)
 def section_rank(section: str | None) -> int:
@@ -181,24 +228,31 @@ def align_resume(
             raw = skill_requirement_score(
                 req_text, skills=skills, unit_texts=unit_texts, semantic_score=semantic
             )
+            atoms = skill_tokens_from_requirement(req_text)
             best_u, best_sec, best_txt = None, None, ""
             for j, ut in enumerate(unit_texts):
-                if not phrase_in_text(req_text, ut):
-                    continue
+                hit = phrase_in_text(req_text, ut) or any(phrase_in_text(a, ut) for a in atoms)
+                if not hit: continue
                 sec = unit_sections[j] if unit_sections is not None and j < len(unit_sections) else ""
                 if best_u is None or _better_unit(1.0, sec, ut, 1.0, best_sec, best_txt):
                     best_u, best_sec, best_txt = ut, sec, ut
-            if best_u is not None:
-                unit_text = best_u
+            if best_u is not None: unit_text = best_u
+            elif is_hard_skill_match(raw):
+                for s in skills:
+                    if skill_match_level(req_text, s) is not None:
+                        unit_text = s
+                        break
+            # Hard exact/alias: no floor; semantic path only is rescaled
+            evidence = float(raw) if is_hard_skill_match(raw) else apply_evidence_floor(raw, floor=evidence_floor)
         else:
             raw = float(semantic)
-        evidence = apply_evidence_floor(raw, floor=evidence_floor)
+            evidence = apply_evidence_floor(raw, floor=evidence_floor)
         status = "miss" if evidence < hit_threshold else "hit"
         rows.append({
             "requirement": req_text, "weight": float(weight),
             "evidence_unit": NO_CLEAR_EVIDENCE if status == "miss" else unit_text,
             "evidence_score": round(evidence, 4), "raw_evidence_score": round(float(raw), 4),
-            "status": status, "category": category,
+            "status": status, "category": category, "strength": evidence_strength(evidence),
         })
         evidences.append(evidence)
     return coverage_from_evidence(weights, evidences), rows

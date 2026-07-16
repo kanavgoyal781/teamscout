@@ -339,38 +339,44 @@ def test_one_must_have_difference_coverage_gap_at_least_8_points() -> None:
 
 
 def test_floor_equality_miss_clears_evidence_unit() -> None:
-    """raw == floor rescales to 0 → miss with No clear evidence (not a leftover unit)."""
+    """Semantic path: raw == floor rescales to 0 → miss with No clear evidence.
+
+    Exact/alias skill hits bypass the floor entirely (M21 short-circuit).
+    """
     assert apply_evidence_floor(0.55, floor=0.55) == pytest.approx(0.0)
-    # Alias skill score is 0.9; set floor=0.9 so raw == floor → rescaled 0 / miss.
     req = _norm([1.0, 0.0, 0.0])
     unit = _norm([0.0, 1.0, 0.0])
-    cov, rows = align_resume(
-        [req],
-        ["Go"],
-        [2.0],
-        [unit],
-        ["Wrote Golang microservices at scale"],  # unit mentions alias form
-        ["Golang"],
-        categories=["skill"],
-        evidence_floor=0.9,
-    )
-    assert rows[0]["raw_evidence_score"] == pytest.approx(0.9) or rows[0]["raw_evidence_score"] == pytest.approx(1.0)
-    # When raw is alias 0.9 or exact 1.0 via unit phrase:
-    # If exact (phrase): raw 1.0 → hit. Prefer unit without exact token form.
+    # Alias skill list hit → 0.9 hard match, floor does NOT apply
     cov2, rows2 = align_resume(
         [req],
         ["Go"],
         [2.0],
         [unit],
         ["Unrelated systems work only"],
-        ["Golang"],  # alias on skill list only → raw 0.9
+        ["Golang"],
         categories=["skill"],
         evidence_floor=0.9,
     )
     assert rows2[0]["raw_evidence_score"] == pytest.approx(0.9)
-    assert rows2[0]["evidence_score"] == pytest.approx(0.0)
-    assert rows2[0]["status"] == "miss"
-    assert rows2[0]["evidence_unit"] == NO_CLEAR_EVIDENCE
+    assert rows2[0]["evidence_score"] == pytest.approx(0.9)
+    assert rows2[0]["status"] == "hit"
+    assert rows2[0]["strength"] == "strong"
+
+    # Semantic-only skill (no list/phrase hit): floor still zeros at equality
+    cov_s, rows_s = align_resume(
+        [req],
+        ["TotallyObscureFrameworkXYZ"],
+        [2.0],
+        [unit],
+        ["Managed office supplies inventory"],
+        [],
+        categories=["skill"],
+        evidence_floor=0.55,
+    )
+    assert rows_s[0]["status"] == "miss"
+    assert rows_s[0]["evidence_score"] == 0.0
+    assert rows_s[0]["evidence_unit"] == NO_CLEAR_EVIDENCE
+    assert rows_s[0]["strength"] == "none"
 
 
 def test_under_segmented_units_detects_over_citation() -> None:
@@ -496,3 +502,76 @@ def test_evidence_floor_settings_matches_math_default() -> None:
     from app.services.ranking.math_align import DEFAULT_EVIDENCE_FLOOR
 
     assert settings.EVIDENCE_FLOOR == DEFAULT_EVIDENCE_FLOOR
+
+
+def test_strong_sql_skills_exact_short_circuit() -> None:
+    """Live regression: skills section 'SQL' scores 1.0 on 'Strong SQL skills'.
+
+    Exact/alias must short-circuit BEFORE cosine/floor — was scoring ~11% (semantic
+    cap 0.6 → floor rescale).
+    """
+    from app.services.ranking.math_align import is_hard_skill_match
+
+    assert skill_match_level("Strong SQL skills", "SQL") == "exact"
+    score = skill_requirement_score(
+        "Strong SQL skills",
+        skills=["SQL", "Python"],
+        unit_texts=["SQL"],
+        semantic_score=0.15,
+    )
+    assert score == pytest.approx(1.0)
+    assert is_hard_skill_match(score)
+
+    req = _norm([0.1, 0.9, 0.0])  # orthogonal-ish to skill unit
+    skill_u = _norm([0.9, 0.1, 0.0])
+    cov, rows = align_resume(
+        [req],
+        ["Strong SQL skills"],
+        [2.0],
+        [skill_u],
+        ["SQL"],
+        ["SQL", "Python"],
+        unit_sections=["skills"],
+        categories=["skill"],
+        evidence_floor=0.55,
+    )
+    assert rows[0]["status"] == "hit"
+    assert rows[0]["evidence_score"] == pytest.approx(1.0)
+    assert rows[0]["raw_evidence_score"] == pytest.approx(1.0)
+    assert rows[0]["strength"] == "strong"
+    assert cov == pytest.approx(1.0)
+    # Must NOT be the old ~11% path: (0.6-0.55)/(1-0.55) ≈ 0.111
+    assert rows[0]["evidence_score"] > 0.5
+
+
+def test_compound_skill_requirement_matches_each_atom() -> None:
+    """'Strong SQL and Python skills' — each resume skill hits via containment."""
+    assert skill_match_level("Strong SQL and Python skills", "SQL") == "exact"
+    assert skill_match_level("Strong SQL and Python skills", "Python") == "exact"
+    # Alias form inside compound phrasing
+    assert skill_match_level("Strong Go and TypeScript skills", "Golang") == "alias"
+
+
+def test_skill_hard_match_bypasses_floor_semantic_does_not() -> None:
+    """Floor rescale applies ONLY to the semantic path for skills."""
+    from app.services.ranking.math_align import is_hard_skill_match
+
+    exact = skill_requirement_score("Python", skills=["Python"], unit_texts=[], semantic_score=0.1)
+    assert is_hard_skill_match(exact)
+    # hard match evidence is not floor-rescaled
+    req = _norm([1.0, 0.0])
+    unit = _norm([0.0, 1.0])
+    _, rows = align_resume(
+        [req], ["Python"], [1.0], [unit], ["other"], ["Python"],
+        categories=["skill"], evidence_floor=0.55,
+    )
+    assert rows[0]["evidence_score"] == pytest.approx(1.0)
+
+    # semantic-only soft skill remains capped then floored
+    soft = skill_requirement_score(
+        "Rust", skills=[], unit_texts=["systems programming"], semantic_score=0.92
+    )
+    assert soft == pytest.approx(0.6)
+    assert not is_hard_skill_match(soft)
+    floored = apply_evidence_floor(soft, floor=0.55)
+    assert floored == pytest.approx((0.6 - 0.55) / (1.0 - 0.55))

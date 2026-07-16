@@ -21,7 +21,7 @@ from app.db.models import Trace
 from app.db.session import SessionLocal
 from app.errors import CostCeilingExceededError
 logger = get_logger(__name__)
-LLM_OPERATIONS = frozenset({"parse_resume", "rerank", "team_extract", "justify", "embed", "cross_encode"})
+LLM_OPERATIONS = frozenset({"parse_resume", "rerank", "team_extract", "justify", "embed", "cross_encode", "jd_metadata", "jd_decompose", "pairwise_judge"})
 FEATURE1_OPS = frozenset(
     {
         "parse_resume",

@@ -217,3 +217,13 @@ class ScoreCalibration(Base):
     fit_at: Mapped[datetime | None] = mapped_column(DateTime)
     metadata_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+class JdMetadataCache(Base):
+    __tablename__ = "jd_metadata_cache"
+    __table_args__ = (UniqueConstraint("content_hash", name="uq_jd_metadata_content_hash"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+

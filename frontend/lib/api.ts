@@ -13,6 +13,7 @@ import type {
   IngestJobFromTextResponse,
   RecommendFromJdRequest,
   RecommendFromJdResponse,
+  ExtractMetadataResponse,
   ResumeProfile,
   ResumeUploadResponse,
   SearchParams,
@@ -43,6 +44,7 @@ export type {
   RankedResumeRecommendation,
   RecommendFromJdRequest,
   RecommendFromJdResponse,
+  ExtractMetadataResponse,
   RequirementCoverage,
   ResumeProfile,
   ResumeUploadResponse,
@@ -255,6 +257,19 @@ export async function recommendFromJd(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  });
+}
+
+
+export async function extractJobMetadata(
+  description: string,
+  signal?: AbortSignal,
+): Promise<ExtractMetadataResponse> {
+  return request<ExtractMetadataResponse>("/jobs/extract-metadata", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ description }),
+    signal,
   });
 }
 

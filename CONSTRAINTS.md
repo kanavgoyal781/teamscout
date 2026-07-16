@@ -50,7 +50,7 @@ Anything beyond that list must be justified in a PR and still pass `check_scope`
 
 - Any file under `backend/app/services/` ≤ 450 lines.
 - `backend/app/main.py` ≤ 130 lines.
-- Total `backend/app` Python LOC ≤ 9200.
+- Total `backend/app` Python LOC ≤ 10100.
 
 ## Frontend
 

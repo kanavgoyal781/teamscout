@@ -48,6 +48,12 @@ class LibraryResumeListResponse(BaseModel):
     resumes: list[LibraryResumeOut] = Field(default_factory=list)
     total: int = 0
     distinct_versions: int = 0
+class IngestFileResult(BaseModel):
+    filename: str
+    status: Literal["cached", "parsed", "failed", "skipped"]
+    resume_id: str | None = None
+    # Plain-language reason for failed/skipped (never includes secrets or raw URLs).
+    reason: str | None = None
 class DriveSyncRequest(BaseModel):
     folder_url: str
 class DriveSyncResponse(BaseModel):
@@ -56,7 +62,11 @@ class DriveSyncResponse(BaseModel):
     files_parsed: int
     files_skipped: int
     files_ignored: int = 0
+    files_failed: int = 0
     resumes: list[LibraryResumeOut] = Field(default_factory=list)
+    file_results: list[IngestFileResult] = Field(default_factory=list)
+    units_indexed: bool | None = None
+    units_index_warning: str | None = None
 class LibraryUploadResponse(BaseModel):
     files_received: int
     files_parsed: int
@@ -66,6 +76,7 @@ class LibraryUploadResponse(BaseModel):
     distinct_versions: int = 0
     units_indexed: bool | None = None
     units_index_warning: str | None = None
+    file_results: list[IngestFileResult] = Field(default_factory=list)
 class ResumeCandidate(BaseModel):
     resume_id: str
     filename: str
@@ -82,7 +93,9 @@ class AlignmentRow(BaseModel):
     category: str = "skill"
     weight: float = 1.0
     evidence_unit: str | None = None
+    # Post-floor (or hard-match) score 0–1; UI prefers strength bucket over raw %.
     evidence_score: float = 0.0
+    strength: Literal["none", "weak", "solid", "strong"] = "none"
     status: Literal["hit", "miss"] = "miss"
 class TournamentRecord(BaseModel):
     ran: bool = False
@@ -101,6 +114,9 @@ class RankedResumeRecommendation(BaseModel):
     score_breakdown: ScoreBreakdown
     coverage: list[RequirementCoverage] = Field(default_factory=list)
     coverage_score: float = 0.0
+    # Count of must-have requirements with evidence above floor (hit).
+    must_haves_hit: int = 0
+    must_haves_total: int = 0
     alignment: list[AlignmentRow] = Field(default_factory=list)
     cluster_id: str | None = None
     cluster_label: str | None = None

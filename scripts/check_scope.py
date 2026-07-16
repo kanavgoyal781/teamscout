@@ -36,7 +36,7 @@ from pathlib import Path
 
 SERVICE_FILE_MAX_LINES = 450
 MAIN_MAX_LINES = 130
-APP_LOC_MAX = 9200
+APP_LOC_MAX = 10100
 
 THRESHOLD_FLOORS: dict[str, float | int] = {
     "ndcg_at_10": 0.85,

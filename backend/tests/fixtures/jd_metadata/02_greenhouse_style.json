@@ -1,0 +1,16 @@
+{
+  "id": "02_greenhouse_style",
+  "shape": "Greenhouse-like export",
+  "raw": "Backend Engineer\nAcme Robotics\nSan Francisco, CA\nEngineering – Backend\n\nAbout Acme Robotics\nWe build warehouse robots.\n\nWhat you'll do\n- Design APIs in Python/FastAPI\n- Own on-call for core services\n\nRequirements\n- 3+ years backend experience\n- PostgreSQL\n\nGreenhouse job board · Powered by Greenhouse\n",
+  "expected": {
+    "title": "Backend Engineer",
+    "company": "Acme Robotics",
+    "location": "San Francisco, CA",
+    "remote_mode": null,
+    "salary_min": null,
+    "salary_max": null,
+    "salary_currency": null,
+    "seniority": null,
+    "department": "Engineering"
+  }
+}

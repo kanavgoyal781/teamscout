@@ -164,6 +164,12 @@ jobs:
           EMBEDDINGS_API: ${{ secrets.EMBEDDINGS_API }}
           EMBEDDINGS_MODEL: ${{ secrets.EMBEDDINGS_MODEL }}
         run: python3 scripts/eval_resume_pick.py
+      - name: Eval JD metadata extraction
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_BASE: ${{ secrets.LLM_API_BASE }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+        run: python3 scripts/eval_jd_metadata.py
       - name: Eval trend report
         if: always()
         run: python3 scripts/eval_report.py

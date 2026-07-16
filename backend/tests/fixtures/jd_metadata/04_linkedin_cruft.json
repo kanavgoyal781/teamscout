@@ -1,0 +1,16 @@
+{
+  "id": "04_linkedin_cruft",
+  "shape": "LinkedIn paste with UI chrome",
+  "raw": "Promoted\nSenior Data Scientist\nDatavine Analytics · San Jose, CA (On-site)\n$140,000 - $175,000 a year · Full-time\nEasy Apply\nSave\n1,204 applicants\n\nAbout the job\nDatavine Analytics is hiring a Senior Data Scientist to build forecasting models.\n\nResponsibilities\n- Feature engineering in Python\n- Partner with GTM analytics\n\nShow more\nApply now\n",
+  "expected": {
+    "title": "Senior Data Scientist",
+    "company": "Datavine Analytics",
+    "location": "San Jose, CA (On-site)",
+    "remote_mode": "onsite",
+    "salary_min": 140000,
+    "salary_max": 175000,
+    "salary_currency": "USD",
+    "seniority": "Senior",
+    "department": null
+  }
+}

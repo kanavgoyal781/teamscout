@@ -5,7 +5,9 @@ import { toast } from "sonner";
 
 import { formatApiError, ingestJobFromText } from "../../lib/api";
 import type { JobTeamState } from "../../hooks/useJobTeam";
+import { useJdMetadataPrefill } from "../../hooks/useJdMetadataPrefill";
 import type { Contact } from "../../lib/types";
+import AutoDetectedChip from "../ui/AutoDetectedChip";
 import TeamDiscoveryPanel from "./TeamDiscoveryPanel";
 
 type JobPasteTeamPanelProps = {
@@ -26,12 +28,18 @@ export default function JobPasteTeamPanel({
   onTeamPanelOpenChange,
 }: JobPasteTeamPanelProps) {
   const [description, setDescription] = useState("");
-  const [title, setTitle] = useState("");
-  const [company, setCompany] = useState("");
-  const [location, setLocation] = useState("");
+  const [title, setTitleState] = useState("");
+  const [company, setCompanyState] = useState("");
+  const [location, setLocationState] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobMeta, setJobMeta] = useState<{ title: string; company: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const prefill = useJdMetadataPrefill(description, {
+    setTitle: setTitleState,
+    setCompany: setCompanyState,
+    setLocation: setLocationState,
+  });
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -60,6 +68,7 @@ export default function JobPasteTeamPanel({
   }
 
   const teamState = jobId ? getTeamState(jobId) : null;
+  const displayCompany = jobMeta?.company?.trim() || company.trim() || "Unknown company";
 
   return (
     <section className="panel" data-testid="job-paste-team">
@@ -69,42 +78,56 @@ export default function JobPasteTeamPanel({
         hiring team and reveal emails.
       </p>
 
+      {prefill.detecting ? (
+        <p className="detecting-shimmer" data-testid="jd-detecting">
+          Detecting job details…
+        </p>
+      ) : null}
+
       <form className="field-grid paste-form" onSubmit={handleSubmit}>
         <label className="field">
           <span className="field-label">
             Title <span className="field-optional">optional</span>
+            {prefill.autoFields.title ? (
+              <AutoDetectedChip confidence={prefill.confidence("title")} />
+            ) : null}
           </span>
           <input
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => prefill.setTitle(e.target.value)}
             placeholder="Role title"
             autoComplete="off"
+            data-testid="job-paste-title"
           />
         </label>
         <label className="field">
           <span className="field-label">
-            Company{" "}
-            <span className="field-optional" title="Optional — improves hiring-team match">
-              optional
-            </span>
+            Company <span className="field-optional">optional</span>
+            {prefill.autoFields.company ? (
+              <AutoDetectedChip confidence={prefill.confidence("company")} />
+            ) : null}
           </span>
           <input
             value={company}
-            onChange={(e) => setCompany(e.target.value)}
+            onChange={(e) => prefill.setCompany(e.target.value)}
             placeholder="Company name"
             autoComplete="organization"
-            title="Optional — improves hiring-team match"
+            data-testid="job-paste-company"
           />
         </label>
         <label className="field">
           <span className="field-label">
             Location <span className="field-optional">optional</span>
+            {prefill.autoFields.location ? (
+              <AutoDetectedChip confidence={prefill.confidence("location")} />
+            ) : null}
           </span>
           <input
             value={location}
-            onChange={(e) => setLocation(e.target.value)}
+            onChange={(e) => prefill.setLocation(e.target.value)}
             placeholder="City / Remote"
             autoComplete="off"
+            data-testid="job-paste-location"
           />
         </label>
         <label className="field field-span-all">
@@ -113,6 +136,12 @@ export default function JobPasteTeamPanel({
             className="paste-textarea"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            onPaste={(e) => {
+              const pasted = e.clipboardData.getData("text");
+              if (pasted) {
+                // allow default then effect runs on state update
+              }
+            }}
             rows={12}
             placeholder="Paste the full job description…"
             required
@@ -129,8 +158,9 @@ export default function JobPasteTeamPanel({
       {jobId && teamState && jobMeta ? (
         <div className="paste-team-followup">
           <p className="meta">
-            Working on <strong>{jobMeta.title}</strong>
-            {jobMeta.company ? ` · ${jobMeta.company}` : ""}{" "}
+            Working on <strong>{jobMeta.title || "Role"}</strong>
+            {" · "}
+            <strong>{displayCompany}</strong>{" "}
             <span className="font-num">({jobId.slice(0, 8)}…)</span>
           </p>
           <TeamDiscoveryPanel

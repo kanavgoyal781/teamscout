@@ -1,0 +1,16 @@
+{
+  "id": "07_remote_only",
+  "shape": "remote-only",
+  "raw": "Customer Success Manager\nFully remote (US time zones)\nBrightline Support Co.\n\nYou will onboard mid-market customers and drive expansion.\nThis role is 100% remote — no office attendance required.\n",
+  "expected": {
+    "title": "Customer Success Manager",
+    "company": "Brightline Support Co",
+    "location": null,
+    "remote_mode": "remote",
+    "salary_min": null,
+    "salary_max": null,
+    "salary_currency": null,
+    "seniority": null,
+    "department": null
+  }
+}

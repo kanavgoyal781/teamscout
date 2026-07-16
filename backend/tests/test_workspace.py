@@ -45,7 +45,11 @@ def test_cross_workspace_isolation_id_probing(profile: ResumeProfile) -> None:
     assert a.put(f"/resumes/{aid}/confirm", json={"title": "T", "location": "L", "skills": ["python"]}).status_code == 200
     assert b.put(f"/resumes/{aid}/confirm", json={"title": "X", "location": "Y", "skills": ["z"]}).status_code == 404
     # Library: put A resume in library via hash-scoped upload endpoint
-    with patch.object(parser, "parse_resume_file", return_value=("lib-a", profile)):
+    with (
+        patch.object(parser, "content_hash", return_value="lib-a"),
+        patch.object(parser, "extract_text", return_value="lib resume text"),
+        patch.object(parser, "parse_resume_text", return_value=profile),
+    ):
         la_up = a.post("/library/upload", files={"files": ("lib-a.pdf", b"%PDF-1.4 lib", "application/pdf")})
     assert la_up.status_code == 200, la_up.text
     la = a.get("/library/resumes")

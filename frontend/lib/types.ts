@@ -195,16 +195,26 @@ export type LibraryResumeListResponse = {
   distinct_versions?: number;
 };
 
+export type IngestFileResult = {
+  filename: string;
+  status: "cached" | "parsed" | "failed" | "skipped";
+  resume_id?: string | null;
+  /** Plain-language reason for failed/skipped files (no secrets). */
+  reason?: string | null;
+};
+
 export type DriveSyncResponse = {
   folder_id: string;
   files_seen: number;
   files_parsed: number;
   files_skipped: number;
   files_ignored: number;
+  files_failed?: number;
   resumes: LibraryResume[];
   distinct_versions?: number;
   units_indexed?: boolean | null;
   units_index_warning?: string | null;
+  file_results?: IngestFileResult[];
 };
 
 export type LibraryUploadResponse = {
@@ -216,6 +226,7 @@ export type LibraryUploadResponse = {
   distinct_versions?: number;
   units_indexed?: boolean | null;
   units_index_warning?: string | null;
+  file_results?: IngestFileResult[];
 };
 
 export type IntentSearchRequest = {
@@ -236,6 +247,8 @@ export type RequirementCoverage = {
   evidence: string | null;
 };
 
+export type EvidenceStrength = "none" | "weak" | "solid" | "strong";
+
 export type AlignmentRow = {
   requirement: string;
   kind: string;
@@ -243,6 +256,7 @@ export type AlignmentRow = {
   weight: number;
   evidence_unit: string | null;
   evidence_score: number;
+  strength?: EvidenceStrength;
   status: "hit" | "miss";
 };
 
@@ -267,6 +281,9 @@ export type RankedResumeRecommendation = {
   score_breakdown: ScoreBreakdown;
   coverage: RequirementCoverage[];
   coverage_score?: number;
+  /** Must-haves with evidence above floor — prefer "X of N" over rescaled %. */
+  must_haves_hit?: number;
+  must_haves_total?: number;
   alignment?: AlignmentRow[];
   cluster_id?: string | null;
   cluster_label?: string | null;
@@ -370,4 +387,26 @@ export type FeedbackResponse = {
   target_type: string;
   target_id: string;
   created_at?: string | null;
+};
+
+
+export type FieldConfidence = "high" | "medium" | "low";
+
+export type JobMetadata = {
+  title: string | null;
+  company: string | null;
+  location: string | null;
+  remote_mode: "remote" | "hybrid" | "onsite" | null;
+  salary_min: number | null;
+  salary_max: number | null;
+  salary_currency: string | null;
+  seniority: string | null;
+  department: string | null;
+  confidence: Partial<Record<string, FieldConfidence>>;
+};
+
+export type ExtractMetadataResponse = {
+  metadata: JobMetadata;
+  cache_hit: boolean;
+  content_hash: string;
 };

@@ -15,6 +15,9 @@ type ScoreBarsProps = {
   variant?: "jobs" | "resumes";
   /** MaxSim coverage 0–1 for resume cards (authoritative; not rrf_normalized). */
   coverageScore?: number | null;
+  /** Prefer "X of N must-haves" over rescaled coverage % on resume cards. */
+  mustHavesHit?: number | null;
+  mustHavesTotal?: number | null;
 };
 
 type Row = { key: keyof ScoreBreakdown; label: string; isPercent: boolean };
@@ -45,7 +48,13 @@ function resolveRows(breakdown: ScoreBreakdown, variant?: "jobs" | "resumes"): R
   return JOB_ROWS;
 }
 
-export default function ScoreBars({ breakdown, variant, coverageScore }: ScoreBarsProps) {
+export default function ScoreBars({
+  breakdown,
+  variant,
+  coverageScore,
+  mustHavesHit,
+  mustHavesTotal,
+}: ScoreBarsProps) {
   const reduced = useReducedMotion();
   const rows = resolveRows(breakdown, variant);
   const softBoost =
@@ -54,7 +63,16 @@ export default function ScoreBars({ breakdown, variant, coverageScore }: ScoreBa
       : 0;
   // Soft prefs are absolute points (typically 5–20), not a 0–1 fraction.
   const softPct = Math.min(100, Math.max(0, (softBoost / 20) * 100));
+  const showMustHaves =
+    variant === "resumes" &&
+    typeof mustHavesTotal === "number" &&
+    mustHavesTotal > 0 &&
+    Number.isFinite(mustHavesTotal);
+  const mustPct = showMustHaves
+    ? Math.min(100, Math.max(0, ((mustHavesHit ?? 0) / (mustHavesTotal as number)) * 100))
+    : 0;
   const showCoverage =
+    !showMustHaves &&
     variant === "resumes" &&
     typeof coverageScore === "number" &&
     Number.isFinite(coverageScore);
@@ -62,6 +80,22 @@ export default function ScoreBars({ breakdown, variant, coverageScore }: ScoreBa
 
   return (
     <div className="breakdown-bars" role="list" aria-label="Score breakdown">
+      {showMustHaves ? (
+        <div key="must-haves" className="breakdown-row" role="listitem">
+          <span>Must-haves</span>
+          <div className="breakdown-track" aria-hidden>
+            <motion.div
+              className="breakdown-fill"
+              initial={reduced ? { width: `${mustPct}%` } : { width: 0 }}
+              animate={{ width: `${mustPct}%` }}
+              transition={reduced ? { duration: 0 } : { ...easeOut, duration: 0.22 }}
+            />
+          </div>
+          <span className="breakdown-val font-num">
+            {mustHavesHit ?? 0}/{mustHavesTotal}
+          </span>
+        </div>
+      ) : null}
       {showCoverage ? (
         <div key="coverage" className="breakdown-row" role="listitem">
           <span>Coverage</span>

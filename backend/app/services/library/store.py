@@ -11,7 +11,7 @@ from app.core.upload_limit import enforce_upload_size
 from app.core.workspace import require_workspace_id, workspace_upload_path
 from app.db.models import DriveSyncedFile, DriveSyncState, Resume
 from app.errors import NotFoundError, ValidationError
-from app.schemas.library import LibraryResumeOut, ResumeCandidate
+from app.schemas.library import IngestFileResult, LibraryResumeOut, ResumeCandidate
 from app.schemas.resume import ResumeProfile
 from app.services import drive, parser
 from app.services.ranking.math_align import cluster_variant_label
@@ -64,12 +64,15 @@ def _maybe_index_units(row: Resume, profile: ResumeProfile, db: Session) -> tupl
         return True, None
     except (ServiceNotConfiguredError, ServiceFailingError, SQLAlchemyError, ValueError) as exc:
         from app.core.logging import get_logger
+        from app.core.redact import redact_error
+
+        safe = redact_error(exc)
         get_logger(__name__).warning(
             "library_store.unit_index_skipped",
             resume_id=row.id,
-            error=str(exc),
+            error=safe,
         )
-        return False, str(exc)
+        return False, safe
 def load_candidates(db: Session) -> list[ResumeCandidate]:
     wid = require_workspace_id()
     rows = db.query(Resume).filter(Resume.workspace_id == wid, Resume.in_library.is_(True)).order_by(Resume.created_at.desc()).all()
@@ -101,9 +104,10 @@ def ingest_resume_bytes(
     *,
     source: str = "upload",
 ) -> tuple[LibraryResumeOut, bool]:
+    """Ingest one resume. created=False is a content-hash cache hit (no parse LLM)."""
     if not data: raise ValidationError(f"File is empty: {filename}")
     enforce_upload_size(data)
-    file_hash, profile = parser.parse_resume_file(filename, data)
+    file_hash = parser.content_hash(data)
     wid = require_workspace_id()
     existing = db.query(Resume).filter(Resume.workspace_id == wid, Resume.content_hash == file_hash).one_or_none()
     if existing is not None:
@@ -113,8 +117,11 @@ def ingest_resume_bytes(
             db.add(existing)
             db.commit()
             db.refresh(existing)
+        profile = ResumeProfile.model_validate_json(existing.parsed_json or "{}")
         _maybe_index_units(existing, profile, db)
         return _resume_to_out(existing), False
+    text = parser.extract_text(filename, data)
+    profile = parser.parse_resume_text(text)
     destination = workspace_upload_path(wid, file_hash, filename)
     destination.write_bytes(data)
     row = Resume(
@@ -145,11 +152,31 @@ def _index_status_for_resumes(db: Session, resumes: list[LibraryResumeOut]) -> t
     if missing: return False, f"{missing} resume(s) missing unit index (will re-index at rank)"
     return True, None
 def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str, object]:
+    """Sync a Drive folder. Per-file failures do not abort the whole sync."""
+    from app.core.logging import get_logger
+    from app.core.redact import redact_error
+    from app.errors import ServiceFailingError, TeamScoutError, ValidationError
+
+    log = get_logger(__name__)
     wid = require_workspace_id()
     listing = drive.list_folder_files(folder_id)
     parsed = 0
     skipped = 0
+    failed = 0
     resumes: list[LibraryResumeOut] = []
+    file_results: list[IngestFileResult] = []
+
+    # Native Google Docs/Sheets/etc. — skip up front with a clear reason (no silent ignore).
+    for native in listing.skipped_native:
+        failed += 1
+        file_results.append(
+            IngestFileResult(
+                filename=native.name,
+                status="failed",
+                reason=native.reason,
+            )
+        )
+
     for item in listing.supported_files:
         synced = (
             db.query(DriveSyncedFile)
@@ -161,17 +188,52 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
             .one_or_none()
         )
         if synced is not None and synced.modified_time == item.modified_time:
-            resumes.append(_resume_out_by_hash(synced.content_hash, db))
+            try:
+                out = _resume_out_by_hash(synced.content_hash, db)
+            except TeamScoutError as exc:
+                failed += 1
+                file_results.append(
+                    IngestFileResult(
+                        filename=item.name,
+                        status="failed",
+                        reason=redact_error(exc.message) or "Cached resume missing — re-sync after fix",
+                    )
+                )
+                continue
+            resumes.append(out)
             skipped += 1
+            file_results.append(IngestFileResult(filename=item.name, status="cached", resume_id=out.id))
             continue
-        data = drive.download_file(item.file_id)
-        content_hash = parser.content_hash(data)
-        out, created = ingest_resume_bytes(item.name, data, db, source="drive")
+        try:
+            data = drive.download_file(item.file_id)
+            content_hash = parser.content_hash(data)
+            out, created = ingest_resume_bytes(item.name, data, db, source="drive")
+        except (ServiceFailingError, ValidationError, TeamScoutError, OSError, ValueError) as exc:
+            # Per-file: continue sync; never abort folder on one 403/parse failure.
+            failed += 1
+            reason = (
+                drive.user_reason_for_download_error(exc)
+                if isinstance(exc, (ServiceFailingError, TeamScoutError))
+                else "Could not process file — try re-uploading as PDF"
+            )
+            log.warning(
+                "library_store.drive_file_failed",
+                filename=item.name,
+                file_id=item.file_id,
+                reason=reason,
+                error=redact_error(exc),
+            )
+            file_results.append(
+                IngestFileResult(filename=item.name, status="failed", reason=reason)
+            )
+            continue
         resumes.append(out)
         if created:
             parsed += 1
+            file_results.append(IngestFileResult(filename=item.name, status="parsed", resume_id=out.id))
         else:
             skipped += 1
+            file_results.append(IngestFileResult(filename=item.name, status="cached", resume_id=out.id))
         now = datetime.now(UTC)
         if synced is None:
             db.add(
@@ -205,15 +267,23 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
         state.last_synced_at = now
         db.add(state)
     db.commit()
-    from app.services.resume.ranking import recluster_library
-    recluster_library(db)
+    if parsed > 0:
+        from app.services.resume.ranking import recluster_library
+        recluster_library(db)
+    final = list_library_resumes(db)
+    units_ok, units_warn = _index_status_for_resumes(db, final)
     return {
         "folder_id": folder_id,
+        # files_seen = PDF/DOCX candidates only (native Google counted in files_failed)
         "files_seen": len(listing.supported_files),
         "files_parsed": parsed,
         "files_skipped": skipped,
         "files_ignored": listing.files_ignored,
-        "resumes": list_library_resumes(db),
+        "files_failed": failed,
+        "resumes": final,
+        "file_results": file_results,
+        "units_indexed": units_ok,
+        "units_index_warning": units_warn,
     }
 async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str, object]:
     parsed = 0
@@ -221,6 +291,7 @@ async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str,
     ignored = 0
     received = 0
     resumes: list[LibraryResumeOut] = []
+    file_results: list[IngestFileResult] = []
     for upload in files:
         if not upload.filename: continue
         data = await upload.read()
@@ -244,8 +315,10 @@ async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str,
                 resumes.append(out)
                 if created:
                     parsed += 1
+                    file_results.append(IngestFileResult(filename=inner_name, status="parsed", resume_id=out.id))
                 else:
                     skipped += 1
+                    file_results.append(IngestFileResult(filename=inner_name, status="cached", resume_id=out.id))
             continue
         if suffix not in parser.ALLOWED_EXTENSIONS: raise ValidationError(
                 f"Unsupported file type: {upload.filename}",
@@ -255,11 +328,14 @@ async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str,
         resumes.append(out)
         if created:
             parsed += 1
+            file_results.append(IngestFileResult(filename=upload.filename, status="parsed", resume_id=out.id))
         else:
             skipped += 1
+            file_results.append(IngestFileResult(filename=upload.filename, status="cached", resume_id=out.id))
     if received == 0: raise ValidationError("No files uploaded")
-    from app.services.resume.ranking import recluster_library
-    recluster_library(db)
+    if parsed > 0:
+        from app.services.resume.ranking import recluster_library
+        recluster_library(db)
     final = list_library_resumes(db)
     units_ok, units_warn = _index_status_for_resumes(db, final)
     return {
@@ -271,4 +347,5 @@ async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str,
         "distinct_versions": distinct_version_count(db),
         "units_indexed": units_ok,
         "units_index_warning": units_warn,
+        "file_results": file_results,
     }

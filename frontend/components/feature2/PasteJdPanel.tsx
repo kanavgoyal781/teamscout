@@ -1,6 +1,9 @@
 "use client";
 
-import { FormEvent } from "react";
+import { FormEvent, useMemo } from "react";
+
+import { useJdMetadataPrefill } from "../../hooks/useJdMetadataPrefill";
+import AutoDetectedChip from "../ui/AutoDetectedChip";
 
 type PasteJdPanelProps = {
   resumeCount: number;
@@ -14,6 +17,14 @@ type PasteJdPanelProps = {
   onCompanyChange: (v: string) => void;
   onLocationChange: (v: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  /** Optional intent hints from metadata for parent (remote/seniority/salary) */
+  onMetadataHints?: (hints: {
+    remote_mode: string | null;
+    seniority: string | null;
+    salary_min: number | null;
+    salary_max: number | null;
+    salary_currency: string | null;
+  }) => void;
 };
 
 export default function PasteJdPanel({
@@ -28,8 +39,18 @@ export default function PasteJdPanel({
   onCompanyChange,
   onLocationChange,
   onSubmit,
+  onMetadataHints,
 }: PasteJdPanelProps) {
   const disabled = resumeCount === 0 || matching;
+  const setters = useMemo(
+    () => ({
+      setTitle: onTitleChange,
+      setCompany: onCompanyChange,
+      setLocation: onLocationChange,
+    }),
+    [onTitleChange, onCompanyChange, onLocationChange],
+  );
+  const prefill = useJdMetadataPrefill(jdText, setters);
 
   return (
     <section className="panel" data-testid="paste-jd-panel">
@@ -49,41 +70,59 @@ export default function PasteJdPanel({
         </p>
       )}
 
+      {prefill.detecting ? (
+        <p className="detecting-shimmer" data-testid="jd-detecting">
+          Detecting job details…
+        </p>
+      ) : null}
+
       <form className="field-grid paste-form" onSubmit={onSubmit}>
         <label className="field">
           <span className="field-label">
             Title <span className="field-optional">optional</span>
+            {prefill.autoFields.title ? (
+              <AutoDetectedChip confidence={prefill.confidence("title")} />
+            ) : null}
           </span>
           <input
             value={title}
-            onChange={(e) => onTitleChange(e.target.value)}
+            onChange={(e) => prefill.setTitle(e.target.value)}
             placeholder="e.g. Senior Data Scientist"
             disabled={disabled}
             autoComplete="off"
+            data-testid="jd-title"
           />
         </label>
         <label className="field">
           <span className="field-label">
             Company <span className="field-optional">optional</span>
+            {prefill.autoFields.company ? (
+              <AutoDetectedChip confidence={prefill.confidence("company")} />
+            ) : null}
           </span>
           <input
             value={company}
-            onChange={(e) => onCompanyChange(e.target.value)}
+            onChange={(e) => prefill.setCompany(e.target.value)}
             placeholder="e.g. Acme Corp"
             disabled={disabled}
             autoComplete="organization"
+            data-testid="jd-company"
           />
         </label>
         <label className="field">
           <span className="field-label">
             Location <span className="field-optional">optional</span>
+            {prefill.autoFields.location ? (
+              <AutoDetectedChip confidence={prefill.confidence("location")} />
+            ) : null}
           </span>
           <input
             value={location}
-            onChange={(e) => onLocationChange(e.target.value)}
+            onChange={(e) => prefill.setLocation(e.target.value)}
             placeholder="City / Remote"
             disabled={disabled}
             autoComplete="off"
+            data-testid="jd-location"
           />
         </label>
         <label className="field field-span-all">

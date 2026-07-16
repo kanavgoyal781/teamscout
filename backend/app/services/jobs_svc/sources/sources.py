@@ -29,13 +29,17 @@ def _job(**kw) -> Job:
     job = annotate_job(job, is_remote_flag=is_remote, structured_employment=employment, structured_salary_min=salary_min)
     return job.model_copy(update={"remote_mode": remote_mode}) if remote_mode else job
 def _http_json(url: str, *, params: dict | None = None) -> object:
+    from app.core.redact import format_httpx_error, redact_error
+    from urllib.parse import urlparse
+
+    host = urlparse(url).netloc or "job_source"
     try:
         with httpx.Client(timeout=default_timeout(), headers=_UA) as client:
             r = client.get(url, params=params); r.raise_for_status(); return r.json()
     except httpx.HTTPError as exc:
-        raise ServiceFailingError("job_source", f"HTTP {url}: {exc}") from exc
+        raise ServiceFailingError("job_source", format_httpx_error(exc) or f"{host} request failed") from exc
     except (ValueError, TypeError) as exc:
-        raise ServiceFailingError("job_source", f"invalid JSON {url}") from exc
+        raise ServiceFailingError("job_source", redact_error(f"invalid JSON from {host}")) from exc
 def _skip(source: str, slug: str, idx: int, reason: str, item: object) -> None:
     keys = list(item.keys())[:8] if isinstance(item, dict) else type(item).__name__
     logger.warning("jobs.source_item_skip", source=source, slug=slug, index=idx, reason=reason, keys=keys)

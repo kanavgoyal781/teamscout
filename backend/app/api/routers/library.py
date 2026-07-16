@@ -18,6 +18,7 @@ from app.schemas.library import (
     RecommendResumesResponse,
 )
 from app.services import drive, jobs, library_store, ranking, resume_ranking
+from app.services.jobs_svc.jd_metadata import extract_job_metadata
 from app.services.jobs_svc.store import cache_pasted_job, resolve_job
 router = APIRouter(prefix="/library", tags=["library"])
 @router.get("/resumes", response_model=LibraryResumeListResponse)
@@ -82,15 +83,24 @@ def recommend_from_jd(
     candidates = library_store.load_candidates(db)
     if not candidates:
         raise ValidationError("Resume library is empty — upload resumes or sync Drive first")
+    from app.errors import ServiceFailingError, ServiceNotConfiguredError
+
+    meta = None
+    try:
+        meta, _, _ = extract_job_metadata(payload.job_description, db=db)
+    except (ValidationError, ServiceNotConfiguredError, ServiceFailingError):
+        meta = None
     job = cache_pasted_job(
         description=payload.job_description,
-        title=payload.title,
-        company=payload.company,
-        location=payload.location,
+        title=payload.title or (meta.title if meta else None),
+        company=payload.company or (meta.company if meta else None),
+        location=payload.location or (meta.location if meta else None),
         apply_url=payload.apply_url,
         db=db,
     )
-    recommendations = resume_ranking.rank_resumes_for_job(job, candidates, db=db)
+    recommendations = resume_ranking.rank_resumes_for_job(
+        job, candidates, db=db, metadata_hints=meta
+    )
     tournament_ran = any(r.tournament and r.tournament.ran for r in recommendations)
     comparisons = max((r.tournament.comparisons for r in recommendations if r.tournament), default=0)
     return RecommendFromJdResponse(

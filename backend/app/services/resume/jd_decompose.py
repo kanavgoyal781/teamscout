@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.models import JdRequirementsCache
 from app.prompts import load_prompt
+from app.schemas.job_metadata import JobMetadata
 from app.schemas.jobs import Job
 from app.services import llm
 from app.services.ranking.math import extract_requirement_terms
@@ -130,6 +131,7 @@ def decompose_jd(
     *,
     use_llm: bool = True,
     db: Session | None = None,
+    metadata_hints: JobMetadata | None = None,
 ) -> list[JdRequirement]:
     if not use_llm:
         return deterministic_requirements(job)
@@ -139,13 +141,28 @@ def decompose_jd(
         cached = _cache_get(db, content_hash, tmpl.version)
         if cached is not None:
             return cached
+    title = (metadata_hints.title if metadata_hints and metadata_hints.title else job.title) or ""
+    company = (metadata_hints.company if metadata_hints and metadata_hints.company else job.company) or ""
+    location = (metadata_hints.location if metadata_hints and metadata_hints.location else job.location) or ""
+    extra = []
+    if metadata_hints and metadata_hints.seniority:
+        extra.append(f"Seniority: {metadata_hints.seniority}")
+    if metadata_hints and metadata_hints.department:
+        extra.append(f"Department: {metadata_hints.department}")
+    if metadata_hints and metadata_hints.remote_mode:
+        extra.append(f"Remote mode: {metadata_hints.remote_mode}")
+    if metadata_hints and (metadata_hints.salary_min or metadata_hints.salary_max):
+        extra.append(
+            f"Salary: {metadata_hints.salary_min}-{metadata_hints.salary_max} {metadata_hints.salary_currency or ''}".strip()
+        )
     prompt = "\n".join(
         [
             tmpl.body.strip(),
             "",
-            f"Job title: {job.title}",
-            f"Company: {job.company}",
-            f"Location: {job.location}",
+            f"Job title: {title}",
+            f"Company: {company}",
+            f"Location: {location}",
+            *extra,
             f"Listed skills: {', '.join(job.skills)}",
             f"Description:\n{job.description[:4000]}",
         ]

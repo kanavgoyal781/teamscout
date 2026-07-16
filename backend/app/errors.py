@@ -8,11 +8,16 @@ class TeamScoutError(Exception):
         error_code: str = "internal_error",
         details: dict[str, Any] | None = None,
     ) -> None:
-        super().__init__(message)
-        self.message = message
+        # Always redact secrets before anything reaches clients or exception strings.
+        from app.core.redact import redact_details, redact_error
+
+        safe_message = redact_error(message)
+        safe_details = redact_details(details)
+        super().__init__(safe_message)
+        self.message = safe_message
         self.status_code = status_code
         self.error_code = error_code
-        self.details = details or {}
+        self.details = safe_details
 class ServiceNotConfiguredError(TeamScoutError):
     def __init__(self, service: str, env_var: str) -> None:
         super().__init__(
@@ -23,11 +28,14 @@ class ServiceNotConfiguredError(TeamScoutError):
         )
 class ServiceFailingError(TeamScoutError):
     def __init__(self, service: str, reason: str) -> None:
+        from app.core.redact import redact_error
+
+        safe_reason = redact_error(reason)
         super().__init__(
-            f"{service} API is failing — {reason}",
+            f"{service} API is failing — {safe_reason}",
             status_code=503,
             error_code="service_failing",
-            details={"service": service, "reason": reason},
+            details={"service": service, "reason": safe_reason},
         )
 class ValidationError(TeamScoutError):
     def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:

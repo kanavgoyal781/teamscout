@@ -1,0 +1,16 @@
+{
+  "id": "01_bigtech_boilerplate",
+  "shape": "big-tech careers + legal footer",
+  "raw": "Staff Software Engineer, Platform\nCareers | Northstar Cloud\nLocation: Seattle, WA, United States\nJob ID: 2847192\n\nAbout the role\nWe are looking for a Staff Software Engineer to lead platform reliability work across compute and storage.\n\nMinimum qualifications\n- 8+ years software engineering\n- Experience with distributed systems\n\nPreferred qualifications\n- Kubernetes, Go, Python\n\nEqual Opportunity Employer\nNorthstar Cloud is an equal opportunity employer. All qualified applicants will receive consideration without regard to race, color, religion, sex, sexual orientation, gender identity, national origin, disability, or veteran status. Applicants have rights under Federal Employment Laws. Privacy Policy | Terms of Use | Cookie Preferences\nApply | Save job | Share\n",
+  "expected": {
+    "title": "Staff Software Engineer, Platform",
+    "company": "Northstar Cloud",
+    "location": "Seattle, WA, United States",
+    "remote_mode": null,
+    "salary_min": null,
+    "salary_max": null,
+    "salary_currency": null,
+    "seniority": "Staff",
+    "department": null
+  }
+}

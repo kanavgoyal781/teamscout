@@ -1,0 +1,16 @@
+{
+  "id": "03_lever_style",
+  "shape": "Lever-like export",
+  "raw": "Senior Product Manager\nHelios Health\nNew York, NY / Hybrid\nProduct\n\nHelios Health is hiring a Senior Product Manager to own our patient portal roadmap.\n\nResponsibilities\n- Ship quarterly outcomes\n- Partner with design and engineering\n\nLever · Apply for this job\n",
+  "expected": {
+    "title": "Senior Product Manager",
+    "company": "Helios Health",
+    "location": "New York, NY / Hybrid",
+    "remote_mode": "hybrid",
+    "salary_min": null,
+    "salary_max": null,
+    "salary_currency": null,
+    "seniority": "Senior",
+    "department": "Product"
+  }
+}

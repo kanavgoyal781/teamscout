@@ -16,17 +16,26 @@ from app.schemas.team import (
     TeamListResponse,
 )
 from app.services import team_extract, team_search
+from app.schemas.job_metadata import ExtractMetadataRequest, ExtractMetadataResponse
+from app.services.jobs_svc.jd_metadata import extract_job_metadata
 from app.services.jobs_svc.store import cache_pasted_job, resolve_job
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 @router.post("/from-text", response_model=IngestJobFromTextResponse)
 def ingest_job_from_text(
     payload: IngestJobFromTextRequest, db: Session = Depends(get_db)
 ) -> IngestJobFromTextResponse:
+    meta = None
+    if not (payload.title and payload.company and payload.location):
+        from app.errors import ServiceFailingError, ServiceNotConfiguredError
+        try:
+            meta, _, _ = extract_job_metadata(payload.description, db=db)
+        except (ValidationError, ServiceNotConfiguredError, ServiceFailingError):
+            meta = None
     job = cache_pasted_job(
         description=payload.description,
-        title=payload.title,
-        company=payload.company,
-        location=payload.location,
+        title=payload.title or (meta.title if meta else None),
+        company=payload.company or (meta.company if meta else None),
+        location=payload.location or (meta.location if meta else None),
         apply_url=payload.apply_url,
         db=db,
     )
@@ -38,6 +47,17 @@ def ingest_job_from_text(
         location=job.location,
         description_preview=preview,
     )
+
+@router.post("/extract-metadata", response_model=ExtractMetadataResponse)
+@limiter.limit(llm_limit)
+def extract_metadata(
+    request: Request,
+    payload: ExtractMetadataRequest,
+    db: Session = Depends(get_db),
+) -> ExtractMetadataResponse:
+    meta, hit, content_hash = extract_job_metadata(payload.description, db=db)
+    return ExtractMetadataResponse(metadata=meta, cache_hit=hit, content_hash=content_hash)
+
 def _extraction_hash(extraction: TeamExtraction) -> str:
     payload = extraction.model_dump_json()
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -92,7 +112,13 @@ def extract_team(
     db: Session = Depends(get_db),
 ) -> TeamExtractionResponse:
     job = resolve_job(job_id, db)
-    extraction = team_extract.extract_team_from_job(job)
+    from app.errors import ServiceFailingError, ServiceNotConfiguredError
+    meta = None
+    try:
+        meta, _, _ = extract_job_metadata(job.description, db=db)
+    except (ValidationError, ServiceNotConfiguredError, ServiceFailingError):
+        meta = None
+    extraction = team_extract.extract_team_from_job(job, metadata_hints=meta)
     record = TeamExtractionRecord(
         job_id=job_id,
         extraction_json=extraction.model_dump_json(),

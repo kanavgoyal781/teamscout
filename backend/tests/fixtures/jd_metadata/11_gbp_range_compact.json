@@ -1,0 +1,16 @@
+{
+  "id": "11_gbp_range_compact",
+  "shape": "compact GBP 60-70k",
+  "raw": "Mid-level Frontend Developer\nPixel North Ltd — Manchester, UK\nSalary £60-70k. React + TypeScript.\nOffice-first with occasional WFH.\n",
+  "expected": {
+    "title": "Mid-level Frontend Developer",
+    "company": "Pixel North Ltd",
+    "location": "Manchester, UK",
+    "remote_mode": null,
+    "salary_min": 60000,
+    "salary_max": 70000,
+    "salary_currency": "GBP",
+    "seniority": "Mid-level",
+    "department": null
+  }
+}

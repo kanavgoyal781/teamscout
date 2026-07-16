@@ -17,7 +17,7 @@ _L={
 "jd_decompose":"app.services.resume.jd_decompose","job_boards":"app.services.jobs_svc.boards",
 "job_dedup":"app.services.jobs_svc.dedup","job_facets":"app.services.jobs_svc.facets",
 "job_filters":"app.services.jobs_svc.filters","job_sources":"app.services.jobs_svc.sources",
-"jobs":"app.services.jobs_svc.fetch","jobs_store":"app.services.jobs_svc.store",
+"jobs":"app.services.jobs_svc.fetch","jd_metadata":"app.services.jobs_svc.jd_metadata","jobs_store":"app.services.jobs_svc.store",
 "jsearch_client":"app.services.jobs_svc.jsearch","library_store":"app.services.library.store",
 "listwise":"app.services.ranking.listwise","llm":"app.services.inference.llm",
 "observability":"app.services.ops.observability","observability_otlp":"app.services.ops.otlp",

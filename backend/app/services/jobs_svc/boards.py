@@ -216,7 +216,11 @@ def fetch_optional_boards(profile: ResumeProfile) -> list[Job]:
             logger.info("jobs.optional_source", source=name, count=len(batch))
             merged.extend(batch)
         except httpx.HTTPError as exc:
-            logger.warning("jobs.optional_source_failed", source=name, error=str(exc))
+            from app.core.redact import format_httpx_error
+
+            logger.warning("jobs.optional_source_failed", source=name, error=format_httpx_error(exc))
         except (ValueError, TypeError, KeyError) as exc:
-            logger.warning("jobs.optional_source_failed", source=name, error=str(exc))
+            from app.core.redact import redact_error
+
+            logger.warning("jobs.optional_source_failed", source=name, error=redact_error(exc))
     return merged

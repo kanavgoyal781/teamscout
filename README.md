@@ -99,10 +99,12 @@ make dev
 
 ### Google Drive (optional)
 
-1. Enable **Google Drive API**, set `GOOGLE_DRIVE_API_KEY` in `.env`
-2. Share the folder as **Anyone with the link**
-3. Library UI → paste folder URL → **Sync Drive folder**  
-   Unconfigured Drive → clear 503 (no silent empty sync)
+1. Enable **Google Drive API**, set `GOOGLE_DRIVE_API_KEY` in `.env`  
+   Restrict the key to the **Drive API** only in Google Cloud Console.
+2. Share the folder as **Anyone with the link** (viewer) — private files 403 and are skipped per-file
+3. **Native Google Docs/Sheets/Slides** are skipped with a clear reason — download as PDF and re-add
+4. Library UI → paste folder URL → **Sync Drive folder**  
+   Unconfigured Drive → clear 503 (no silent empty sync). API errors never echo the API key.
 
 ## Docker (production-style local)
 

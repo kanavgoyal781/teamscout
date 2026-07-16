@@ -73,6 +73,7 @@ Browser → Vercel (Next.js)  --NEXT_PUBLIC_API_BASE-->  Fly.io (FastAPI :8000)
    - `SUMBLE_API_KEY` (+ optional `SUMBLE_BASE_URL`)
    - `OPS_TOKEN` (ops dashboard)
 4. GitHub repo with Environment **`production`** (optional required reviewers)
+5. **Google Drive (optional library sync):** folder must be **link-shared** (Anyone with the link → Viewer) for API-key access; native Google Docs/Sheets need export as PDF before sync; restrict `GOOGLE_DRIVE_API_KEY` to the **Drive API** only in Google Cloud Console.
 
 ---
 

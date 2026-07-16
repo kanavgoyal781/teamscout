@@ -12,13 +12,17 @@ import {
   uploadLibrary,
 } from "../lib/api";
 import { contentHashHex } from "../lib/hash";
-import type { RankedResumeRecommendation } from "../lib/types";
+import type { IngestFileResult, RankedResumeRecommendation } from "../lib/types";
 import { queryKeys } from "../lib/query";
 
 export function useLibraryPage() {
   const queryClient = useQueryClient();
   const [driveUrl, setDriveUrl] = useState("");
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [lastIngestResults, setLastIngestResults] = useState<IngestFileResult[] | null>(null);
+  const [newlyParsedIds, setNewlyParsedIds] = useState<string[]>([]);
+  const [cachedCount, setCachedCount] = useState(0);
+  const [parsedCount, setParsedCount] = useState(0);
   const [jdText, setJdText] = useState("");
   const [jdTitle, setJdTitle] = useState("");
   const [jdCompany, setJdCompany] = useState("");
@@ -51,8 +55,15 @@ export function useLibraryPage() {
           : response.units_indexed
             ? " Units indexed for MaxSim ranking."
             : "";
+      const results = response.file_results ?? [];
+      setLastIngestResults(results);
+      setCachedCount(response.files_skipped);
+      setParsedCount(response.files_parsed);
+      setNewlyParsedIds(
+        results.filter((r) => r.status === "parsed" && r.resume_id).map((r) => r.resume_id as string),
+      );
       toast.success(
-        `Uploaded ${response.files_received} file(s): ${response.files_parsed} parsed, ${response.files_skipped} skipped (duplicate hash)${ignoredNote}.${unitsNote}`,
+        `Uploaded ${response.files_received} file(s): ${response.files_parsed} parsed, ${response.files_skipped} cached${ignoredNote}.${unitsNote}`,
       );
       if (response.units_index_warning) {
         toast.message(response.units_index_warning);
@@ -66,22 +77,39 @@ export function useLibraryPage() {
     mutationFn: (url: string) => syncDrive(url),
     retry: false,
     onSuccess: async (response) => {
+      const failed = response.files_failed ?? 0;
       const ignoredNote =
         response.files_ignored > 0
           ? `, ${response.files_ignored} ignored (non-PDF/DOCX)`
           : "";
+      const failedNote = failed > 0 ? `, ${failed} failed` : "";
       const unitsNote =
         response.units_indexed === false
           ? " Units not indexed (embeddings unavailable)."
           : response.units_indexed
             ? " Units indexed for MaxSim ranking."
             : "";
+      const results = response.file_results ?? [];
+      setLastIngestResults(results);
+      setCachedCount(response.files_skipped);
+      setParsedCount(response.files_parsed);
+      setNewlyParsedIds(
+        results.filter((r) => r.status === "parsed" && r.resume_id).map((r) => r.resume_id as string),
+      );
+      // Per-file failures are listed in results — never a global scary toast.
       setSyncStatus(
-        `Synced folder ${response.folder_id}: ${response.files_seen} resume files seen, ${response.files_parsed} parsed, ${response.files_skipped} skipped${ignoredNote}.${unitsNote}`,
+        `Synced ${response.files_parsed} parsed · ${response.files_skipped} skipped (cached)${failedNote}${ignoredNote}.${unitsNote}`,
       );
-      toast.success(
-        `Drive sync complete: ${response.files_parsed} parsed, ${response.files_skipped} skipped${ignoredNote}.${unitsNote}`,
-      );
+      const summary = `Drive sync: ${response.files_parsed} parsed, ${response.files_skipped} skipped${failedNote}${ignoredNote}.${unitsNote}`;
+      if (failed > 0 && response.files_parsed === 0 && response.files_skipped === 0) {
+        toast.message(summary);
+      } else {
+        toast.success(summary);
+      }
+      const failedRows = results.filter((r) => r.status === "failed" && r.reason);
+      for (const row of failedRows.slice(0, 5)) {
+        toast.message(`${row.filename}: ${row.reason}`);
+      }
       if (response.units_index_warning) {
         toast.message(response.units_index_warning);
       }
@@ -163,6 +191,10 @@ export function useLibraryPage() {
     syncing: syncMutation.isPending,
     driveUrl,
     syncStatus,
+    lastIngestResults,
+    newlyParsedIds,
+    cachedCount,
+    parsedCount,
     jdText,
     jdTitle,
     jdCompany,

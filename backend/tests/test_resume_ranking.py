@@ -396,12 +396,18 @@ def test_rationale_rank_consistent_rejects_superlative_for_non_first() -> None:
         assert rationale_rank_consistent(phrase, final_rank=2) is True, phrase
 
 
-def test_tournament_override_match_scores_non_increasing() -> None:
-    """After tournament reorder, Overall match rings must not invert vs card order."""
+def test_tournament_override_keeps_match_score_equal_final_blend() -> None:
+    """HARD: tournament must flip coverage order; match_score always == final_score.
+
+    Equal MaxSim coverage enters the close-call band; pairwise picks tour-winner.
+    Lower skill jaccard on winner → lower final blend while ranked #1. Reintroducing
+    the old match_score lift would break equality (headline ≠ final_score).
+    """
     from unittest.mock import MagicMock, patch
 
     from app.services.resume.jd_decompose import JdRequirement
 
+    bullet = "Python and antibody engineering campaigns with phage display"
     job = Job(
         id="ov-job",
         source="fixture",
@@ -412,23 +418,22 @@ def test_tournament_override_match_scores_non_increasing() -> None:
         description="Need antibody engineering and Python.",
         apply_url="https://example.com",
         posted_at=datetime.now(UTC),
-        skills=["antibody engineering", "Python"],
+        skills=["Python", "antibody engineering"],
     )
-    high_cov = _candidate(
+    cov_leader = _candidate(
         "cov-leader",
         "General",
-        ["Python"],
-        "Python analysis of sequencing data",
-        ["Python analysis of sequencing data"],
+        ["Python", "antibody engineering"],
+        bullet,
+        [bullet],
     )
-    low_cov = _candidate(
+    tour_winner = _candidate(
         "tour-winner",
         "Antibody",
-        ["antibody engineering", "Python"],
-        "Led antibody engineering campaigns with phage display",
-        ["Led antibody engineering campaigns with phage display"],
+        ["Python"],  # lower skill_jaccard → lower final_score
+        bullet,
+        [bullet],
     )
-    # Force coverage order via deterministic bag embeddings + fixed requirements.
     reqs = [
         JdRequirement(text="Python", kind="must", category="skill", weight=2.0),
         JdRequirement(text="antibody engineering", kind="must", category="skill", weight=2.0),
@@ -437,41 +442,39 @@ def test_tournament_override_match_scores_non_increasing() -> None:
     def fake_complete(prompt, schema, **kwargs):
         fields = getattr(schema, "model_fields", {}) or {}
         if "results" in fields:
-            # justify path — rank-safe, monotonic fit
             return schema(
                 results=[
                     {
                         "resume_id": "tour-winner",
-                        "fit_score": 90,
-                        "matched_skills": ["antibody engineering"],
+                        "fit_score": 88,
+                        "matched_skills": ["Python"],
                         "missing_skills": [],
-                        "rationale": "Led antibody engineering campaigns with phage display.",
+                        "rationale": f"{bullet}.",
                         "coverage": [],
                     },
                     {
                         "resume_id": "cov-leader",
-                        "fit_score": 80,
+                        "fit_score": 88,
                         "matched_skills": ["Python"],
-                        "missing_skills": ["antibody engineering"],
-                        "rationale": "Python analysis of sequencing data without antibody campaigns.",
+                        "missing_skills": [],
+                        "rationale": f"{bullet}.",
                         "coverage": [],
                     },
                 ]
             )
-        # pairwise path — prefer tour-winner filename
         if "tour-winner" in prompt and "Resume A (tour-winner" in prompt:
             return schema(
                 winner="A",
                 margin="decisive",
                 key_differences=["antibody engineering depth"],
-                reason="tour-winner has antibody engineering campaigns",
+                reason="tour-winner preferred on antibody depth",
             )
         if "tour-winner" in prompt:
             return schema(
                 winner="B",
                 margin="decisive",
                 key_differences=["antibody engineering depth"],
-                reason="tour-winner has antibody engineering campaigns",
+                reason="tour-winner preferred on antibody depth",
             )
         return schema(
             winner="A",
@@ -496,17 +499,24 @@ def test_tournament_override_match_scores_non_increasing() -> None:
                         with patch("app.services.resume.tournament.load_prompt", return_value=prompt_meta):
                             with patch("app.services.resume.justify.load_prompt", return_value=prompt_meta):
                                 ranked = rank_resumes_for_job(
-                                    job, [high_cov, low_cov], use_llm=True
+                                    job, [cov_leader, tour_winner], use_llm=True
                                 )
 
     assert len(ranked) >= 2
-    # If tournament overrode, enforce non-increasing match_score with final order.
-    if ranked[0].tournament and ranked[0].tournament.overrode_coverage:
-        assert ranked[0].match_score + 1e-9 >= ranked[1].match_score
-        assert ranked[0].resume_id == "tour-winner"
-    else:
-        # Coverage path alone still non-increasing by construction
-        assert ranked[0].match_score + 1e-9 >= ranked[1].match_score
+    assert ranked[0].tournament is not None
+    assert ranked[0].tournament.ran is True
+    assert ranked[0].tournament.overrode_coverage is True, (
+        "fixture must flip coverage order — soft if overrode: is inert"
+    )
+    assert ranked[0].resume_id == "tour-winner"
+    assert ranked[1].resume_id == "cov-leader"
+    # Winner has lower blend (skill jaccard); old fudge would lift match_score here
+    assert ranked[0].score_breakdown.final_score + 1e-9 < ranked[1].score_breakdown.final_score
+    for rec in ranked:
+        assert rec.match_score == pytest.approx(rec.score_breakdown.final_score), (
+            f"{rec.resume_id}: match_score={rec.match_score} != final_score="
+            f"{rec.score_breakdown.final_score}"
+        )
 
 
 def test_generate_biomedicines_tournament_leads_and_justification_rank_safe() -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from app.core.logging import get_logger
+from app.core.redact import redact_details, redact_error
 from app.errors import TeamScoutError
 logger = get_logger(__name__)
 def _request_id(request: Request) -> str | None:
@@ -11,12 +12,13 @@ def _request_id(request: Request) -> str | None:
         return str(rid)
     return None
 async def teamscout_error_handler(_request: Request, exc: TeamScoutError) -> JSONResponse:
+    # Defense in depth: redact again even if a caller bypassed TeamScoutError sanitization.
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "error": exc.error_code,
-            "message": exc.message,
-            "details": exc.details,
+            "message": redact_error(exc.message),
+            "details": redact_details(exc.details),
         },
     )
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -27,6 +29,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         path=str(request.url.path),
         method=request.method,
         error_type=type(exc).__name__,
+        # Never log raw exception text — may include upstream URLs with keys.
+        error=redact_error(exc),
     )
     content = {
         "error": "internal_error",
