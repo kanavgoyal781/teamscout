@@ -1,23 +1,15 @@
 from pydantic import BaseModel, Field
-
-
 class TeamExtraction(BaseModel):
     team_name: str = ""
     department: str = ""
     likely_hiring_titles: list[str] = Field(default_factory=list)
-
-
 class TeamExtractionResponse(BaseModel):
     job_id: str
     extraction_id: str
     extraction: TeamExtraction
-
-
 class FindTeamRequest(BaseModel):
     extraction_id: str
     search_id: str | None = None
-
-
 class ContactOut(BaseModel):
     id: str
     full_name: str
@@ -28,16 +20,12 @@ class ContactOut(BaseModel):
     sumble_person_id: str | None = None
     email_revealed: bool = False
     email: str | None = None
-
-
 class FindTeamResponse(BaseModel):
     job_id: str
     contacts: list[ContactOut] = Field(default_factory=list)
     credits_used: int = 0
     team_searched: bool = True
     search_path: str | None = None  # "Matched posted role" | "Matched by role filters" | None
-
-
 class TeamListResponse(BaseModel):
     job_id: str
     contacts: list[ContactOut] = Field(default_factory=list)
@@ -45,35 +33,25 @@ class TeamListResponse(BaseModel):
     extraction: TeamExtraction | None = None
     team_searched: bool = False
     search_path: str | None = None  # "Matched posted role" | "Matched by role filters" | None
-
-
 class EmailRevealResponse(BaseModel):
     contact_id: str
     cost_credits: int | None = None
     cached: bool = False
     email: str | None = None
     status: str = "pending"
-
-
 class OutreachDraftResponse(BaseModel):
     """Compose-only draft for mailto/Gmail/Outlook deep-links (no server send)."""
-
     contact_id: str
     subject: str
     body: str
     email: str
-
-
 class IngestJobFromTextRequest(BaseModel):
     """Paste a job posting (e.g. LinkedIn) to run extract-team → find hiring team without JSearch."""
-
     description: str
     title: str = ""
     company: str = ""
     location: str = ""
     apply_url: str = ""
-
-
 class IngestJobFromTextResponse(BaseModel):
     job_id: str
     title: str

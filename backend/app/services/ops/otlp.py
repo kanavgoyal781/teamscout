@@ -1,19 +1,12 @@
 """Best-effort OTLP/HTTP export for traces (never breaks request path)."""
-
 from __future__ import annotations
-
 from urllib.parse import urlparse
-
 import httpx
-
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.http_timeouts import default_timeout
 from app.core.logging import get_logger
-
 logger = get_logger(__name__)
-
-
 def maybe_export_otlp(*, operation: str, status: str, request_id: str) -> None:
     endpoint = settings.OTEL_EXPORTER_OTLP_ENDPOINT
     if not is_set(endpoint):

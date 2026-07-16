@@ -1,26 +1,21 @@
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
-
 from app.api.routers import contacts, feedback, jobs, library, ops, resumes, searches, stats, workspace
 from app.core.config import settings
 from app.core.exception_handlers import teamscout_error_handler, unhandled_exception_handler
 from app.core.logging import configure_logging, get_logger, log_configured_services
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.core.request_id import RequestIdMiddleware
-from app.core.upload_limit import UploadSizeLimitMiddleware
 from app.core.workspace import WorkspaceMiddleware, maybe_sweep_expired
+from app.core.upload_limit import UploadSizeLimitMiddleware
 from app.db.session import init_db
 from app.errors import TeamScoutError
 from app.services.ops.health import run_health_checks
 from app.services.ranking.math import validate_ranking_weights
-
 logger = get_logger(__name__)
-
-
 def _cors_origins() -> list[str]:
     if settings.is_prod:
         raw = settings.ALLOWED_ORIGINS
@@ -36,8 +31,6 @@ def _cors_origins() -> list[str]:
             )
         return origins
     return settings.allowed_origins_list
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging(settings.LOG_LEVEL, env=settings.ENV)
@@ -48,8 +41,6 @@ async def lifespan(app: FastAPI):
     logger.info("app.startup", env=settings.ENV, version=settings.app_version)
     yield
     logger.info("app.shutdown")
-
-
 app = FastAPI(title="TeamScout", version=settings.app_version, lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
@@ -75,14 +66,10 @@ app.include_router(feedback.router)
 app.include_router(ops.router)
 app.include_router(stats.router)
 app.include_router(workspace.router)
-
-
 @app.get("/livez")
 async def livez() -> dict[str, str]:
     """Process liveness only (always 200 when the app responds)."""
     return {"status": "alive"}
-
-
 @app.get("/health")
 async def health() -> JSONResponse:
     payload = run_health_checks()

@@ -1,12 +1,8 @@
 """Feedback capture schemas (thumbs + implicit apply/find-team)."""
-
 from __future__ import annotations
-
 import re
 from typing import Literal
-
 from pydantic import BaseModel, Field, field_validator
-
 FeedbackKind = Literal[
     "thumbs_up",
     "thumbs_down",
@@ -16,20 +12,10 @@ FeedbackKind = Literal[
 ]
 FeedbackTargetType = Literal["job_match", "resume_pick", "contact"]
 _HEX = re.compile(r"^[a-fA-F0-9]{8,64}$")
-_SCORE_COMPONENT_KEYS = frozenset(
-    {
-        "llm",
-        "rrf",
-        "skills",
-        "recency",
-        "experience",
-        "requirements",
-        "cross_encoder",
-    }
-)
+_SCORE_COMPONENT_KEYS = frozenset({
+    "llm", "rrf", "skills", "recency", "experience", "requirements", "cross_encoder",
+})
 _LLM_KEYS = frozenset({"llm"})  # 0–100 scale; others 0–1
-
-
 class FeedbackCreate(BaseModel):
     kind: FeedbackKind
     target_type: FeedbackTargetType
@@ -40,7 +26,6 @@ class FeedbackCreate(BaseModel):
     score_shown: float | None = Field(default=None, ge=0, le=100)
     shown_rank: int | None = Field(default=None, ge=0, le=10_000)
     score_components: dict[str, float] | None = None
-
     @field_validator("profile_hash", "jd_hash", mode="before")
     @classmethod
     def _hex_hash(cls, v: object) -> object:
@@ -49,7 +34,6 @@ class FeedbackCreate(BaseModel):
         if not isinstance(v, str) or not _HEX.match(v):
             raise ValueError("must be 8–64 hex characters")
         return v.lower()
-
     @field_validator("score_shown", mode="before")
     @classmethod
     def _finite_score(cls, v: object) -> object:
@@ -59,7 +43,6 @@ class FeedbackCreate(BaseModel):
         if f != f or f in (float("inf"), float("-inf")):  # NaN/inf
             raise ValueError("score_shown must be finite")
         return f
-
     @field_validator("score_components", mode="before")
     @classmethod
     def _sanitize_components(cls, v: object) -> object:
@@ -87,8 +70,6 @@ class FeedbackCreate(BaseModel):
                     f = f / 100.0
                 out[key] = max(0.0, min(1.0, f))
         return out or None
-
-
 class FeedbackResponse(BaseModel):
     id: str
     kind: str

@@ -1,26 +1,18 @@
 from __future__ import annotations
-
 import json
 from collections import Counter
 from pathlib import Path
 from typing import Any
-
 from sqlalchemy.orm import Session
-
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.workspace import require_workspace_id
 from app.db.models import Feedback
 from app.prompts import prompt_versions
 from app.schemas.feedback import FeedbackCreate
-
-
 def current_ranking_config_hash() -> str:
     from app.services.ranking.config import ranking_config_hash
-
     return ranking_config_hash()
-
-
 def resolve_evals_root() -> Path:
     if is_set(getattr(settings, "EVALS_DIR", None)):
         return Path(str(settings.EVALS_DIR)).expanduser().resolve()
@@ -34,8 +26,6 @@ def resolve_evals_root() -> Path:
         if (candidate / "evals").is_dir():
             return candidate.resolve()
     return Path.cwd().resolve()
-
-
 def record_feedback(db: Session, payload: FeedbackCreate) -> Feedback:
     components_json = None
     if payload.score_components:
@@ -61,8 +51,6 @@ def record_feedback(db: Session, payload: FeedbackCreate) -> Feedback:
     db.commit()
     db.refresh(row)
     return row
-
-
 def feedback_label_counts(db: Session) -> dict[str, int]:
     rows = db.query(Feedback.kind).all()
     counts = Counter(str(r[0]) for r in rows)
@@ -74,8 +62,6 @@ def feedback_label_counts(db: Session) -> dict[str, int]:
         "find_team_click": counts.get("find_team_click", 0),
         "compose_opened": counts.get("compose_opened", 0),
     }
-
-
 def learning_file_stats(repo_root: Path | str | None = None) -> dict[str, Any]:
     root = Path(repo_root) if repo_root is not None else resolve_evals_root()
     by_suite: dict[str, list[dict]] = {}

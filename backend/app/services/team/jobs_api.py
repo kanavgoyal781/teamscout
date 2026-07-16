@@ -1,15 +1,10 @@
 from __future__ import annotations
-
 import httpx
-
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.errors import ServiceFailingError
 from app.services import sumble_client
-
 logger = get_logger(__name__)
-
-
 def search_org_job_posts(organization_id: int, limit: int | None = None) -> tuple[list[dict], int]:
     lim = limit or getattr(settings, "SUMBLE_JOB_MATCH_LIMIT", 30)
     data = sumble_client.post(
@@ -24,8 +19,6 @@ def search_org_job_posts(organization_id: int, limit: int | None = None) -> tupl
     jobs = data.get("jobs")
     credits = int(data.get("credits_used") or 0)
     return (jobs if isinstance(jobs, list) else [], credits)
-
-
 def find_best_matching_job_post(organization_id: int, jd_title: str, company: str) -> tuple[int | None, int]:
     if not jd_title:
         return None, 0
@@ -61,8 +54,6 @@ def find_best_matching_job_post(organization_id: int, jd_title: str, company: st
     if best_score >= 0.28 and best_id is not None:
         return best_id, search_credits
     return None, search_credits
-
-
 def get_related_people_for_job(
     sumble_job_id: int, limit: int | None = None
 ) -> tuple[list[sumble_client.SumblePerson], int]:

@@ -1,24 +1,16 @@
 import uuid
 from datetime import datetime
-
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
-
 from app.db.base import Base
-
-
 def _uuid() -> str:
     return str(uuid.uuid4())
-
-
 class Workspace(Base):
     __tablename__ = "workspaces"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
     prefs_json: Mapped[str | None] = mapped_column(Text)
-
-
 class Resume(Base):
     __tablename__ = "resumes"
     __table_args__ = (UniqueConstraint("workspace_id", "content_hash", name="uq_resume_ws_hash"),)
@@ -34,11 +26,11 @@ class Resume(Base):
     cluster_id: Mapped[str | None] = mapped_column(String(64), index=True)
     units_content_hash: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class JobCache(Base):
     __tablename__ = "jobs_cache"
-    __table_args__ = (UniqueConstraint("workspace_id", "source", "source_job_id", name="uq_jobs_cache_ws_source_job"),)
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "source", "source_job_id", name="uq_jobs_cache_ws_source_job"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="")
     job_id: Mapped[str | None] = mapped_column(String(36), index=True)
@@ -47,8 +39,6 @@ class JobCache(Base):
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     payload_json: Mapped[str | None] = mapped_column(Text)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class Search(Base):
     __tablename__ = "searches"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -58,8 +48,6 @@ class Search(Base):
     query_json: Mapped[str | None] = mapped_column(Text)
     results_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class IntentSearch(Base):
     __tablename__ = "intent_searches"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -71,8 +59,6 @@ class IntentSearch(Base):
     query_json: Mapped[str | None] = mapped_column(Text)
     results_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class DriveSyncState(Base):
     __tablename__ = "drive_sync_state"
     __table_args__ = (UniqueConstraint("workspace_id", "folder_id", name="uq_drive_ws_folder"),)
@@ -81,8 +67,6 @@ class DriveSyncState(Base):
     folder_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     folder_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     last_synced_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class DriveSyncedFile(Base):
     __tablename__ = "drive_synced_files"
     __table_args__ = (UniqueConstraint("workspace_id", "folder_id", "file_id", name="uq_drive_ws_folder_file"),)
@@ -94,8 +78,6 @@ class DriveSyncedFile(Base):
     modified_time: Mapped[str] = mapped_column(String(64), nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     synced_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class TeamExtractionRecord(Base):
     __tablename__ = "team_extractions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -104,8 +86,6 @@ class TeamExtractionRecord(Base):
     extraction_json: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class JobTeamSearch(Base):
     __tablename__ = "job_team_searches"
     __table_args__ = (UniqueConstraint("workspace_id", "job_id", name="uq_job_team_ws_job"),)
@@ -117,8 +97,6 @@ class JobTeamSearch(Base):
     team_searched_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     credits_used: Mapped[int] = mapped_column(Integer, default=0)
     search_path: Mapped[str | None] = mapped_column(String(64))
-
-
 class Contact(Base):
     __tablename__ = "contacts"
     __table_args__ = (UniqueConstraint("workspace_id", "sumble_person_id", "job_id", name="uq_contact_ws_person_job"),)
@@ -134,8 +112,6 @@ class Contact(Base):
     extraction_id: Mapped[str | None] = mapped_column(String(36), index=True)
     sumble_person_id: Mapped[str | None] = mapped_column(String(128), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class EmailReveal(Base):
     __tablename__ = "email_reveals"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -146,8 +122,6 @@ class EmailReveal(Base):
     status: Mapped[str] = mapped_column(String(32), default="pending")
     revealed_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class Trace(Base):
     __tablename__ = "traces"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -167,8 +141,6 @@ class Trace(Base):
     error_type: Mapped[str | None] = mapped_column(String(128))
     cache_hit: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
-
-
 class EmbeddingCache(Base):
     __tablename__ = "embedding_cache"
     __table_args__ = (UniqueConstraint("content_hash", name="uq_embedding_content_hash"),)
@@ -177,8 +149,6 @@ class EmbeddingCache(Base):
     model: Mapped[str] = mapped_column(String(128), nullable=False)
     embedding_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class QueryExpansionCache(Base):
     __tablename__ = "query_expansion_cache"
     __table_args__ = (UniqueConstraint("content_hash", name="uq_query_expand_content_hash"),)
@@ -187,8 +157,6 @@ class QueryExpansionCache(Base):
     prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
     expansions_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class ResumeUnit(Base):
     __tablename__ = "resume_units"
     __table_args__ = (UniqueConstraint("resume_id", "unit_hash", name="uq_resume_unit_hash"),)
@@ -200,8 +168,6 @@ class ResumeUnit(Base):
     unit_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     embedding_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class JdRequirementsCache(Base):
     __tablename__ = "jd_requirements_cache"
     __table_args__ = (UniqueConstraint("content_hash", name="uq_jd_req_content_hash"),)
@@ -210,8 +176,6 @@ class JdRequirementsCache(Base):
     prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
     requirements_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class PairwiseJudgeCache(Base):
     __tablename__ = "pairwise_judge_cache"
     __table_args__ = (UniqueConstraint("cache_key", name="uq_pairwise_cache_key"),)
@@ -223,8 +187,6 @@ class PairwiseJudgeCache(Base):
     winner_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class Feedback(Base):
     __tablename__ = "feedback"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -244,8 +206,6 @@ class Feedback(Base):
     git_sha: Mapped[str | None] = mapped_column(String(64))
     ranking_config_hash: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
-
-
 class ScoreCalibration(Base):
     __tablename__ = "score_calibration"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -258,7 +218,6 @@ class ScoreCalibration(Base):
     metadata_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-
 class JdMetadataCache(Base):
     __tablename__ = "jd_metadata_cache"
     __table_args__ = (UniqueConstraint("content_hash", name="uq_jd_metadata_content_hash"),)
@@ -267,3 +226,4 @@ class JdMetadataCache(Base):
     prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
     metadata_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+

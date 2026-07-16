@@ -1,5 +1,4 @@
 """Generic JobMetadata extraction — no source-specific fields or defaults that invent content."""
-
 from __future__ import annotations
 
 import re

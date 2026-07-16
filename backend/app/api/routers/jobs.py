@@ -1,13 +1,10 @@
 import hashlib
-
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
-
 from app.core.rate_limit import find_team_limit, limiter, llm_limit
 from app.db.models import Contact, EmailReveal, JobTeamSearch, TeamExtractionRecord
 from app.db.session import get_db
 from app.errors import ValidationError
-from app.schemas.job_metadata import ExtractMetadataRequest, ExtractMetadataResponse
 from app.schemas.team import (
     ContactOut,
     FindTeamRequest,
@@ -19,18 +16,17 @@ from app.schemas.team import (
     TeamListResponse,
 )
 from app.services import team_extract, team_search
+from app.schemas.job_metadata import ExtractMetadataRequest, ExtractMetadataResponse
 from app.services.jobs_svc.jd_metadata import extract_job_metadata
 from app.services.jobs_svc.store import cache_pasted_job, resolve_job
-
 router = APIRouter(prefix="/jobs", tags=["jobs"])
-
-
 @router.post("/from-text", response_model=IngestJobFromTextResponse)
-def ingest_job_from_text(payload: IngestJobFromTextRequest, db: Session = Depends(get_db)) -> IngestJobFromTextResponse:
+def ingest_job_from_text(
+    payload: IngestJobFromTextRequest, db: Session = Depends(get_db)
+) -> IngestJobFromTextResponse:
     meta = None
     if not (payload.title and payload.company and payload.location):
         from app.errors import ServiceFailingError, ServiceNotConfiguredError
-
         try:
             meta, _, _ = extract_job_metadata(payload.description, db=db)
         except (ValidationError, ServiceNotConfiguredError, ServiceFailingError):
@@ -52,7 +48,6 @@ def ingest_job_from_text(payload: IngestJobFromTextRequest, db: Session = Depend
         description_preview=preview,
     )
 
-
 @router.post("/extract-metadata", response_model=ExtractMetadataResponse)
 @limiter.limit(llm_limit)
 def extract_metadata(
@@ -63,12 +58,9 @@ def extract_metadata(
     meta, hit, content_hash = extract_job_metadata(payload.description, db=db)
     return ExtractMetadataResponse(metadata=meta, cache_hit=hit, content_hash=content_hash)
 
-
 def _extraction_hash(extraction: TeamExtraction) -> str:
     payload = extraction.model_dump_json()
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
 def _load_confirmed_extraction(
     job_id: str,
     extraction_id: str,
@@ -88,12 +80,8 @@ def _load_confirmed_extraction(
             details={"job_id": job_id, "extraction_id": extraction_id},
         )
     return TeamExtraction.model_validate_json(row.extraction_json)
-
-
 def _team_searched(job_id: str, db: Session) -> bool:
     return db.query(JobTeamSearch).filter(JobTeamSearch.job_id == job_id).one_or_none() is not None
-
-
 def _latest_extraction(job_id: str, db: Session) -> tuple[str | None, TeamExtraction | None]:
     row = (
         db.query(TeamExtractionRecord)
@@ -104,8 +92,6 @@ def _latest_extraction(job_id: str, db: Session) -> tuple[str | None, TeamExtrac
     if row is None:
         return None, None
     return row.id, TeamExtraction.model_validate_json(row.extraction_json)
-
-
 def _contact_to_out(contact: Contact, reveal_email: str | None = None) -> ContactOut:
     return ContactOut(
         id=contact.id,
@@ -118,8 +104,6 @@ def _contact_to_out(contact: Contact, reveal_email: str | None = None) -> Contac
         email_revealed=reveal_email is not None,
         email=reveal_email,
     )
-
-
 @router.post("/{job_id}/extract-team", response_model=TeamExtractionResponse)
 @limiter.limit(llm_limit)
 def extract_team(
@@ -129,7 +113,6 @@ def extract_team(
 ) -> TeamExtractionResponse:
     job = resolve_job(job_id, db)
     from app.errors import ServiceFailingError, ServiceNotConfiguredError
-
     meta = None
     try:
         meta, _, _ = extract_job_metadata(job.description, db=db)
@@ -145,8 +128,6 @@ def extract_team(
     db.commit()
     db.refresh(record)
     return TeamExtractionResponse(job_id=job_id, extraction_id=record.id, extraction=extraction)
-
-
 @router.post("/{job_id}/find-team", response_model=FindTeamResponse)
 @limiter.limit(find_team_limit)
 def find_team(
@@ -164,8 +145,6 @@ def find_team(
         search_id=payload.search_id,
         db=db,
     )
-
-
 @router.get("/{job_id}/team", response_model=TeamListResponse)
 def list_team(job_id: str, db: Session = Depends(get_db)) -> TeamListResponse:
     resolve_job(job_id, db)

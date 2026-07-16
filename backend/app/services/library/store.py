@@ -3,10 +3,8 @@ import zipfile
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
-
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
-
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.upload_limit import enforce_upload_size
@@ -17,8 +15,6 @@ from app.schemas.library import IngestFileResult, LibraryResumeOut, ResumeCandid
 from app.schemas.resume import ResumeProfile
 from app.services import drive, parser
 from app.services.ranking.math_align import cluster_variant_label
-
-
 def _cluster_meta(rows: list[Resume]) -> dict[str, tuple[str | None, int, str | None]]:
     members: dict[str, list[str]] = defaultdict(list)
     for row in rows:
@@ -32,8 +28,6 @@ def _cluster_meta(rows: list[Resume]) -> dict[str, tuple[str | None, int, str | 
         mlist = members[cid]
         out[row.id] = (cid, len(mlist), cluster_variant_label(row.id, cid, mlist))
     return out
-
-
 def _resume_to_out(row: Resume, meta: dict[str, tuple[str | None, int, str | None]] | None = None) -> LibraryResumeOut:
     profile = ResumeProfile.model_validate_json(row.parsed_json or "{}")
     created = row.created_at.isoformat() if row.created_at else None
@@ -55,24 +49,16 @@ def _resume_to_out(row: Resume, meta: dict[str, tuple[str | None, int, str | Non
         cluster_label=label,
         cluster_size=size,
     )
-
-
 def _resume_out_by_hash(content_hash: str, db: Session) -> LibraryResumeOut:
     wid = require_workspace_id()
     row = db.query(Resume).filter(Resume.workspace_id == wid, Resume.content_hash == content_hash).one_or_none()
-    if row is None:
-        raise NotFoundError("resume", content_hash)
+    if row is None: raise NotFoundError("resume", content_hash)
     return _resume_to_out(row)
-
-
 def _maybe_index_units(row: Resume, profile: ResumeProfile, db: Session) -> tuple[bool, str | None]:
-    if not is_set(settings.EMBEDDINGS_API_KEY):
-        return False, "embeddings not configured — units deferred to rank time"
+    if not is_set(settings.EMBEDDINGS_API_KEY): return False, "embeddings not configured — units deferred to rank time"
     from sqlalchemy.exc import SQLAlchemyError
-
     from app.errors import ServiceFailingError, ServiceNotConfiguredError
     from app.services.resume.units import index_resume_units
-
     try:
         index_resume_units(db, row.id, profile)
         return True, None
@@ -87,16 +73,9 @@ def _maybe_index_units(row: Resume, profile: ResumeProfile, db: Session) -> tupl
             error=safe,
         )
         return False, safe
-
-
 def load_candidates(db: Session) -> list[ResumeCandidate]:
     wid = require_workspace_id()
-    rows = (
-        db.query(Resume)
-        .filter(Resume.workspace_id == wid, Resume.in_library.is_(True))
-        .order_by(Resume.created_at.desc())
-        .all()
-    )
+    rows = db.query(Resume).filter(Resume.workspace_id == wid, Resume.in_library.is_(True)).order_by(Resume.created_at.desc()).all()
     return [
         ResumeCandidate(
             resume_id=row.id,
@@ -107,29 +86,17 @@ def load_candidates(db: Session) -> list[ResumeCandidate]:
         )
         for row in rows
     ]
-
-
 def list_library_resumes(db: Session) -> list[LibraryResumeOut]:
     wid = require_workspace_id()
-    rows = (
-        db.query(Resume)
-        .filter(Resume.workspace_id == wid, Resume.in_library.is_(True))
-        .order_by(Resume.created_at.desc())
-        .all()
-    )
+    rows = db.query(Resume).filter(Resume.workspace_id == wid, Resume.in_library.is_(True)).order_by(Resume.created_at.desc()).all()
     meta = _cluster_meta(rows)
     return [_resume_to_out(row, meta) for row in rows]
-
-
 def distinct_version_count(db: Session) -> int:
     wid = require_workspace_id()
     rows = db.query(Resume).filter(Resume.workspace_id == wid, Resume.in_library.is_(True)).all()
-    if not rows:
-        return 0
+    if not rows: return 0
     clusters = {row.cluster_id or row.id for row in rows}
     return len(clusters)
-
-
 def ingest_resume_bytes(
     filename: str,
     data: bytes,
@@ -138,8 +105,7 @@ def ingest_resume_bytes(
     source: str = "upload",
 ) -> tuple[LibraryResumeOut, bool]:
     """Ingest one resume. created=False is a content-hash cache hit (no parse LLM)."""
-    if not data:
-        raise ValidationError(f"File is empty: {filename}")
+    if not data: raise ValidationError(f"File is empty: {filename}")
     enforce_upload_size(data)
     file_hash = parser.content_hash(data)
     wid = require_workspace_id()
@@ -174,25 +140,17 @@ def ingest_resume_bytes(
     db.refresh(row)
     _maybe_index_units(row, profile, db)
     return _resume_to_out(row), True
-
-
 def _index_status_for_resumes(db: Session, resumes: list[LibraryResumeOut]) -> tuple[bool | None, str | None]:
-    if not is_set(settings.EMBEDDINGS_API_KEY):
-        return None, "embeddings not configured — units deferred to rank time"
+    if not is_set(settings.EMBEDDINGS_API_KEY): return None, "embeddings not configured — units deferred to rank time"
     from app.db.models import ResumeUnit
-
-    if not resumes:
-        return True, None
+    if not resumes: return True, None
     missing = 0
     for r in resumes:
         count = db.query(ResumeUnit).filter(ResumeUnit.resume_id == r.id).count()
         if count == 0:
             missing += 1
-    if missing:
-        return False, f"{missing} resume(s) missing unit index (will re-index at rank)"
+    if missing: return False, f"{missing} resume(s) missing unit index (will re-index at rank)"
     return True, None
-
-
 def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str, object]:
     """Sync a Drive folder. Per-file failures do not abort the whole sync."""
     from app.core.logging import get_logger
@@ -265,7 +223,9 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
                 reason=reason,
                 error=redact_error(exc),
             )
-            file_results.append(IngestFileResult(filename=item.name, status="failed", reason=reason))
+            file_results.append(
+                IngestFileResult(filename=item.name, status="failed", reason=reason)
+            )
             continue
         resumes.append(out)
         if created:
@@ -309,7 +269,6 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
     db.commit()
     if parsed > 0:
         from app.services.resume.ranking import recluster_library
-
         recluster_library(db)
     final = list_library_resumes(db)
     units_ok, units_warn = _index_status_for_resumes(db, final)
@@ -326,8 +285,6 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
         "units_indexed": units_ok,
         "units_index_warning": units_warn,
     }
-
-
 async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str, object]:
     parsed = 0
     skipped = 0
@@ -336,8 +293,7 @@ async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str,
     resumes: list[LibraryResumeOut] = []
     file_results: list[IngestFileResult] = []
     for upload in files:
-        if not upload.filename:
-            continue
+        if not upload.filename: continue
         data = await upload.read()
         enforce_upload_size(data)
         received += 1
@@ -364,8 +320,7 @@ async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str,
                     skipped += 1
                     file_results.append(IngestFileResult(filename=inner_name, status="cached", resume_id=out.id))
             continue
-        if suffix not in parser.ALLOWED_EXTENSIONS:
-            raise ValidationError(
+        if suffix not in parser.ALLOWED_EXTENSIONS: raise ValidationError(
                 f"Unsupported file type: {upload.filename}",
                 details={"allowed": sorted(parser.ALLOWED_EXTENSIONS)},
             )
@@ -377,11 +332,9 @@ async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str,
         else:
             skipped += 1
             file_results.append(IngestFileResult(filename=upload.filename, status="cached", resume_id=out.id))
-    if received == 0:
-        raise ValidationError("No files uploaded")
+    if received == 0: raise ValidationError("No files uploaded")
     if parsed > 0:
         from app.services.resume.ranking import recluster_library
-
         recluster_library(db)
     final = list_library_resumes(db)
     units_ok, units_warn = _index_status_for_resumes(db, final)

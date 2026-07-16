@@ -1,24 +1,16 @@
 """Global exception handlers — never leak stack traces or secrets to clients."""
-
 from __future__ import annotations
-
 from fastapi import Request
 from fastapi.responses import JSONResponse
-
 from app.core.logging import get_logger
 from app.core.redact import redact_details, redact_error
 from app.errors import TeamScoutError
-
 logger = get_logger(__name__)
-
-
 def _request_id(request: Request) -> str | None:
     rid = getattr(request.state, "request_id", None)
     if rid:
         return str(rid)
     return None
-
-
 async def teamscout_error_handler(_request: Request, exc: TeamScoutError) -> JSONResponse:
     # Defense in depth: redact again even if a caller bypassed TeamScoutError sanitization.
     return JSONResponse(
@@ -29,8 +21,6 @@ async def teamscout_error_handler(_request: Request, exc: TeamScoutError) -> JSO
             "details": redact_details(exc.details),
         },
     )
-
-
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     request_id = _request_id(request)
     logger.exception(

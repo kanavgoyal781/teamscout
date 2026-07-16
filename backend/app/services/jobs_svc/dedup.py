@@ -1,56 +1,32 @@
 from __future__ import annotations
-
 import re
 from datetime import UTC
-
 from app.schemas.jobs import DroppedCounts, Job
 from app.services import embeddings
 from app.services.ranking.math import cosine_similarity
-
 _WS = re.compile(r"\s+")
 _QUALITY_RANK = {"direct_ats": 0, "feed": 1, "aggregator": 2}
-
-
 def normalize_company(company: str) -> str:
     text = _WS.sub(" ", (company or "").lower()).strip()
     for suffix in (
-        " inc.",
-        " inc",
-        " llc",
-        " ltd",
-        " ltd.",
-        " corp",
-        " corp.",
-        " co.",
-        " company",
-        " technologies",
-        " technology",
+        " inc.", " inc", " llc", " ltd", " ltd.", " corp", " corp.", " co.",
+        " company", " technologies", " technology",
     ):
         if text.endswith(suffix):
             text = text[: -len(suffix)].strip()
     return text
-
-
 def normalize_title(title: str) -> str:
     return _WS.sub(" ", (title or "").lower()).strip()
-
-
 def exact_dedupe_key(job: Job) -> str:
     return f"{normalize_company(job.company)}|{normalize_title(job.title)}"
-
-
 def _posted_sort_key(job: Job) -> tuple[int, float]:
     if job.posted_at is None:
         return (1, 0.0)
     posted = job.posted_at if job.posted_at.tzinfo else job.posted_at.replace(tzinfo=UTC)
     return (0, posted.astimezone(UTC).timestamp())
-
-
 def _dedupe_winner_key(job: Job) -> tuple:
     q = _QUALITY_RANK.get(getattr(job, "source_quality", None) or "aggregator", 2)
     return (q, *_posted_sort_key(job))
-
-
 def dedupe_exact(jobs: list[Job]) -> tuple[list[Job], DroppedCounts]:
     dropped = DroppedCounts()
     groups: dict[str, list[Job]] = {}
@@ -68,22 +44,15 @@ def dedupe_exact(jobs: list[Job]) -> tuple[list[Job], DroppedCounts]:
         kept.append(winner)
         dropped.exact_duplicate += len(group) - 1
     return kept, dropped
-
-
 _CROSS_COMPANY_THRESHOLD = 0.99
-
-
 def _should_merge_embedding(job: Job, other: Job, sim: float, *, threshold: float) -> bool:
     if sim <= threshold:
         return False
     if normalize_company(job.company) == normalize_company(other.company):
         return True
     return sim > _CROSS_COMPANY_THRESHOLD
-
-
 def dedupe_embeddings(jobs: list[Job], *, threshold: float = 0.97) -> tuple[list[Job], DroppedCounts]:
     from app.core.logging import get_logger
-
     logger = get_logger(__name__)
     dropped = DroppedCounts()
     if len(jobs) <= 1:
@@ -101,11 +70,8 @@ def dedupe_embeddings(jobs: list[Job], *, threshold: float = 0.97) -> tuple[list
             other = ordered[k_i]
             if _should_merge_embedding(job, other, sim, threshold=threshold):
                 logger.info(
-                    "jobs.embedding_dedup_merge",
-                    kept_company=other.company,
-                    dropped_company=job.company,
-                    title=job.title[:80],
-                    sim=round(sim, 4),
+                    "jobs.embedding_dedup_merge", kept_company=other.company,
+                    dropped_company=job.company, title=job.title[:80], sim=round(sim, 4),
                 )
                 merged_into = k_i
                 break
@@ -121,8 +87,6 @@ def dedupe_embeddings(jobs: list[Job], *, threshold: float = 0.97) -> tuple[list
         job = ordered[idx]
         result.append(job.model_copy(update={"duplicates_count": job.duplicates_count + duplicates_extra.get(idx, 0)}))
     return result, dropped
-
-
 def dedupe_jobs(jobs: list[Job], *, use_embeddings: bool = True) -> tuple[list[Job], DroppedCounts]:
     after_exact, dropped = dedupe_exact(jobs)
     if not use_embeddings or len(after_exact) <= 1:

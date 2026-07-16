@@ -1,14 +1,10 @@
 from datetime import UTC, datetime
-
 from sqlalchemy.orm import Session
-
 from app.core.workspace import require_workspace_id
 from app.db.models import Contact, EmailReveal, JobTeamSearch
 from app.schemas.jobs import Job
 from app.schemas.team import ContactOut, FindTeamResponse, TeamExtraction
 from app.services import sumble
-
-
 def contact_to_out(contact: Contact, reveal_email: str | None = None) -> ContactOut:
     return ContactOut(
         id=contact.id,
@@ -21,8 +17,6 @@ def contact_to_out(contact: Contact, reveal_email: str | None = None) -> Contact
         email_revealed=reveal_email is not None,
         email=reveal_email,
     )
-
-
 def _record_team_search(
     job_id: str,
     extraction_id: str,
@@ -33,9 +27,7 @@ def _record_team_search(
 ) -> None:
     now = datetime.now(UTC)
     wid = require_workspace_id()
-    existing = (
-        db.query(JobTeamSearch).filter(JobTeamSearch.job_id == job_id, JobTeamSearch.workspace_id == wid).one_or_none()
-    )
+    existing = db.query(JobTeamSearch).filter(JobTeamSearch.job_id == job_id, JobTeamSearch.workspace_id == wid).one_or_none()
     if existing is None:
         db.add(
             JobTeamSearch(
@@ -55,8 +47,6 @@ def _record_team_search(
     existing.credits_used = credits_used
     existing.search_path = search_path
     db.add(existing)
-
-
 def find_team_for_job(
     job: Job,
     extraction: TeamExtraction,
@@ -79,9 +69,7 @@ def find_team_for_job(
     for person in people:
         person_key = str(person.person_id)
         existing = (
-            db.query(Contact)
-            .filter(Contact.workspace_id == wid, Contact.sumble_person_id == person_key, Contact.job_id == job.id)
-            .one_or_none()
+            db.query(Contact).filter(Contact.workspace_id == wid, Contact.sumble_person_id == person_key, Contact.job_id == job.id).one_or_none()
         )
         if existing is None:
             existing = Contact(

@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 import json
-
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-
 from app.core.workspace import require_workspace_id
 from app.db.models import Contact, EmailReveal, JobTeamSearch, Resume, Search
 from app.errors import NotFoundError, ValidationError
@@ -12,13 +9,9 @@ from app.prompts import load_prompt
 from app.schemas.resume import ResumeProfile
 from app.services import llm
 from app.services.jobs_svc.store import resolve_job
-
-
 class OutreachDraftResult(BaseModel):
     subject: str = Field(min_length=1, max_length=300)
     body: str = Field(min_length=1, max_length=8000)
-
-
 def require_revealed_email(db: Session, contact_id: str) -> tuple[Contact, str]:
     wid = require_workspace_id()
     contact = db.query(Contact).filter(Contact.id == contact_id, Contact.workspace_id == wid).one_or_none()
@@ -36,8 +29,6 @@ def require_revealed_email(db: Session, contact_id: str) -> tuple[Contact, str]:
             details={"contact_id": contact_id},
         )
     return contact, email
-
-
 def _profile_and_skills(db: Session, contact: Contact) -> tuple[ResumeProfile | None, list[str]]:
     search_id = contact.search_id
     if not search_id and contact.job_id:
@@ -77,8 +68,6 @@ def _profile_and_skills(db: Session, contact: Contact) -> tuple[ResumeProfile | 
                     matched = [str(s) for s in raw if s][:8]
                 break
     return profile, matched
-
-
 def _strengths(profile: ResumeProfile | None, matched: list[str]) -> str:
     lines: list[str] = []
     if matched:
@@ -97,8 +86,6 @@ def _strengths(profile: ResumeProfile | None, matched: list[str]) -> str:
     if profile.summary and profile.summary.strip():
         lines.append(f"- Summary: {profile.summary.strip()[:280]}")
     return "\n".join(lines) or "- (limited profile evidence)"
-
-
 def generate_outreach_draft(db: Session, contact_id: str) -> tuple[OutreachDraftResult, str]:
     contact, email = require_revealed_email(db, contact_id)
     job_title, job_company = "", contact.company or ""
@@ -126,14 +113,10 @@ def generate_outreach_draft(db: Session, contact_id: str) -> tuple[OutreachDraft
     for key, value in mapping.items():
         prompt = prompt.replace("{{" + key + "}}", value)
     result = llm.complete_json(
-        prompt,
-        OutreachDraftResult,
-        system=tmpl.system,
+        prompt, OutreachDraftResult, system=tmpl.system,
         temperature=float(tmpl.model_params.get("temperature") or 0.4),
         max_tokens=int(tmpl.model_params.get("max_tokens") or 800),
-        max_retries=1,
-        operation="outreach_draft",
-        prompt_meta=tmpl,
+        max_retries=1, operation="outreach_draft", prompt_meta=tmpl,
     )
     subject, body = (result.subject or "").strip(), (result.body or "").strip()
     if not subject or not body:

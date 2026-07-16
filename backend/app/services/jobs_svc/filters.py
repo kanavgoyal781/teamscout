@@ -1,11 +1,8 @@
 from __future__ import annotations
-
 import re
 from datetime import UTC, datetime, timedelta
-
 from app.schemas.jobs import DroppedCounts, Job, SearchParams
 from app.services.ranking.math import infer_seniority
-
 _REMOTE_RE = re.compile(r"\b(remote|work\s+from\s+home|wfh|distributed)\b", re.I)
 _HYBRID_RE = re.compile(r"\bhybrid\b", re.I)
 _ONSITE_RE = re.compile(r"\b(on[-\s]?site|in[-\s]?office|office[-\s]?based)\b", re.I)
@@ -54,8 +51,6 @@ _SENIORITY_MATCH: dict[str, set[str]] = {
     "senior": {"senior"},
     "lead": {"lead", "staff", "principal", "director"},
 }
-
-
 def _parse_money_token(num: str, k_suffix: str | None) -> float | None:
     try:
         value = float(num.replace(",", ""))
@@ -64,21 +59,17 @@ def _parse_money_token(num: str, k_suffix: str | None) -> float | None:
     if k_suffix and k_suffix.lower() == "k":
         value *= 1000.0
     if value < 1000 and not k_suffix:
-        if value < 15:
-            return None
+        if value < 15: return None
         if value <= 500:
             value *= 1000.0  # "120-150" style without k
     return value
-
-
 def parse_salary_min(
     *,
     structured_min: float | None = None,
     structured_max: float | None = None,
     description: str = "",
 ) -> tuple[float | None, bool]:
-    if structured_min is not None and structured_min > 0:
-        return float(structured_min), False
+    if structured_min is not None and structured_min > 0: return float(structured_min), False
     if structured_max is not None and structured_max > 0:
         return float(structured_max), False
     text = description or ""
@@ -93,11 +84,8 @@ def parse_salary_min(
                 continue
             if best is None or lo < best:
                 best = lo
-    if best is not None and best >= 1000:
-        return best, False
+    if best is not None and best >= 1000: return best, False
     return None, True
-
-
 def infer_remote_mode(
     *,
     location: str,
@@ -105,36 +93,25 @@ def infer_remote_mode(
     is_remote_flag: bool | None = None,
 ) -> str:
     blob = f"{location}\n{description[:600]}"
-    if is_remote_flag is True:
-        return "remote"
+    if is_remote_flag is True: return "remote"
     if _HYBRID_RE.search(blob):
         return "hybrid"
-    if _REMOTE_RE.search(blob) or (location or "").strip().lower() == "remote":
-        return "remote"
+    if _REMOTE_RE.search(blob) or (location or "").strip().lower() == "remote": return "remote"
     if _ONSITE_RE.search(blob):
         return "onsite"
     if location and location.strip().lower() not in {"", "remote", "worldwide", "anywhere"}:
-        if not _REMOTE_RE.search(location):
-            return "onsite"
+        if not _REMOTE_RE.search(location): return "onsite"
     return "unknown"
-
-
 def normalize_employment_type(raw: str | None) -> str | None:
-    if not raw:
-        return None
+    if not raw: return None
     key = str(raw).strip().upper().replace(" ", "_")
-    if key in _EMPLOYMENT_MAP:
-        return _EMPLOYMENT_MAP[key]
+    if key in _EMPLOYMENT_MAP: return _EMPLOYMENT_MAP[key]
     lowered = str(raw).strip().lower()
-    if "contract" in lowered:
-        return "contractor"
+    if "contract" in lowered: return "contractor"
     if "full" in lowered:
         return "fulltime"
-    if "part" in lowered:
-        return "parttime"
+    if "part" in lowered: return "parttime"
     return "unknown"
-
-
 def annotate_job(
     job: Job,
     *,
@@ -174,25 +151,17 @@ def annotate_job(
             "salary_unknown": salary_unknown,
         }
     )
-
-
 def _seniority_matches(wanted: str, actual: str | None) -> bool:
-    if wanted == "any":
-        return True
+    if wanted == "any": return True
     if not actual:
         return False
     allowed = _SENIORITY_MATCH.get(wanted, {wanted})
     return actual.lower() in allowed
-
-
 def _employment_matches(wanted: str, actual: str | None) -> bool:
-    if wanted == "any":
-        return True
+    if wanted == "any": return True
     if not actual:
         return False
     return actual == wanted
-
-
 def apply_hard_filters(
     jobs: list[Job],
     params: SearchParams,
@@ -234,11 +203,8 @@ def apply_hard_filters(
                     continue
         kept.append(job)
     return kept, dropped
-
-
 def soft_boost_score(job: Job, params: SearchParams, base_score: float) -> float:
     from app.core.config import settings
-
     score = float(base_score)
     if params.remote_mode != "any" and params.remote_mode_pref == "soft":
         if (job.remote_mode or "").lower() == params.remote_mode:
@@ -256,8 +222,6 @@ def soft_boost_score(job: Job, params: SearchParams, base_score: float) -> float
     if boost > 0 and getattr(job, "source_quality", None) == "direct_ats":
         score += boost
     return min(100.0, round(score, 1))
-
-
 def jsearch_params_from_search(params: SearchParams) -> dict[str, str]:
     date_posted = DATE_WINDOW_TO_JSEARCH.get(params.date_window, "month")
     employment = "FULLTIME,CONTRACTOR,PARTTIME"
