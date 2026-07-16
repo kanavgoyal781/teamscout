@@ -178,9 +178,7 @@ def _force_tournament_override_rank():
                     with patch("app.services.resume.justify.llm.complete_json", side_effect=fake_complete):
                         with patch("app.services.resume.tournament.load_prompt", return_value=prompt_meta):
                             with patch("app.services.resume.justify.load_prompt", return_value=prompt_meta):
-                                return rank_resumes_for_job(
-                                    job, [cov_leader, tour_winner], use_llm=True
-                                )
+                                return rank_resumes_for_job(job, [cov_leader, tour_winner], use_llm=True)
 
 
 def test_rank_with_tournament_override_headline_equals_final_blend() -> None:

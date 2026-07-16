@@ -1,24 +1,34 @@
 import json
 import re
 from typing import Any, TypeVar
+
 import httpx
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
+
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.http_timeouts import default_timeout
 from app.errors import ServiceFailingError, ServiceNotConfiguredError
 from app.prompts import PromptTemplate
 from app.services import observability
+
 T = TypeVar("T", bound=BaseModel)
+
+
 def _require_llm_config() -> None:
-    if not is_set(settings.LLM_API_KEY): raise ServiceNotConfiguredError("LLM", "LLM_API_KEY")
+    if not is_set(settings.LLM_API_KEY):
+        raise ServiceNotConfiguredError("LLM", "LLM_API_KEY")
     if not is_set(settings.LLM_API_BASE):
         raise ServiceNotConfiguredError("LLM", "LLM_API_BASE")
+
+
 def _extract_message_text(message: object) -> str:
-    if not isinstance(message, dict): raise ServiceFailingError("LLM", "unexpected response format")
+    if not isinstance(message, dict):
+        raise ServiceFailingError("LLM", "unexpected response format")
     content = message.get("content")
-    if isinstance(content, str) and content.strip(): return content
+    if isinstance(content, str) and content.strip():
+        return content
     if isinstance(content, list):
         parts: list[str] = []
         for part in content:
@@ -28,11 +38,15 @@ def _extract_message_text(message: object) -> str:
                 text = part.get("text")
                 if isinstance(text, str) and text.strip():
                     parts.append(text)
-        if parts: return "".join(parts)
+        if parts:
+            return "".join(parts)
     for key in ("reasoning_content", "reasoning", "text"):
         val = message.get(key)
-        if isinstance(val, str) and val.strip(): return val
+        if isinstance(val, str) and val.strip():
+            return val
     raise ServiceFailingError("LLM", "unexpected response format: empty message content")
+
+
 def complete(
     prompt: str,
     *,
@@ -88,9 +102,7 @@ def complete(
         usage = data.get("usage") if isinstance(data, dict) else None
         if isinstance(usage, dict):
             trace.input_tokens = int(usage.get("prompt_tokens") or est_in)
-            trace.output_tokens = int(
-                usage.get("completion_tokens") or observability.approx_token_count(content)
-            )
+            trace.output_tokens = int(usage.get("completion_tokens") or observability.approx_token_count(content))
         else:
             trace.input_tokens = est_in
             trace.output_tokens = observability.approx_token_count(content)
@@ -100,19 +112,28 @@ def complete(
             output_tokens=trace.output_tokens,
         )
         return content
+
+
 def _extract_json(raw: str) -> str:
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
-    if fenced: return fenced.group(1).strip()
+    if fenced:
+        return fenced.group(1).strip()
     start = text.find("{")
     end = text.rfind("}")
-    if start != -1 and end != -1 and end > start: return text[start : end + 1]
+    if start != -1 and end != -1 and end > start:
+        return text[start : end + 1]
     start = text.find("[")
     end = text.rfind("]")
-    if start != -1 and end != -1 and end > start: return text[start : end + 1]
+    if start != -1 and end != -1 and end > start:
+        return text[start : end + 1]
     return text
+
+
 def _strip_trailing_commas(text: str) -> str:
     return re.sub(r",\s*([}\]])", r"\1", text)
+
+
 def _scan_balanced_objects(blob: str) -> list[str]:
     objects: list[str] = []
     i = 0
@@ -149,16 +170,22 @@ def _scan_balanced_objects(blob: str) -> list[str]:
         else:
             break  # truncated object — stop
     return objects
+
+
 def _salvage_results_json(raw: str) -> str | None:
     text = _extract_json(raw)
     marker = re.search(r'"results"\s*:\s*\[', text)
     if not marker:
         objects = _scan_balanced_objects(text)
-        if not objects: return None
+        if not objects:
+            return None
         return '{"results": [' + ",".join(objects) + "]}"
     objects = _scan_balanced_objects(text[marker.end() :])
-    if not objects: return None
+    if not objects:
+        return None
     return '{"results": [' + ",".join(objects) + "]}"
+
+
 def _loads_llm_json(raw: str) -> object:
     candidates: list[str] = []
     extracted = _extract_json(raw)
@@ -171,15 +198,19 @@ def _loads_llm_json(raw: str) -> object:
     last_exc: Exception | None = None
     seen: set[str] = set()
     for candidate in candidates:
-        if not candidate or candidate in seen: continue
+        if not candidate or candidate in seen:
+            continue
         seen.add(candidate)
         try:
             return json.loads(candidate)
         except json.JSONDecodeError as exc:
             last_exc = exc
             continue
-    if last_exc is not None: raise last_exc
+    if last_exc is not None:
+        raise last_exc
     raise json.JSONDecodeError("empty LLM JSON", raw, 0)
+
+
 def complete_json(
     prompt: str,
     model: type[T],

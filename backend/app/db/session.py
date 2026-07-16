@@ -1,16 +1,21 @@
 from collections.abc import Generator
 from pathlib import Path
 from threading import Lock
+
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
+
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.db import models as _models  # noqa: F401
 from app.db.base import Base
 from app.schemas.jobs import Job
+
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
 def resolve_database_url(url: str) -> str:
     if not url.startswith("sqlite:"):
         return url
@@ -26,6 +31,8 @@ def resolve_database_url(url: str) -> str:
         return url
     abs_path = (_BACKEND_DIR / rel).resolve()
     return f"sqlite:///{abs_path}"
+
+
 DATABASE_URL = resolve_database_url(settings.DATABASE_URL)
 connect_args: dict = {}
 if DATABASE_URL.startswith("sqlite"):
@@ -35,6 +42,7 @@ if DATABASE_URL.startswith("sqlite") and ":memory:" in DATABASE_URL:
     engine_kwargs["poolclass"] = StaticPool
 engine = create_engine(DATABASE_URL, **engine_kwargs)
 if DATABASE_URL.startswith("sqlite"):
+
     @event.listens_for(engine, "connect")
     def _sqlite_on_connect(dbapi_conn, _connection_record) -> None:  # type: ignore[no-untyped-def]
         cur = dbapi_conn.cursor()
@@ -42,14 +50,27 @@ if DATABASE_URL.startswith("sqlite"):
         if ":memory:" not in DATABASE_URL:
             cur.execute("PRAGMA journal_mode=WAL")
         cur.close()
+
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 _init_lock = Lock()
 _initialized = False
 _WS_TABLES = (
-    "resumes", "jobs_cache", "searches", "intent_searches", "team_extractions",
-    "job_team_searches", "contacts", "feedback", "resume_units", "traces",
-    "drive_synced_files", "drive_sync_state",
+    "resumes",
+    "jobs_cache",
+    "searches",
+    "intent_searches",
+    "team_extractions",
+    "job_team_searches",
+    "contacts",
+    "feedback",
+    "resume_units",
+    "traces",
+    "drive_synced_files",
+    "drive_sync_state",
 )
+
+
 def _ensure_column(table: str, column: str, ddl: str) -> None:
     with engine.connect() as conn:
         columns = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
@@ -57,6 +78,8 @@ def _ensure_column(table: str, column: str, ddl: str) -> None:
         if column not in names:
             conn.execute(text(ddl))
             conn.commit()
+
+
 def _migrate_schema() -> None:
     _ensure_column("feedback", "ranking_config_hash", "ALTER TABLE feedback ADD COLUMN ranking_config_hash VARCHAR(64)")
     _ensure_column("feedback", "shown_rank", "ALTER TABLE feedback ADD COLUMN shown_rank INTEGER")
@@ -70,6 +93,8 @@ def _migrate_schema() -> None:
     _migrate_jobs_cache_job_id()
     _migrate_jobs_cache_unique()
     _migrate_workspace_uniques()
+
+
 def _migrate_jobs_cache_job_id() -> None:
     with engine.connect() as conn:
         columns = conn.execute(text("PRAGMA table_info(jobs_cache)")).fetchall()
@@ -84,8 +109,12 @@ def _migrate_jobs_cache_job_id() -> None:
             if not payload_json:
                 continue
             job = Job.model_validate_json(payload_json)
-            conn.execute(text("UPDATE jobs_cache SET job_id = :job_id WHERE id = :id"), {"job_id": job.id, "id": row_id})
+            conn.execute(
+                text("UPDATE jobs_cache SET job_id = :job_id WHERE id = :id"), {"job_id": job.id, "id": row_id}
+            )
         conn.commit()
+
+
 def _migrate_workspace_uniques() -> None:
     with engine.connect() as conn:
         for ddl in (
@@ -96,24 +125,36 @@ def _migrate_workspace_uniques() -> None:
         ):
             conn.execute(text(ddl))
         conn.commit()
+
+
 def _migrate_jobs_cache_unique() -> None:
     with engine.connect() as conn:
         names = {str(r[1]) for r in conn.execute(text("PRAGMA index_list(jobs_cache)")).fetchall()}
         if "uq_jobs_cache_ws_source_job" not in names:
-            conn.execute(text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_jobs_cache_ws_source_job "
-                "ON jobs_cache (workspace_id, source, source_job_id)"
-            ))
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_jobs_cache_ws_source_job "
+                    "ON jobs_cache (workspace_id, source, source_job_id)"
+                )
+            )
         conn.commit()
+
+
 _REQUIRED_SQLITE_TABLES = frozenset({"traces", "embedding_cache", "workspaces", "jd_metadata_cache"})
+
+
 def _sqlite_tables() -> set[str]:
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()
     return {str(row[0]) for row in rows}
+
+
 def _schema_ready() -> bool:
     if not DATABASE_URL.startswith("sqlite") or ":memory:" in DATABASE_URL:
         return _initialized
     return _REQUIRED_SQLITE_TABLES.issubset(_sqlite_tables())
+
+
 def init_db() -> None:
     global _initialized
     with _init_lock:
@@ -127,10 +168,14 @@ def init_db() -> None:
                     f"{sorted(missing)}. Check DATABASE_URL and write permissions."
                 )
         _initialized = True
+
+
 def ensure_db() -> None:
     if _initialized and _schema_ready():
         return
     init_db()
+
+
 def ping_db() -> bool:
     logger = get_logger(__name__)
     try:
@@ -141,6 +186,8 @@ def ping_db() -> bool:
     except SQLAlchemyError as exc:
         logger.warning("db.ping_failed", error=str(exc))
         return False
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:

@@ -1,4 +1,5 @@
 """JobMetadata validators, sparse honesty, cache, and API."""
+
 from __future__ import annotations
 
 import json
@@ -6,17 +7,23 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.db.session import SessionLocal, init_db
 from app.main import app
 from app.schemas.job_metadata import JobMetadata, parse_salary_range, parse_salary_token
 from app.services.jobs_svc import jd_metadata as jd_meta_mod
+from fastapi.testclient import TestClient
 
 FIXDIR = Path(__file__).parent / "fixtures" / "jd_metadata"
 PRESENT_FIELDS = (
-    "title", "company", "location", "remote_mode", "salary_min", "salary_max",
-    "salary_currency", "seniority", "department",
+    "title",
+    "company",
+    "location",
+    "remote_mode",
+    "salary_min",
+    "salary_max",
+    "salary_currency",
+    "seniority",
+    "department",
 )
 
 

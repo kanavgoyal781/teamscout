@@ -193,18 +193,12 @@ def test_apply_evidence_floor_rescale() -> None:
 def test_skill_requirement_exact_alias_semantic_cap() -> None:
     assert skill_match_level("Python", "Python") == "exact"
     assert skill_match_level("Go", "Golang") == "alias"
-    exact = skill_requirement_score(
-        "Python", skills=["Python"], unit_texts=["other work"], semantic_score=0.2
-    )
+    exact = skill_requirement_score("Python", skills=["Python"], unit_texts=["other work"], semantic_score=0.2)
     assert exact == pytest.approx(1.0)
-    alias = skill_requirement_score(
-        "Go", skills=["Golang"], unit_texts=[], semantic_score=0.95
-    )
+    alias = skill_requirement_score("Go", skills=["Golang"], unit_texts=[], semantic_score=0.95)
     assert alias == pytest.approx(0.9)
     # No skill match: semantic capped at 0.6 even if raw MaxSim is high
-    soft = skill_requirement_score(
-        "Rust", skills=[], unit_texts=["systems programming"], semantic_score=0.92
-    )
+    soft = skill_requirement_score("Rust", skills=[], unit_texts=["systems programming"], semantic_score=0.92)
     assert soft == pytest.approx(0.6)
 
 
@@ -322,14 +316,24 @@ def test_one_must_have_difference_coverage_gap_at_least_8_points() -> None:
     unit_embs = [_norm([0.25, 0.25, 0.25, 0.25])]
     unit_texts = ["General platform engineering work"]
     cov_full, rows_full = align_resume(
-        req_embs, req_texts, weights, unit_embs, unit_texts,
+        req_embs,
+        req_texts,
+        weights,
+        unit_embs,
+        unit_texts,
         ["Python", "FastAPI", "PostgreSQL", "AWS"],
-        categories=["skill"] * 4, evidence_floor=0.55,
+        categories=["skill"] * 4,
+        evidence_floor=0.55,
     )
     cov_miss, rows_miss = align_resume(
-        req_embs, req_texts, weights, unit_embs, unit_texts,
+        req_embs,
+        req_texts,
+        weights,
+        unit_embs,
+        unit_texts,
         ["Python", "FastAPI", "PostgreSQL"],  # missing AWS
-        categories=["skill"] * 4, evidence_floor=0.55,
+        categories=["skill"] * 4,
+        evidence_floor=0.55,
     )
     align_gap = cov_full - cov_miss
     assert align_gap >= 0.08, f"align_resume gap {align_gap} < 0.08"
@@ -562,15 +566,19 @@ def test_skill_hard_match_bypasses_floor_semantic_does_not() -> None:
     req = _norm([1.0, 0.0])
     unit = _norm([0.0, 1.0])
     _, rows = align_resume(
-        [req], ["Python"], [1.0], [unit], ["other"], ["Python"],
-        categories=["skill"], evidence_floor=0.55,
+        [req],
+        ["Python"],
+        [1.0],
+        [unit],
+        ["other"],
+        ["Python"],
+        categories=["skill"],
+        evidence_floor=0.55,
     )
     assert rows[0]["evidence_score"] == pytest.approx(1.0)
 
     # semantic-only soft skill remains capped then floored
-    soft = skill_requirement_score(
-        "Rust", skills=[], unit_texts=["systems programming"], semantic_score=0.92
-    )
+    soft = skill_requirement_score("Rust", skills=[], unit_texts=["systems programming"], semantic_score=0.92)
     assert soft == pytest.approx(0.6)
     assert not is_hard_skill_match(soft)
     floored = apply_evidence_floor(soft, floor=0.55)

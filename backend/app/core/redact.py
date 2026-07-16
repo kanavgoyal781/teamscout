@@ -3,6 +3,7 @@
 Strip query strings, API keys, Bearer tokens, and Authorization material before
 messages reach API responses or log sinks.
 """
+
 from __future__ import annotations
 
 import re

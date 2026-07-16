@@ -7,13 +7,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from app.errors import ServiceFailingError
 from app.schemas.jobs import Job
+from app.services.ranking.math_align import TOURNAMENT_GAP
 from app.services.resume.jd_decompose import JdRequirement
 from app.services.resume.tournament import (
     AlignmentEvidence,
     materialize_ab_labels,
     maybe_run_tournament,
 )
-from app.services.ranking.math_align import TOURNAMENT_GAP
 
 
 def _job() -> Job:
@@ -170,19 +170,16 @@ def test_materialize_ab_labels_subject_and_object() -> None:
     assert materialize_ab_labels("B beats A on antibodies", name_a=a, name_b=b) == (
         "fileB.pdf beats fileA.pdf on antibodies"
     )
-    assert materialize_ab_labels("A wins over B", name_a=a, name_b=b) == (
-        "fileA.pdf wins over fileB.pdf"
-    )
+    assert materialize_ab_labels("A wins over B", name_a=a, name_b=b) == ("fileA.pdf wins over fileB.pdf")
     assert materialize_ab_labels("prefer A over B for depth", name_a=a, name_b=b) == (
         "prefer fileA.pdf over fileB.pdf for depth"
     )
-    assert materialize_ab_labels(
-        "Resume A beats Resume B on antibodies (w=2.0)", name_a=a, name_b=b
-    ) == "fileA.pdf beats fileB.pdf on antibodies"
+    assert (
+        materialize_ab_labels("Resume A beats Resume B on antibodies (w=2.0)", name_a=a, name_b=b)
+        == "fileA.pdf beats fileB.pdf on antibodies"
+    )
     # Filename containing letter A must not be re-scanned into B side
     odd = materialize_ab_labels("A beats B", name_a="Alpha.pdf", name_b="Beta.pdf")
     assert odd == "Alpha.pdf beats Beta.pdf"
     # Non-comparison prose leaves bare letters alone
-    assert materialize_ab_labels("section A of the JD", name_a=a, name_b=b) == (
-        "section A of the JD"
-    )
+    assert materialize_ab_labels("section A of the JD", name_a=a, name_b=b) == ("section A of the JD")

@@ -1,17 +1,23 @@
 from __future__ import annotations
+
 import json
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+
 from sqlalchemy.exc import SQLAlchemyError
+
 from app.core.logging import get_logger
 from app.db.models import ScoreCalibration
 from app.db.session import SessionLocal, ensure_db
+
 logger = get_logger(__name__)
 MIN_LABELS_FIT = 30
 MIN_LABELS_UI = 50
 HOLDOUT_FRACTION = 0.2
+
+
 @dataclass(frozen=True)
 class PlattParams:
     a: float
@@ -20,15 +26,21 @@ class PlattParams:
     holdout_auc: float | None
     fit_at: str
     metadata: dict[str, Any]
+
+
 def sigmoid(x: float) -> float:
     if x >= 0:
         z = math.exp(-x)
         return 1.0 / (1.0 + z)
     z = math.exp(x)
     return z / (1.0 + z)
+
+
 def platt_likelihood(score_0_100: float, a: float, b: float) -> float:
     s = max(0.0, min(1.0, float(score_0_100) / 100.0))
     return sigmoid(a * s + b)
+
+
 def _binary_auc(scores: list[float], labels: list[int]) -> float:
     pairs = sorted(zip(scores, labels, strict=True), key=lambda t: t[0])
     n_pos, n_neg = sum(labels), len(labels) - sum(labels)
@@ -36,6 +48,8 @@ def _binary_auc(scores: list[float], labels: list[int]) -> float:
         return 0.5
     rank_sum = sum(i for i, (_, y) in enumerate(pairs, start=1) if y == 1)
     return (rank_sum - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg)
+
+
 def _shuffle_idx(n: int, seed: int) -> list[int]:
     idx, state = list(range(n)), seed & 0xFFFFFFFF
     for i in range(n - 1, 0, -1):
@@ -43,9 +57,16 @@ def _shuffle_idx(n: int, seed: int) -> list[int]:
         j = state % (i + 1)
         idx[i], idx[j] = idx[j], idx[i]
     return idx
+
+
 def fit_platt(
-    scores: list[float], labels: list[int], *, max_iter: int = 200, lr: float = 0.05,
-    holdout_fraction: float = HOLDOUT_FRACTION, seed: int = 42,
+    scores: list[float],
+    labels: list[int],
+    *,
+    max_iter: int = 200,
+    lr: float = 0.05,
+    holdout_fraction: float = HOLDOUT_FRACTION,
+    seed: int = 42,
 ) -> PlattParams:
     n = len(scores)
     if n < MIN_LABELS_FIT:
@@ -73,20 +94,31 @@ def fit_platt(
     if hold_s and len(set(hold_y)) > 1:
         auc = round(_binary_auc([sigmoid(a * s + b) for s in hold_s], hold_y), 4)
     return PlattParams(
-        a=round(a, 6), b=round(b, 6), n_labels=n, holdout_auc=auc,
+        a=round(a, 6),
+        b=round(b, 6),
+        n_labels=n,
+        holdout_auc=auc,
         fit_at=datetime.now(UTC).isoformat(),
         metadata={"train_n": len(train_s), "holdout_n": len(hold_s), "seed": seed},
     )
+
+
 def save_calibration(params: PlattParams, *, kind: str = "platt_jobs") -> None:
     ensure_db()
     session = SessionLocal()
     try:
         session.query(ScoreCalibration).filter(ScoreCalibration.kind == kind).delete()
-        session.add(ScoreCalibration(
-            kind=kind, a=params.a, b=params.b, n_labels=params.n_labels,
-            holdout_auc=params.holdout_auc, fit_at=datetime.now(UTC).replace(tzinfo=None),
-            metadata_json=json.dumps(params.metadata, sort_keys=True),
-        ))
+        session.add(
+            ScoreCalibration(
+                kind=kind,
+                a=params.a,
+                b=params.b,
+                n_labels=params.n_labels,
+                holdout_auc=params.holdout_auc,
+                fit_at=datetime.now(UTC).replace(tzinfo=None),
+                metadata_json=json.dumps(params.metadata, sort_keys=True),
+            )
+        )
         session.commit()
     except SQLAlchemyError as exc:
         session.rollback()
@@ -94,13 +126,17 @@ def save_calibration(params: PlattParams, *, kind: str = "platt_jobs") -> None:
         raise
     finally:
         session.close()
+
+
 def load_active_calibration(*, kind: str = "platt_jobs") -> PlattParams | None:
     ensure_db()
     session = SessionLocal()
     try:
         row = (
-            session.query(ScoreCalibration).filter(ScoreCalibration.kind == kind)
-            .order_by(ScoreCalibration.fit_at.desc()).first()
+            session.query(ScoreCalibration)
+            .filter(ScoreCalibration.kind == kind)
+            .order_by(ScoreCalibration.fit_at.desc())
+            .first()
         )
         if row is None:
             return None
@@ -112,20 +148,26 @@ def load_active_calibration(*, kind: str = "platt_jobs") -> PlattParams | None:
             except json.JSONDecodeError:
                 meta = {}
         return PlattParams(
-            a=float(row.a), b=float(row.b), n_labels=int(row.n_labels or 0),
+            a=float(row.a),
+            b=float(row.b),
+            n_labels=int(row.n_labels or 0),
             holdout_auc=float(row.holdout_auc) if row.holdout_auc is not None else None,
-            fit_at=row.fit_at.isoformat() if row.fit_at else "", metadata=meta,
+            fit_at=row.fit_at.isoformat() if row.fit_at else "",
+            metadata=meta,
         )
     except SQLAlchemyError as exc:
         logger.warning("calibration.load_failed", error=str(exc))
         return None
     finally:
         session.close()
+
+
 def ui_match_likelihood(
     score_0_100: float,
     params: PlattParams | None = None,
 ) -> float | None:
     from app.core.config import settings
+
     if not settings.RANKING_USE_CALIBRATION:
         return None
     if params is None:

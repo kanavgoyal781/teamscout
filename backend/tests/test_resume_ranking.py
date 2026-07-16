@@ -357,9 +357,7 @@ def test_rationale_rank_consistent_rejects_superlative_for_non_first() -> None:
     from app.services.resume.justify import rationale_rank_consistent
 
     assert rationale_rank_consistent("Best match for this role with FastAPI evidence.", final_rank=1) is True
-    assert (
-        rationale_rank_consistent("Best match for this role with FastAPI evidence.", final_rank=2) is False
-    )
+    assert rationale_rank_consistent("Best match for this role with FastAPI evidence.", final_rank=2) is False
     assert (
         rationale_rank_consistent(
             "Solid FastAPI coverage with shipped microservices evidence.",
@@ -498,9 +496,7 @@ def test_tournament_override_keeps_match_score_equal_final_blend() -> None:
                     with patch("app.services.resume.justify.llm.complete_json", side_effect=fake_complete):
                         with patch("app.services.resume.tournament.load_prompt", return_value=prompt_meta):
                             with patch("app.services.resume.justify.load_prompt", return_value=prompt_meta):
-                                ranked = rank_resumes_for_job(
-                                    job, [cov_leader, tour_winner], use_llm=True
-                                )
+                                ranked = rank_resumes_for_job(job, [cov_leader, tour_winner], use_llm=True)
 
     assert len(ranked) >= 2
     assert ranked[0].tournament is not None
@@ -514,8 +510,7 @@ def test_tournament_override_keeps_match_score_equal_final_blend() -> None:
     assert ranked[0].score_breakdown.final_score + 1e-9 < ranked[1].score_breakdown.final_score
     for rec in ranked:
         assert rec.match_score == pytest.approx(rec.score_breakdown.final_score), (
-            f"{rec.resume_id}: match_score={rec.match_score} != final_score="
-            f"{rec.score_breakdown.final_score}"
+            f"{rec.resume_id}: match_score={rec.match_score} != final_score={rec.score_breakdown.final_score}"
         )
 
 
@@ -524,8 +519,8 @@ def test_generate_biomedicines_tournament_leads_and_justification_rank_safe() ->
     from unittest.mock import MagicMock, patch
 
     from app.services.resume.jd_decompose import JdRequirement
-    from app.services.resume.tournament import AlignmentEvidence, maybe_run_tournament
     from app.services.resume.justify import llm_justify, rationale_rank_consistent
+    from app.services.resume.tournament import AlignmentEvidence, maybe_run_tournament
 
     job = Job(
         id="gen-bio",
@@ -731,11 +726,29 @@ def test_llm_justify_rejects_rank2_best_match_claim() -> None:
         posted_at=datetime.now(UTC),
         skills=["Python"],
     )
-    c1 = _candidate("r1", "Eng", ["Python"], "Built Python FastAPI services on AWS", ["Built Python FastAPI services on AWS"])
-    c2 = _candidate("r2", "Eng", ["Python"], "Built Python FastAPI services on AWS", ["Built Python FastAPI services on AWS"])
+    c1 = _candidate(
+        "r1", "Eng", ["Python"], "Built Python FastAPI services on AWS", ["Built Python FastAPI services on AWS"]
+    )
+    c2 = _candidate(
+        "r2", "Eng", ["Python"], "Built Python FastAPI services on AWS", ["Built Python FastAPI services on AWS"]
+    )
     alignment = {
-        "r1": [{"requirement": "Python", "evidence_unit": "Built Python FastAPI services on AWS", "evidence_score": 1.0, "status": "hit"}],
-        "r2": [{"requirement": "Python", "evidence_unit": "Built Python FastAPI services on AWS", "evidence_score": 0.9, "status": "hit"}],
+        "r1": [
+            {
+                "requirement": "Python",
+                "evidence_unit": "Built Python FastAPI services on AWS",
+                "evidence_score": 1.0,
+                "status": "hit",
+            }
+        ],
+        "r2": [
+            {
+                "requirement": "Python",
+                "evidence_unit": "Built Python FastAPI services on AWS",
+                "evidence_score": 0.9,
+                "status": "hit",
+            }
+        ],
     }
     reqs = [JdRequirement(text="Python", kind="must", category="skill", weight=2.0)]
     calls = {"n": 0}

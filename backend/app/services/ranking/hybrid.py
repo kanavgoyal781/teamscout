@@ -1,7 +1,9 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal
+
 from rank_bm25 import BM25Okapi
+
 from app.core.config import settings
 from app.errors import ServiceFailingError
 from app.services import embeddings
@@ -12,17 +14,23 @@ from app.services.ranking.math import (
     reciprocal_rank_fusion,
     tokenize,
 )
+
+
 @dataclass(frozen=True)
 class Rankable:
     id: str
     dense_text: str
     lexical_text: str
+
+
 @dataclass
 class RerankResult:
     fit_score: float
     matched_skills: list[str] = field(default_factory=list)
     missing_skills: list[str] = field(default_factory=list)
     rationale: str = ""
+
+
 @dataclass
 class ScoredCandidate:
     id: str
@@ -37,6 +45,8 @@ class ScoredCandidate:
     requirements_met: float
     final_score: float
     cross_encoder: float = 0.0
+
+
 def dense_ranking(query_dense_text: str, candidates: list[Rankable]) -> list[str]:
     query_vec = embeddings.embed(query_dense_text)
     candidate_vecs = embeddings.embed_batch([candidate.dense_text for candidate in candidates])
@@ -46,6 +56,8 @@ def dense_ranking(query_dense_text: str, candidates: list[Rankable]) -> list[str
     ]
     scored.sort(key=lambda item: item[1], reverse=True)
     return [candidate_id for candidate_id, _ in scored]
+
+
 def lexical_ranking(query_lexical_text: str, candidates: list[Rankable]) -> list[str]:
     corpus = [tokenize(candidate.lexical_text) for candidate in candidates]
     if not corpus:
@@ -57,6 +69,8 @@ def lexical_ranking(query_lexical_text: str, candidates: list[Rankable]) -> list
     scores = bm25.get_scores(query)
     ranked = sorted(range(len(candidates)), key=lambda idx: scores[idx], reverse=True)
     return [candidates[idx].id for idx in ranked]
+
+
 def hybrid_rank(
     query_dense_text: str,
     query_lexical_text: str,
@@ -87,9 +101,7 @@ def hybrid_rank(
     pool_n = cross_encoder_pool if cross_encoder_pool is not None else settings.CROSS_ENCODER_POOL
     shortlist_n = llm_top_n if llm_top_n is not None else settings.LLM_RERANK_TOP_N
     ce_weight = float(settings.RANKING_WEIGHT_CROSS_ENCODER)
-    apply_ce_shortlist = bool(
-        use_cross_encoder and (ce_weight > 0.0 or settings.CROSS_ENCODER_SHORTLIST)
-    )
+    apply_ce_shortlist = bool(use_cross_encoder and (ce_weight > 0.0 or settings.CROSS_ENCODER_SHORTLIST))
     if use_cross_encoder:
         if cross_encode_fn is None:
             raise ServiceFailingError(

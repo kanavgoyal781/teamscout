@@ -1,8 +1,12 @@
 import logging
 import sys
+
 import structlog
 from structlog.stdlib import LoggerFactory
+
 from app.core.env_utils import is_set
+
+
 def configure_logging(level: str = "INFO", *, env: str = "dev") -> None:
     """Configure structlog: JSON in prod / non-dev, pretty console in dev."""
     log_level = getattr(logging, level.upper(), logging.INFO)
@@ -32,11 +36,16 @@ def configure_logging(level: str = "INFO", *, env: str = "dev") -> None:
         wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
     )
+
+
 def get_logger(name: str = __name__):
     return structlog.get_logger(name)
+
+
 def log_configured_services() -> None:
     """Startup log of which integrations are configured (names only, never keys)."""
     from app.core.config import settings
+
     services = {
         "llm": is_set(settings.LLM_API_KEY) and is_set(settings.LLM_API_BASE),
         "embeddings": is_set(settings.EMBEDDINGS_API_KEY)

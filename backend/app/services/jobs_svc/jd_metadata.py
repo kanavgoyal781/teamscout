@@ -1,8 +1,8 @@
 """Extract JobMetadata from arbitrary JD text — honesty-first, hash-cached."""
+
 from __future__ import annotations
 
 import hashlib
-import json
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -79,10 +79,7 @@ def extract_job_metadata(
         max_retries=1,
         operation="jd_metadata",
         prompt_meta=tmpl,
-        max_tokens=int(
-            tmpl.model_params.get("max_tokens")
-            or settings.max_tokens_for_operation("jd_metadata")
-        ),
+        max_tokens=int(tmpl.model_params.get("max_tokens") or settings.max_tokens_for_operation("jd_metadata")),
     )
     if db is not None:
         _cache_put(db, content_hash, tmpl.version, meta)

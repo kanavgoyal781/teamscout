@@ -498,8 +498,7 @@ def test_recommend_from_jd_empty_library_400(client: TestClient) -> None:
         "/library/recommend-from-jd",
         json={
             "job_description": (
-                "A sufficiently long job description for a role that needs "
-                "at least forty characters of pasted text."
+                "A sufficiently long job description for a role that needs at least forty characters of pasted text."
             ),
             "title": "Engineer",
         },

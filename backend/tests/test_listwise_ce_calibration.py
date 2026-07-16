@@ -1,16 +1,18 @@
 """M17: listwise permutation, CE normalize, token budget, fit_weights gates, defaults lock."""
+
 from __future__ import annotations
 
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from app.core.config import settings
 from app.errors import ServiceFailingError, ServiceNotConfiguredError
+from app.prompts import load_prompt
 from app.schemas.jobs import Job
 from app.schemas.resume import ResumeProfile
-from app.services.ranking.cross_encoder import normalize_cross_encoder_scores, _validated_model
+from app.services.ranking.cross_encoder import _validated_model, normalize_cross_encoder_scores
+from app.services.ranking.engine import _llm_rerank_listwise
 from app.services.ranking.hybrid import Rankable, hybrid_rank
 from app.services.ranking.listwise import (
     ListwiseItem,
@@ -23,9 +25,7 @@ from app.services.ranking.listwise import (
     ranks_to_fit_scores,
     validate_permutation,
 )
-from app.services.ranking.engine import _llm_rerank_listwise
 from app.services.ranking.math import fuse_final_score, validate_ranking_weights
-from app.prompts import load_prompt
 
 
 def test_assert_m17_defaults_not_flipped() -> None:
@@ -99,12 +99,26 @@ def test_listwise_token_budget_not_increased() -> None:
 def _jobs2() -> list[Job]:
     return [
         Job(
-            id="job-a", source="t", source_job_id="a", title="A", company="C",
-            location="R", description="Python", apply_url="https://x", skills=["Python"],
+            id="job-a",
+            source="t",
+            source_job_id="a",
+            title="A",
+            company="C",
+            location="R",
+            description="Python",
+            apply_url="https://x",
+            skills=["Python"],
         ),
         Job(
-            id="job-b", source="t", source_job_id="b", title="B", company="C",
-            location="R", description="Go", apply_url="https://y", skills=["Go"],
+            id="job-b",
+            source="t",
+            source_job_id="b",
+            title="B",
+            company="C",
+            location="R",
+            description="Go",
+            apply_url="https://y",
+            skills=["Go"],
         ),
     ]
 
@@ -187,7 +201,9 @@ def test_hybrid_ce_missing_fn_hard_fails(monkeypatch: pytest.MonkeyPatch) -> Non
         with patch("app.services.ranking.hybrid.lexical_ranking", return_value=["b", "a"]):
             with pytest.raises(ServiceFailingError, match="cross_encode_fn"):
                 hybrid_rank(
-                    "q", "q", cands,
+                    "q",
+                    "q",
+                    cands,
                     skill_overlap_fn=lambda _: 0.5,
                     recency_fn=lambda _: 0.5,
                     use_llm=False,
@@ -198,9 +214,8 @@ def test_hybrid_ce_missing_fn_hard_fails(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_hybrid_ce_shortlist_only_when_weight_positive(monkeypatch: pytest.MonkeyPatch) -> None:
-    cands = [
-        Rankable(id=f"j{i}", dense_text=f"t{i}", lexical_text=f"t{i}") for i in range(5)
-    ]
+    cands = [Rankable(id=f"j{i}", dense_text=f"t{i}", lexical_text=f"t{i}") for i in range(5)]
+
     # CE prefers reverse order
     def ce_fn(cs: list[Rankable]) -> dict[str, float]:
         return {c.id: float(i) for i, c in enumerate(cs)}
@@ -212,7 +227,9 @@ def test_hybrid_ce_shortlist_only_when_weight_positive(monkeypatch: pytest.Monke
             monkeypatch.setattr(settings, "RERANK_TOP_N", 3)
             monkeypatch.setattr(settings, "LLM_RERANK_TOP_N", 2)
             scored = hybrid_rank(
-                "q", "q", cands,
+                "q",
+                "q",
+                cands,
                 skill_overlap_fn=lambda _: 0.5,
                 recency_fn=lambda _: 0.5,
                 cross_encode_fn=ce_fn,
@@ -232,7 +249,9 @@ def test_hybrid_ce_shortlist_only_when_weight_positive(monkeypatch: pytest.Monke
             monkeypatch.setattr(settings, "RANKING_WEIGHT_EXPERIENCE", 0.1)
             monkeypatch.setattr(settings, "RANKING_WEIGHT_REQUIREMENTS", 0.1)
             scored2 = hybrid_rank(
-                "q", "q", cands,
+                "q",
+                "q",
+                cands,
                 skill_overlap_fn=lambda _: 0.5,
                 recency_fn=lambda _: 0.5,
                 cross_encode_fn=ce_fn,
@@ -254,12 +273,22 @@ def test_fuse_includes_cross_encoder_weight(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(settings, "RANKING_WEIGHT_CROSS_ENCODER", 0.1)
     validate_ranking_weights()
     high = fuse_final_score(
-        llm_fit=0, rrf_normalized=0, skill_overlap=0, recency=0,
-        experience_fit=0, requirements_met=0, cross_encoder=1.0,
+        llm_fit=0,
+        rrf_normalized=0,
+        skill_overlap=0,
+        recency=0,
+        experience_fit=0,
+        requirements_met=0,
+        cross_encoder=1.0,
     )
     low = fuse_final_score(
-        llm_fit=0, rrf_normalized=0, skill_overlap=0, recency=0,
-        experience_fit=0, requirements_met=0, cross_encoder=0.0,
+        llm_fit=0,
+        rrf_normalized=0,
+        skill_overlap=0,
+        recency=0,
+        experience_fit=0,
+        requirements_met=0,
+        cross_encoder=0.0,
     )
     assert high > low
     assert high == pytest.approx(10.0)
@@ -288,9 +317,9 @@ def test_calibration_holdout_not_in_train_fit() -> None:
 
 
 def test_calibration_ui_requires_promote_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import calibration as cal
-    from app.db.session import SessionLocal, ensure_db
     from app.db.models import ScoreCalibration
+    from app.db.session import SessionLocal, ensure_db
+    from app.services import calibration as cal
 
     ensure_db()
     scores = [float(20 + (i % 50)) for i in range(60)]
@@ -344,7 +373,8 @@ def test_fit_weights_refuses_and_never_touches_defaults(tmp_path, monkeypatch) -
     mtime = defaults.stat().st_mtime
     out = tmp_path / "learned.json"
     monkeypatch.setattr(
-        fw, "_load_from_db",
+        fw,
+        "_load_from_db",
         lambda: [{"y": 1, "score_shown": 50, "shown_rank": 0, "components": {}}] * 5,
     )
     monkeypatch.setattr(sys, "argv", ["fit_weights.py", "--out", str(out)])
@@ -385,10 +415,22 @@ def test_fit_weights_writes_proposal_only_no_shown_rank_zero(tmp_path, monkeypat
             }
         )
     # rows missing shown_rank must be dropped, not zero-imputed
-    rows.append({"y": 1, "score_shown": 90, "shown_rank": None, "components": {
-        "llm": 90, "rrf": 0.9, "skills": 0.9, "recency": 0.5,
-        "experience": 0.5, "requirements": 0.5, "cross_encoder": 0.0,
-    }})
+    rows.append(
+        {
+            "y": 1,
+            "score_shown": 90,
+            "shown_rank": None,
+            "components": {
+                "llm": 90,
+                "rrf": 0.9,
+                "skills": 0.9,
+                "recency": 0.5,
+                "experience": 0.5,
+                "requirements": 0.5,
+                "cross_encoder": 0.0,
+            },
+        }
+    )
     monkeypatch.setattr(fw, "_load_from_db", lambda: rows)
     monkeypatch.setattr(sys, "argv", ["fit_weights.py", "--out", str(out)])
     from app.db.models import ScoreCalibration
@@ -404,7 +446,13 @@ def test_fit_weights_writes_proposal_only_no_shown_rank_zero(tmp_path, monkeypat
         # dropped null shown_rank → n_labels is 40 not 41
         assert data["fit"]["n_labels"] == 40
         assert set(data["weights"].keys()) == {
-            "llm", "rrf", "skills", "recency", "experience", "requirements", "cross_encoder",
+            "llm",
+            "rrf",
+            "skills",
+            "recency",
+            "experience",
+            "requirements",
+            "cross_encoder",
         }
         assert "shown_rank" not in data["weights"]
         assert abs(sum(data["weights"].values()) - 1.0) < 0.02
@@ -439,7 +487,6 @@ def test_fit_logistic_holdout_isolation() -> None:
 def test_ce_respx_mock_scores(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx
     import respx
-
     from app.services import cross_encoder as ce
 
     monkeypatch.setattr(settings, "EMBEDDINGS_API_KEY", "test-key")
@@ -489,11 +536,21 @@ def test_skills_chips_uses_skill_equals_aliases() -> None:
     from app.services.ranking.engine import _skills_chips
 
     profile = ResumeProfile(
-        title="Eng", skills=["Go", "PostgreSQL"], location="R", years_of_experience=3,
+        title="Eng",
+        skills=["Go", "PostgreSQL"],
+        location="R",
+        years_of_experience=3,
     )
     job = Job(
-        id="j", source="t", source_job_id="j", title="T", company="C", location="R",
-        description="x", apply_url="https://x", skills=["golang", "postgres", "Rust"],
+        id="j",
+        source="t",
+        source_job_id="j",
+        title="T",
+        company="C",
+        location="R",
+        description="x",
+        apply_url="https://x",
+        skills=["golang", "postgres", "Rust"],
     )
     matched, missing = _skills_chips(profile, job)
     assert "Go" in matched and "PostgreSQL" in matched
@@ -510,7 +567,9 @@ def test_listwise_clamps_shortlist(monkeypatch: pytest.MonkeyPatch) -> None:
     with patch("app.services.ranking.hybrid.dense_ranking", return_value=order):
         with patch("app.services.ranking.hybrid.lexical_ranking", return_value=order):
             scored = hybrid_rank(
-                "q", "q", cands,
+                "q",
+                "q",
+                cands,
                 skill_overlap_fn=lambda _: 0.5,
                 recency_fn=lambda _: 0.5,
                 use_llm=False,

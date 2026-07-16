@@ -2,6 +2,7 @@ import re
 from dataclasses import dataclass, field
 
 import httpx
+
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.http_timeouts import default_timeout, drive_download_timeout
@@ -95,9 +96,7 @@ def _oauth_access_token() -> str:
             response.raise_for_status()
             data = response.json()
     except httpx.HTTPError as exc:
-        raise ServiceFailingError(
-            "Google Drive", f"OAuth token refresh failed: {format_httpx_error(exc)}"
-        ) from exc
+        raise ServiceFailingError("Google Drive", f"OAuth token refresh failed: {format_httpx_error(exc)}") from exc
     token = data.get("access_token")
     if not token:
         raise ServiceFailingError("Google Drive", "OAuth token refresh returned no access_token")

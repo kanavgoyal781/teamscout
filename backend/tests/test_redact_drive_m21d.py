@@ -14,19 +14,12 @@ from app.errors import ServiceFailingError
 from app.services.library import drive as drive_mod
 from fastapi.testclient import TestClient
 
-
 SECRET_KEY = "AIzaSyDummyTestKey_NOT_REAL_1234567890"
-KEY_URL = (
-    f"https://www.googleapis.com/drive/v3/files/file-secret"
-    f"?alt=media&key={SECRET_KEY}"
-)
+KEY_URL = f"https://www.googleapis.com/drive/v3/files/file-secret?alt=media&key={SECRET_KEY}"
 
 
 def test_redact_error_strips_query_keys_and_aiza_and_bearer() -> None:
-    raw = (
-        f'Client error \'403 Forbidden\' for url \'{KEY_URL}\' '
-        f"Authorization: Bearer ya29.secret-token-value"
-    )
+    raw = f"Client error '403 Forbidden' for url '{KEY_URL}' Authorization: Bearer ya29.secret-token-value"
     safe = redact_error(raw)
     assert "key=" not in safe.lower() or "key=[REDACTED]" in safe.lower()
     assert SECRET_KEY not in safe
@@ -176,8 +169,10 @@ def test_drive_sync_403_api_response_and_logs_have_no_secrets(
         assert "AIza" not in (fr.get("reason") or "")
         assert "googleapis.com/drive" not in (fr.get("reason") or "")
 
-    log_blob = " ".join(r.message for r in caplog.records) + " " + " ".join(
-        str(getattr(r, "error", "")) for r in caplog.records
+    log_blob = (
+        " ".join(r.message for r in caplog.records)
+        + " "
+        + " ".join(str(getattr(r, "error", "")) for r in caplog.records)
     )
     # Caplog may not expand structlog kwargs — also check getMessage
     full_log = "\n".join(r.getMessage() for r in caplog.records)

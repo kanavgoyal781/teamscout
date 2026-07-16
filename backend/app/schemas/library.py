@@ -1,12 +1,17 @@
 from typing import Literal
+
 from pydantic import BaseModel, Field
+
 from app.schemas.jobs import RankedJob, ScoreBreakdown
 from app.schemas.resume import ResumeProfile
+
+
 class IntentProfile(BaseModel):
     role: str
     years_of_experience: float = 0
     location: str = ""
     remote_preference: Literal["remote", "hybrid", "onsite", "any"] = "any"
+
     def search_text(self) -> str:
         parts = [
             self.role,
@@ -15,6 +20,7 @@ class IntentProfile(BaseModel):
             f"remote preference: {self.remote_preference}",
         ]
         return "\n".join(part for part in parts if part)
+
     def as_query_profile(self) -> ResumeProfile:
         return ResumeProfile(
             title=self.role,
@@ -26,14 +32,20 @@ class IntentProfile(BaseModel):
                 f"Location: {self.location}. Remote preference: {self.remote_preference}."
             ),
         )
+
+
 class IntentSearchRequest(BaseModel):
     role: str
     years_of_experience: float = 0
     location: str = ""
     remote_preference: Literal["remote", "hybrid", "onsite", "any"] = "any"
+
+
 class IntentSearchResponse(BaseModel):
     search_id: str
     results: list[RankedJob] = Field(default_factory=list)
+
+
 class LibraryResumeOut(BaseModel):
     id: str
     filename: str
@@ -44,18 +56,26 @@ class LibraryResumeOut(BaseModel):
     cluster_id: str | None = None
     cluster_label: str | None = None
     cluster_size: int | None = None
+
+
 class LibraryResumeListResponse(BaseModel):
     resumes: list[LibraryResumeOut] = Field(default_factory=list)
     total: int = 0
     distinct_versions: int = 0
+
+
 class IngestFileResult(BaseModel):
     filename: str
     status: Literal["cached", "parsed", "failed", "skipped"]
     resume_id: str | None = None
     # Plain-language reason for failed/skipped (never includes secrets or raw URLs).
     reason: str | None = None
+
+
 class DriveSyncRequest(BaseModel):
     folder_url: str
+
+
 class DriveSyncResponse(BaseModel):
     folder_id: str
     files_seen: int
@@ -67,6 +87,8 @@ class DriveSyncResponse(BaseModel):
     file_results: list[IngestFileResult] = Field(default_factory=list)
     units_indexed: bool | None = None
     units_index_warning: str | None = None
+
+
 class LibraryUploadResponse(BaseModel):
     files_received: int
     files_parsed: int
@@ -77,16 +99,22 @@ class LibraryUploadResponse(BaseModel):
     units_indexed: bool | None = None
     units_index_warning: str | None = None
     file_results: list[IngestFileResult] = Field(default_factory=list)
+
+
 class ResumeCandidate(BaseModel):
     resume_id: str
     filename: str
     profile: ResumeProfile
     content_hash: str | None = None
     cluster_id: str | None = None
+
+
 class RequirementCoverage(BaseModel):
     requirement: str
     status: Literal["hit", "miss"]
     evidence: str | None = None
+
+
 class AlignmentRow(BaseModel):
     requirement: str
     kind: str = "must"
@@ -97,6 +125,8 @@ class AlignmentRow(BaseModel):
     evidence_score: float = 0.0
     strength: Literal["none", "weak", "solid", "strong"] = "none"
     status: Literal["hit", "miss"] = "miss"
+
+
 class TournamentRecord(BaseModel):
     ran: bool = False
     comparisons: int = 0
@@ -107,6 +137,8 @@ class TournamentRecord(BaseModel):
     contested: bool = False
     overrode_coverage: bool = False
     reasons: list[str] = Field(default_factory=list)
+
+
 class RankedResumeRecommendation(BaseModel):
     resume_id: str
     filename: str
@@ -123,17 +155,23 @@ class RankedResumeRecommendation(BaseModel):
     cluster_size: int | None = None
     tournament: TournamentRecord | None = None
     content_hash: str | None = None
+
+
 class RecommendResumesResponse(BaseModel):
     job_id: str
     recommendations: list[RankedResumeRecommendation] = Field(default_factory=list)
     tournament_comparisons: int = 0
     tournament_ran: bool = False
+
+
 class RecommendFromJdRequest(BaseModel):
     job_description: str
     title: str = ""
     company: str = ""
     location: str = ""
     apply_url: str = ""
+
+
 class RecommendFromJdResponse(BaseModel):
     job_id: str
     job_title: str = ""

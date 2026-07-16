@@ -1229,6 +1229,27 @@ details.why-match[open] summary {
   color: var(--accent);
 }
 
+.library-skills-preview {
+  display: inline;
+}
+
+.library-skills-more {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.library-row-title {
+  font-weight: 500;
+}
+
 .library-member-row {
   padding-left: 28px;
   background: color-mix(in srgb, var(--bg-elevated) 80%, var(--bg));

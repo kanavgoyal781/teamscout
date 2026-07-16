@@ -131,6 +131,10 @@ export default function PasteJdPanel({
             className="paste-textarea"
             value={jdText}
             onChange={(e) => onJdTextChange(e.target.value)}
+            onPaste={(e) => {
+              const pasted = e.clipboardData.getData("text");
+              if (pasted) prefill.onDescriptionPaste(pasted);
+            }}
             rows={14}
             placeholder="Paste the full job description here…"
             required

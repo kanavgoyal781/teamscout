@@ -1,34 +1,51 @@
 """M19: anonymous workspaces isolation, TTL, ceilings, WAL concurrency."""
+
 from __future__ import annotations
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
+
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import text
-from app.core.config import settings
 from app.core import workspace as ws_mod
+from app.core.config import settings
 from app.core.workspace import COOKIE_NAME, cookie_header_value, sweep_expired_workspaces
-from app.db.models import Contact, EmailReveal, Feedback, Resume, Search, Workspace
+from app.db.models import Contact, EmailReveal, Resume, Search, Workspace
 from app.db.session import SessionLocal, engine
 from app.errors import CostCeilingExceededError
 from app.main import app
 from app.schemas.resume import ResumeProfile
 from app.services import observability, parser
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+
+
 @pytest.fixture
 def profile() -> ResumeProfile:
     return ResumeProfile(
-        name="A", title="Eng", location="SF", skills=["python"],
-        years_of_experience=5, summary="s", work_experience=[], education=[],
+        name="A",
+        title="Eng",
+        location="SF",
+        skills=["python"],
+        years_of_experience=5,
+        summary="s",
+        work_experience=[],
+        education=[],
     )
+
+
 def _client() -> TestClient:
     return TestClient(app)
+
+
 def _upload(client: TestClient, profile: ResumeProfile, name: str = "r.pdf", h: str = "hash-x") -> str:
     with patch.object(parser, "parse_resume_file", return_value=(h, profile)):
         r = client.post("/resumes/upload", files={"file": (name, b"%PDF-1.4 demo", "application/pdf")})
     assert r.status_code == 200, r.text
     return r.json()["id"]
+
+
 def test_livez_health_skip_workspace_mint() -> None:
     c = _client()
     r1 = c.get("/livez")
@@ -37,12 +54,16 @@ def test_livez_health_skip_workspace_mint() -> None:
     r2 = c.get("/health")
     assert r2.status_code in (200, 503)
     assert COOKIE_NAME not in (r2.headers.get("set-cookie") or "").lower()
+
+
 def test_cross_workspace_isolation_id_probing(profile: ResumeProfile) -> None:
     a, b = _client(), _client()
     aid = _upload(a, profile, "a.pdf", "hash-a")
     bid = _upload(b, profile, "b.pdf", "hash-b")
     assert aid != bid
-    assert a.put(f"/resumes/{aid}/confirm", json={"title": "T", "location": "L", "skills": ["python"]}).status_code == 200
+    assert (
+        a.put(f"/resumes/{aid}/confirm", json={"title": "T", "location": "L", "skills": ["python"]}).status_code == 200
+    )
     assert b.put(f"/resumes/{aid}/confirm", json={"title": "X", "location": "Y", "skills": ["z"]}).status_code == 404
     # Library: put A resume in library via hash-scoped upload endpoint
     with (
@@ -72,11 +93,13 @@ def test_cross_workspace_isolation_id_probing(profile: ResumeProfile) -> None:
     finally:
         db.close()
     assert b.post(f"/contacts/{contact_id}/reveal-email").status_code == 404
-    assert b.get(f"/jobs/job-a/team").status_code == 404
+    assert b.get("/jobs/job-a/team").status_code == 404
     # Search row not visible across workspaces (no list API; probe via feedback secondary is N/A)
     assert a.get("/workspace").json()["workspace_id"] != b.get("/workspace").json()["workspace_id"]
     fa = a.post("/feedback", json={"kind": "thumbs_up", "target_type": "job_match", "target_id": search_id})
     assert fa.status_code == 200, fa.text
+
+
 def test_ttl_sweep_deletes_rows_and_files_preserves_email_reveals(profile: ResumeProfile) -> None:
     client = _client()
     rid = _upload(client, profile, "ttl.pdf", "hash-ttl")
@@ -87,7 +110,9 @@ def test_ttl_sweep_deletes_rows_and_files_preserves_email_reveals(profile: Resum
         fp = Path(row.file_path or "")
         assert fp.is_file()
         assert wid in str(fp)  # namespaced under workspace
-        reveal = EmailReveal(contact_id="ttl-contact", sumble_person_id="9999", status="revealed", email="x@y.com", cost_credits=1)
+        reveal = EmailReveal(
+            contact_id="ttl-contact", sumble_person_id="9999", status="revealed", email="x@y.com", cost_credits=1
+        )
         db.add(reveal)
         ws = db.query(Workspace).filter(Workspace.id == wid).one()
         ws.last_seen_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=30)
@@ -106,6 +131,8 @@ def test_ttl_sweep_deletes_rows_and_files_preserves_email_reveals(profile: Resum
     finally:
         db.close()
     assert not fp.exists()
+
+
 def test_workspace_llm_and_sumble_ceilings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "WORKSPACE_DAILY_LLM_USD", 0.0)
     monkeypatch.setattr(settings, "LLM_DAILY_COST_CEILING_USD", 1000.0)
@@ -125,6 +152,8 @@ def test_workspace_llm_and_sumble_ceilings(monkeypatch: pytest.MonkeyPatch) -> N
         assert es.value.details.get("scope") == "workspace"
     finally:
         ws_mod._workspace_cv.reset(token)
+
+
 def test_sqlite_busy_timeout_and_wal_pragma() -> None:
     with engine.connect() as conn:
         busy = conn.execute(text("PRAGMA busy_timeout")).scalar()
@@ -132,8 +161,11 @@ def test_sqlite_busy_timeout_and_wal_pragma() -> None:
         # File DB uses WAL; in-memory pytest may report memory/delete
         mode = str(conn.execute(text("PRAGMA journal_mode")).scalar() or "").lower()
         assert mode in {"wal", "memory", "delete"}
+
+
 def test_concurrent_writes_three_users(tmp_path: Path) -> None:
     import sqlite3
+
     path = tmp_path / "concurrent.db"
     bootstrap = sqlite3.connect(path)
     bootstrap.execute("PRAGMA journal_mode=WAL")
@@ -142,12 +174,14 @@ def test_concurrent_writes_three_users(tmp_path: Path) -> None:
     bootstrap.execute("CREATE TABLE feedback_like (id INTEGER PRIMARY KEY, workspace TEXT, payload TEXT)")
     bootstrap.commit()
     bootstrap.close()
+
     def work(i: int) -> None:
         conn = sqlite3.connect(path, timeout=10, check_same_thread=False)
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("INSERT INTO feedback_like (workspace, payload) VALUES (?, ?)", (f"ws-{i}", f"p-{i}"))
         conn.commit()
         conn.close()
+
     with ThreadPoolExecutor(max_workers=3) as pool:
         for f in as_completed([pool.submit(work, i) for i in range(3)]):
             f.result()
@@ -155,8 +189,12 @@ def test_concurrent_writes_three_users(tmp_path: Path) -> None:
     assert verify.execute("SELECT COUNT(*) FROM feedback_like").fetchone()[0] == 3
     verify.close()
     for i in range(3):
-        r = _client().post("/feedback", json={"kind": "thumbs_up", "target_type": "job_match", "target_id": f"app-c-{i}"})
+        r = _client().post(
+            "/feedback", json={"kind": "thumbs_up", "target_type": "job_match", "target_id": f"app-c-{i}"}
+        )
         assert r.status_code == 200, r.text
+
+
 def test_cookie_attributes_dev_and_prod(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _client()
     r = client.get("/workspace")
@@ -174,6 +212,8 @@ def test_cookie_attributes_dev_and_prod(monkeypatch: pytest.MonkeyPatch) -> None
     val2 = cookie_header_value("tokentoken1234567890")
     assert "SameSite=Lax" in val2
     assert "Secure" not in val2
+
+
 def test_upload_paths_namespaced_per_workspace(profile: ResumeProfile) -> None:
     a, b = _client(), _client()
     with patch.object(parser, "parse_resume_file", return_value=("samehash", profile)):

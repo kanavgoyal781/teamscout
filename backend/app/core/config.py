@@ -1,12 +1,18 @@
 from pathlib import Path
+
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
 def _resolve_env_files() -> tuple[str, ...]:
     candidates = (_REPO_ROOT / ".env", _BACKEND_DIR / ".env")
     found = tuple(str(path) for path in candidates if path.is_file())
     return found or (str(_REPO_ROOT / ".env"),)
+
+
 class Settings(BaseSettings):
     DATABASE_URL: str = Field(default="sqlite:///./teamscout.db")
     ENV: str = "dev"
@@ -107,6 +113,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
     def max_tokens_for_operation(self, operation: str) -> int:
         mapping = {
             "parse_resume": self.LLM_MAX_TOKENS_PARSE_RESUME,
@@ -119,6 +126,7 @@ class Settings(BaseSettings):
             "outreach_draft": self.LLM_MAX_TOKENS_OUTREACH_DRAFT,
         }
         return mapping.get(operation, self.LLM_MAX_TOKENS_DEFAULT)
+
     @field_validator(
         "RATE_LIMIT_ENABLED",
         "JOBS_EXTRA_SOURCES_ENABLED",
@@ -140,17 +148,22 @@ class Settings(BaseSettings):
             if lowered in {"0", "false", "no", "off", ""}:
                 return False
         return value
+
     @property
     def is_prod(self) -> bool:
         return self.ENV.strip().lower() in {"prod", "production"}
+
     @property
     def app_version(self) -> str:
         for candidate in (self.APP_VERSION, self.GIT_SHA):
             if candidate and candidate.strip():
                 return candidate.strip()
         return "dev"
+
     @property
     def allowed_origins_list(self) -> list[str]:
         raw = self.ALLOWED_ORIGINS if (self.ALLOWED_ORIGINS and self.ALLOWED_ORIGINS.strip()) else self.CORS_ORIGINS
         return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
 settings = Settings()

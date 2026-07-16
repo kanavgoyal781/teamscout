@@ -138,9 +138,7 @@ export default function JobPasteTeamPanel({
             onChange={(e) => setDescription(e.target.value)}
             onPaste={(e) => {
               const pasted = e.clipboardData.getData("text");
-              if (pasted) {
-                // allow default then effect runs on state update
-              }
+              if (pasted) prefill.onDescriptionPaste(pasted);
             }}
             rows={12}
             placeholder="Paste the full job description…"

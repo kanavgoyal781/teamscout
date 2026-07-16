@@ -60,9 +60,7 @@ def test_extract_units_no_standalone_junk_fragments() -> None:
     units = extract_units(profile)
     texts = [u.unit_text for u in units]
     assert "SQL" in texts
-    assert not any(
-        t.strip().lower().startswith("in applied") and len(t.split()) < 6 for t in texts
-    )
+    assert not any(t.strip().lower().startswith("in applied") and len(t.split()) < 6 for t in texts)
     # No ultra-short experience fragments with leading lowercase
     for u in units:
         if u.section == "experience":
@@ -71,13 +69,19 @@ def test_extract_units_no_standalone_junk_fragments() -> None:
 
 def test_units_stamp_includes_segmenter_version() -> None:
     profile = ResumeProfile(
-        name="A", title="T", years_of_experience=1, location="", skills=["Go"], summary="",
+        name="A",
+        title="T",
+        years_of_experience=1,
+        location="",
+        skills=["Go"],
+        summary="",
         work_experience=[],
     )
     units = extract_units(profile)
     stamp = units_stamp(units)
     # Changing version changes stamp even if unit hashes identical
     import app.services.resume.units as units_mod
+
     original = units_mod.SEGMENTER_VERSION
     try:
         units_mod.SEGMENTER_VERSION = original + "-test"
@@ -130,7 +134,9 @@ def test_sql_exact_match_ranks_at_full_skill_score() -> None:
             summary="Analyst with Strong SQL skills and Python reporting.",
         ),
     )
-    with patch("app.services.inference.embeddings.embed_batch", side_effect=lambda texts: [_norm_bag(t) for t in texts]):
+    with patch(
+        "app.services.inference.embeddings.embed_batch", side_effect=lambda texts: [_norm_bag(t) for t in texts]
+    ):
         with patch("app.services.inference.embeddings.embed", side_effect=lambda t: _norm_bag(t)):
             with patch("app.services.resume.ranking.decompose_jd") as dec:
                 from app.services.resume.jd_decompose import JdRequirement
@@ -155,7 +161,7 @@ def test_sql_exact_match_ranks_at_full_skill_score() -> None:
 
 def test_exact_skills_high_llm_headline_match_fixture() -> None:
     """Live-failure shape: exact must skills + high LLM fit → headline match ≥ 60."""
-    from app.services.resume.justify import ResumeRerankItem, ResumeRerankResponse
+    from app.services.resume.justify import ResumeRerankItem
 
     job = Job(
         id="live-shape",
@@ -205,7 +211,9 @@ def test_exact_skills_high_llm_headline_match_fixture() -> None:
             )
         }
 
-    with patch("app.services.inference.embeddings.embed_batch", side_effect=lambda texts: [_norm_bag(t) for t in texts]):
+    with patch(
+        "app.services.inference.embeddings.embed_batch", side_effect=lambda texts: [_norm_bag(t) for t in texts]
+    ):
         with patch("app.services.inference.embeddings.embed", side_effect=lambda t: _norm_bag(t)):
             with patch("app.services.resume.ranking.decompose_jd") as dec:
                 from app.services.resume.jd_decompose import JdRequirement
@@ -233,6 +241,7 @@ def test_exact_skills_high_llm_headline_match_fixture() -> None:
 def test_segmenter_version_mismatch_forces_lazy_reindex(client, monkeypatch) -> None:
     """Stale junk units with old stamp must regenerate when SEGMENTER_VERSION changes."""
     import json
+
     from app.db.models import Resume, ResumeUnit
     from app.db.session import SessionLocal
     from app.services.resume.units import extract_units, index_resume_units, units_stamp
@@ -257,6 +266,7 @@ def test_segmenter_version_mismatch_forces_lazy_reindex(client, monkeypatch) -> 
     )
     # Seed resume via API path with fixed hash
     from unittest.mock import patch
+
     with (
         patch("app.services.library.store.parser.content_hash", return_value="m21-junk-hash"),
         patch("app.services.library.store.parser.extract_text", return_value="text"),
@@ -298,9 +308,7 @@ def test_segmenter_version_mismatch_forces_lazy_reindex(client, monkeypatch) -> 
         fresh = index_resume_units(db, resume_id, profile, force=False)
         texts = [u.unit_text for u in fresh]
         assert junk_text not in texts
-        assert not any(
-            t.strip().lower().startswith("in applied") and len(t.split()) < 6 for t in texts
-        )
+        assert not any(t.strip().lower().startswith("in applied") and len(t.split()) < 6 for t in texts)
         db.refresh(row)
         assert row.units_content_hash == units_stamp(extract_units(profile))
         assert all(not is_junk_fragment(u.unit_text, section=u.section) for u in fresh)

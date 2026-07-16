@@ -7,24 +7,31 @@ Exact conformance to https://docs.sumble.com/api (OpenAPI v6):
 No invented fields or endpoints. All request bodies and response parsing
 use only documented keys.
 """
+
 from __future__ import annotations
+
 from typing import Any
 from urllib.parse import urlparse
+
 import httpx
+
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.errors import ServiceFailingError
 from app.services import sumble_client, sumble_jobs
+
 # Re-export public types/constants for callers: `from app.services import sumble`
+from app.services.team.client import SumbleOrganization, SumblePerson  # noqa: E402
+
 EMAIL_REVEAL_COST = sumble_client.EMAIL_REVEAL_COST
 DEFAULT_LIMIT = sumble_client.DEFAULT_LIMIT
-SumbleOrganization = sumble_client.SumbleOrganization
-SumblePerson = sumble_client.SumblePerson
 # Job-match path helpers (used by smoke_sumble + tests; orchestration via find_hiring_team)
 search_org_job_posts = sumble_jobs.search_org_job_posts
 find_best_matching_job_post = sumble_jobs.find_best_matching_job_post
 get_related_people_for_job = sumble_jobs.get_related_people_for_job
 logger = get_logger(__name__)
+
+
 def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str]) -> tuple[list[str], list[str], int]:
     """Small mapping helper: department + titles -> (job_functions, job_levels).
     Per https://docs.sumble.com/api/lookups/job-title-lookup.md the response
@@ -96,6 +103,8 @@ def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str
             if t not in funcs:
                 funcs.append(t)
     return ([f for f in funcs if f], levels, title_credits)
+
+
 def build_people_query(
     *,
     department: str,
@@ -123,6 +132,8 @@ def build_people_query(
             clauses.append(f"({ors})")
     query = " AND ".join(clauses) if clauses else None
     return query, title_credits
+
+
 def _derive_domain(company_name: str, apply_url: str | None = None) -> str | None:
     """Heuristic to derive domain for org resolve-by-url (per docs preference for url/domain).
     Uses apply_url host (stripping common job boards) or slug+ .com from company name.
@@ -164,6 +175,8 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
     if slug:
         return f"{slug}.com"
     return None
+
+
 def lookup_organization(company_name: str, apply_url: str | None = None) -> tuple[SumbleOrganization, int]:
     """Resolve org using documented /v6/organizations. Prefer url/domain per docs.
     Tries name+url derived, then name. Raises clear error (no fabricated id) on failure.
@@ -205,6 +218,8 @@ def lookup_organization(company_name: str, apply_url: str | None = None) -> tupl
         "Sumble",
         f"organization could not be resolved for {company_name!r} (tried name and domain {dom!r}); provide better company/apply_url",
     )
+
+
 def search_people(
     *,
     organization_id: int,
@@ -255,6 +270,8 @@ def search_people(
     people_credits = int(data.get("credits_used") or 0)
     total_credits = people_credits + title_credits
     return results, total_credits
+
+
 def find_hiring_team(
     *,
     organization_id: int,
@@ -300,6 +317,8 @@ def find_hiring_team(
     total_credits += search_credits
     logger.info("sumble.team_path", path="Filtered by function/level", count=len(people))
     return people, total_credits, "Filtered by function/level"
+
+
 def reveal_email(person_id: int) -> tuple[str | None, int]:
     """Documented list-mode enrich for email (people list + email attr).
     Keeps billing/terminal cache intact in callers. Matches current docs contract.

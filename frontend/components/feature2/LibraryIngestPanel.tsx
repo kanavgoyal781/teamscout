@@ -19,6 +19,63 @@ import { SkeletonLines } from "../ui/Skeleton";
 const ROW_HEIGHT = 44;
 const VISIBLE_ROWS = 5;
 const LIST_MAX_HEIGHT = ROW_HEIGHT * VISIBLE_ROWS;
+const SKILLS_VISIBLE = 8;
+
+function SkillsPreview({ skills, resumeId }: { skills: string[]; resumeId: string }) {
+  const [open, setOpen] = useState(false);
+  if (!skills.length) return null;
+  const shown = open ? skills : skills.slice(0, SKILLS_VISIBLE);
+  const more = skills.length - SKILLS_VISIBLE;
+  // Use <span role="button"> — may nest inside cluster <button> without invalid HTML
+  return (
+    <span className="library-skills-preview" data-testid={`skills-${resumeId}`}>
+      {shown.join(", ")}
+      {more > 0 && !open ? (
+        <span
+          role="button"
+          tabIndex={0}
+          className="library-skills-more"
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            setOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen(true);
+            }
+          }}
+          aria-label={`Show ${more} more skills`}
+        >
+          +{more} more
+        </span>
+      ) : null}
+      {open && more > 0 ? (
+        <span
+          role="button"
+          tabIndex={0}
+          className="library-skills-more"
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            setOpen(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen(false);
+            }
+          }}
+        >
+          less
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 type ClusterGroup = {
   cid: string;
@@ -377,10 +434,17 @@ export default function LibraryIngestPanel({
                             </span>
                           ) : null}
                           <span className="meta library-row-meta">
-                            {primary?.profile.title || "Untitled"}
-                            {row.count === 1 && primary
-                              ? ` · ${primary.profile.skills.slice(0, 3).join(", ")}`
-                              : ` · ${row.count} near-dup${row.count === 1 ? "" : "s"}`}
+                            <span className="library-row-title" data-testid={`cluster-title-${row.cid}`}>
+                              {primary?.profile.title || "Untitled"}
+                            </span>
+                            {row.count === 1 && primary ? (
+                              <>
+                                {" · "}
+                                <SkillsPreview skills={primary.profile.skills} resumeId={primary.id} />
+                              </>
+                            ) : (
+                              ` · ${row.count} near-dup${row.count === 1 ? "" : "s"}`
+                            )}
                           </span>
                         </button>
                       </li>
@@ -405,6 +469,12 @@ export default function LibraryIngestPanel({
                       <span className="meta library-row-meta">
                         {r.profile.title || "Untitled"} · {r.source}
                         {r.cluster_label ? ` · ${r.cluster_label}` : ""}
+                        {r.profile.skills.length > 0 ? (
+                          <>
+                            {" · "}
+                            <SkillsPreview skills={r.profile.skills} resumeId={r.id} />
+                          </>
+                        ) : null}
                       </span>
                     </li>
                   );

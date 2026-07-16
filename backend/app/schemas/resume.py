@@ -1,8 +1,12 @@
 from pydantic import BaseModel, Field
+
+
 class WorkExperience(BaseModel):
     title: str
     company: str
     bullets: list[str] = Field(default_factory=list)
+
+
 class ResumeProfile(BaseModel):
     name: str = ""
     title: str = ""
@@ -11,6 +15,7 @@ class ResumeProfile(BaseModel):
     skills: list[str] = Field(default_factory=list)
     work_experience: list[WorkExperience] = Field(default_factory=list)
     summary: str = ""
+
     def search_text(self) -> str:
         parts = [
             self.title,

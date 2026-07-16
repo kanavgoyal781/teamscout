@@ -27,6 +27,52 @@ function synthResume(i: number): LibraryResume {
 }
 
 describe("LibraryIngestPanel M21 scale", () => {
+  it("shows up to 8 skills with +N more and title on cluster header", () => {
+    const manySkills = [
+      "Python",
+      "SQL",
+      "Pandas",
+      "NumPy",
+      "PyTorch",
+      "FastAPI",
+      "Docker",
+      "Streamlit",
+      "AWS",
+      "Airflow",
+    ];
+    const resumes: LibraryResume[] = [
+      {
+        ...synthResume(0),
+        id: "skill-r0",
+        cluster_id: "skill-r0",
+        profile: {
+          ...synthResume(0).profile,
+          title: "Staff Platform Engineer",
+          skills: manySkills,
+        },
+      },
+    ];
+    render(
+      <LibraryIngestPanel
+        resumes={resumes}
+        loadingLibrary={false}
+        uploading={false}
+        syncing={false}
+        driveUrl=""
+        syncStatus={null}
+        onDriveUrlChange={() => {}}
+        onUpload={(e) => e.preventDefault()}
+        onDriveSync={(e) => e.preventDefault()}
+      />,
+    );
+    expect(screen.getByTestId("cluster-title-skill-r0").textContent).toMatch(/Staff Platform Engineer/);
+    const skills = screen.getByTestId("skills-skill-r0");
+    expect(skills.textContent).toMatch(/Python/);
+    expect(skills.textContent).toMatch(/Streamlit/);
+    expect(skills.textContent).toMatch(/\+2 more/);
+    expect(skills.textContent).not.toMatch(/Airflow/);
+  });
+
   it("renders 100 files in a ~5-row virtualized list without expanding all rows", () => {
     const resumes = Array.from({ length: 100 }, (_, i) => synthResume(i));
     const { container } = render(

@@ -1,18 +1,20 @@
 from __future__ import annotations
+
 import hashlib
 import random
 import re
 from dataclasses import dataclass, field
+
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.models import PairwiseJudgeCache
 from app.prompts import load_prompt
 from app.schemas.jobs import Job
 from app.services import llm, observability
-from app.services.resume.jd_decompose import JdRequirement, jd_content_hash
 from app.services.ranking.math_align import (
     TOURNAMENT_GAP,
     TOURNAMENT_TOP_K,
@@ -22,13 +24,19 @@ from app.services.ranking.math_align import (
     merge_tournament_order,
     order_normalized_pair,
 )
+from app.services.resume.jd_decompose import JdRequirement, jd_content_hash
+
 logger = get_logger(__name__)
 _WEIGHT_NOTATION = re.compile(r"\s*\(w=\d+(?:\.\d+)?\)")
+
+
 class _PairwiseResponse(BaseModel):
     winner: str
     margin: str = "decisive"
     key_differences: list[str] = Field(default_factory=list)
     reason: str = ""
+
+
 @dataclass
 class AlignmentEvidence:
     resume_id: str
@@ -37,6 +45,8 @@ class AlignmentEvidence:
     top_units: list[str] = field(default_factory=list)
     alignment_rows: list[dict] = field(default_factory=list)
     filename: str = ""
+
+
 @dataclass
 class TournamentResult:
     ran: bool
@@ -51,20 +61,30 @@ class TournamentResult:
     pairwise_winners: dict[tuple[str, str], str] = field(default_factory=dict)
     pairwise_margins: dict[tuple[str, str], str] = field(default_factory=dict)
     overrode_coverage: bool = False
+
+
 def tournament_jd_key(job: Job) -> str:
     jd = jd_content_hash(job)
     tmpl = load_prompt("pairwise_judge")
     raw = f"{jd}:pairwise_judge:{tmpl.version}:{tmpl.content_hash}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def pairwise_cache_key(jd_hash: str, hash_a: str, hash_b: str) -> str:
     a, b = order_normalized_pair(hash_a, hash_b)
     return hashlib.sha256(f"{jd_hash}:{a}:{b}".encode()).hexdigest()
+
+
 def strip_weight_notation(text: str) -> str:
     return _WEIGHT_NOTATION.sub("", text or "").strip()
+
+
 _AB_COMPARE = re.compile(
     r"\b(?:beats|wins|leads|shows|has|is|over|with|than|versus|vs\.?|prefer|between|and|or)\b",
     re.IGNORECASE,
 )
+
+
 def materialize_ab_labels(text: str, *, name_a: str, name_b: str) -> str:
     out, pa, pb = text or "", "<<PAIR_LEFT>>", "<<PAIR_RIGHT>>"
     for pat, rep in ((r"\bResume A\b", pa), (r"\bResume B\b", pb), (r"\bresume A\b", pa), (r"\bresume B\b", pb)):
@@ -73,10 +93,15 @@ def materialize_ab_labels(text: str, *, name_a: str, name_b: str) -> str:
         out = re.sub(r"\bA\b", pa, out)
         out = re.sub(r"\bB\b", pb, out)
     return strip_weight_notation(out.replace(pa, name_a).replace(pb, name_b))
+
+
 def _cache_get(db: Session | None, key: str) -> tuple[str, str] | None:
-    if db is None: return None
+    if db is None:
+        return None
     row = db.query(PairwiseJudgeCache).filter(PairwiseJudgeCache.cache_key == key).one_or_none()
     return (row.winner_hash, row.reason or "") if row else None
+
+
 def _cache_put(
     db: Session | None,
     key: str,
@@ -98,14 +123,20 @@ def _cache_put(
         else:
             db.add(
                 PairwiseJudgeCache(
-                    cache_key=key, jd_hash=jd_hash, hash_a=a, hash_b=b,
-                    winner_hash=winner_hash, reason=reason,
+                    cache_key=key,
+                    jd_hash=jd_hash,
+                    hash_a=a,
+                    hash_b=b,
+                    winner_hash=winner_hash,
+                    reason=reason,
                 )
             )
         db.commit()
     except SQLAlchemyError as exc:
         db.rollback()
         logger.warning("pairwise_tournament.cache_put_failed", error=str(exc))
+
+
 def _format_must_rows(rows: list[dict]) -> list[str]:
     """Format must-rows with strength buckets (not raw 0.xx scores — M15 hygiene)."""
     from app.services.ranking.math_align import evidence_strength
@@ -125,10 +156,15 @@ def _format_must_rows(rows: list[dict]) -> list[str]:
         ev = r.get("evidence_unit") or "(none)"
         lines.append(f"- {req} | evidence: {ev} | strength: {strength} | status: {status}")
     return lines
+
+
 def _nice_summary(rows: list[dict]) -> str:
     nice = [r for r in rows if str(r.get("kind") or "") == "nice"]
-    if not nice: return "nice-to-have: none listed"
+    if not nice:
+        return "nice-to-have: none listed"
     return f"nice-to-have: {sum(1 for r in nice if r.get('status') == 'hit')}/{len(nice)} hit"
+
+
 def _judge_pair(
     job: Job,
     requirements: list[JdRequirement],
@@ -146,9 +182,9 @@ def _judge_pair(
             winner_id = a.resume_id if winner_hash == a.content_hash else b.resume_id
             margin = "decisive"
             if reason.startswith("[slight] "):
-                margin, reason = "slight", reason[len("[slight] "):]
+                margin, reason = "slight", reason[len("[slight] ") :]
             elif reason.startswith("[decisive] "):
-                reason = reason[len("[decisive] "):]
+                reason = reason[len("[decisive] ") :]
             return winner_id, reason, margin, True, 0.0
     flip = random.random() < 0.5
     left, right = (b, a) if flip else (a, b)
@@ -160,29 +196,42 @@ def _judge_pair(
         f"- [{r.kind}/{r.category} weight={float(r.weight):.2f}] {strip_weight_notation(r.text)}"
         for r in requirements[:14]
     ]
-    prompt = "\n".join([
-        tmpl.body.strip(), "",
-        f"Job: {job.title} @ {job.company}",
-        f"Description excerpt: {job.description[:800]}", "",
-        "Requirements (weight is internal scoring weight; prefer higher-weight musts):",
-        *req_lines, "",
-        f"Resume A ({name_a}) must-requirement alignment:",
-        *(must_a or ["- (none)"]), _nice_summary(left.alignment_rows), "",
-        f"Resume B ({name_b}) must-requirement alignment:",
-        *(must_b or ["- (none)"]), _nice_summary(right.alignment_rows),
-    ])
+    prompt = "\n".join(
+        [
+            tmpl.body.strip(),
+            "",
+            f"Job: {job.title} @ {job.company}",
+            f"Description excerpt: {job.description[:800]}",
+            "",
+            "Requirements (weight is internal scoring weight; prefer higher-weight musts):",
+            *req_lines,
+            "",
+            f"Resume A ({name_a}) must-requirement alignment:",
+            *(must_a or ["- (none)"]),
+            _nice_summary(left.alignment_rows),
+            "",
+            f"Resume B ({name_b}) must-requirement alignment:",
+            *(must_b or ["- (none)"]),
+            _nice_summary(right.alignment_rows),
+        ]
+    )
     max_tokens = int(tmpl.model_params.get("max_tokens") or settings.max_tokens_for_operation("pairwise_judge"))
     est_in = observability.approx_token_count(prompt + (tmpl.system or ""))
     est_cost = observability.estimate_llm_cost_usd(
         model=settings.LLM_MODEL, input_tokens=est_in, output_tokens=max_tokens // 4
     )
     response = llm.complete_json(
-        prompt, _PairwiseResponse, system=tmpl.system or "Return JSON only.",
-        max_tokens=max_tokens, operation="pairwise_judge", prompt_meta=tmpl,
+        prompt,
+        _PairwiseResponse,
+        system=tmpl.system or "Return JSON only.",
+        max_tokens=max_tokens,
+        operation="pairwise_judge",
+        prompt_meta=tmpl,
     )
     winner_label = (response.winner or "").strip().upper()
     if winner_label not in {"A", "B"}:
         from app.errors import ServiceFailingError
+
         raise ServiceFailingError("LLM", f"pairwise_judge invalid winner: {response.winner!r}")
     margin_raw = (response.margin or "decisive").strip().lower()
     margin = margin_raw if margin_raw in {"decisive", "slight"} else "decisive"
@@ -192,14 +241,22 @@ def _judge_pair(
     reason = materialize_ab_labels(reason_core, name_a=name_a, name_b=name_b)
     if not diffs and len(reason) < 24:
         from app.errors import ServiceFailingError
+
         raise ServiceFailingError(
             "LLM", "pairwise_judge missing key_differences / substantive reason (anti skill-token-only)"
         )
     _cache_put(
-        db, key, jd_hash=jd_hash, hash_a=a.content_hash, hash_b=b.content_hash,
-        winner_hash=winner_ev.content_hash, reason=f"[{margin}] {reason}",
+        db,
+        key,
+        jd_hash=jd_hash,
+        hash_a=a.content_hash,
+        hash_b=b.content_hash,
+        winner_hash=winner_ev.content_hash,
+        reason=f"[{margin}] {reason}",
     )
     return winner_ev.resume_id, reason, margin, False, float(est_cost)
+
+
 def maybe_run_tournament(
     job: Job,
     requirements: list[JdRequirement],
@@ -211,9 +268,11 @@ def maybe_run_tournament(
     gap: float = TOURNAMENT_GAP,
 ) -> TournamentResult:
     ids = [e.resume_id for e in ordered_by_coverage]
-    if not use_llm or len(ordered_by_coverage) < 2: return TournamentResult(ran=False, ordered_ids=ids)
+    if not use_llm or len(ordered_by_coverage) < 2:
+        return TournamentResult(ran=False, ordered_ids=ids)
     band_ids = close_call_band([(e.resume_id, e.coverage) for e in ordered_by_coverage], gap=gap, top_k=top_k)
-    if len(band_ids) < 2: return TournamentResult(ran=False, ordered_ids=ids)
+    if len(band_ids) < 2:
+        return TournamentResult(ran=False, ordered_ids=ids)
     by_id = {e.resume_id: e for e in ordered_by_coverage}
     contested = [by_id[i] for i in band_ids]
     contested_ids = list(band_ids)
@@ -227,9 +286,7 @@ def maybe_run_tournament(
     for i in range(len(contested)):
         for j in range(i + 1, len(contested)):
             a, b = contested[i], contested[j]
-            winner_id, reason, margin, hit, pair_cost = _judge_pair(
-                job, requirements, a, b, db=db, jd_hash=jd_hash
-            )
+            winner_id, reason, margin, hit, pair_cost = _judge_pair(job, requirements, a, b, db=db, jd_hash=jd_hash)
             key = (a.resume_id, b.resume_id) if a.resume_id <= b.resume_id else (b.resume_id, a.resume_id)
             pairwise_winners[key] = winner_id
             pairwise_margins[key] = margin
@@ -256,12 +313,25 @@ def maybe_run_tournament(
         trace.cost_usd = cost_usd
         trace.cache_hit = cache_hits > 0 and cache_hits == comparisons
         logger.info(
-            "pairwise_tournament.complete", comparisons=comparisons, cache_hits=cache_hits,
-            contested=contested_ids, order=contested_ordered, overrode_coverage=overrode, cost_usd=cost_usd,
+            "pairwise_tournament.complete",
+            comparisons=comparisons,
+            cache_hits=cache_hits,
+            contested=contested_ids,
+            order=contested_ordered,
+            overrode_coverage=overrode,
+            cost_usd=cost_usd,
         )
     return TournamentResult(
-        ran=True, ordered_ids=final, contested_ids=contested_ids, comparisons=comparisons,
-        cache_hits=cache_hits, cost_usd=cost_usd, reasons=reasons, wins=wins,
-        borda_scores=borda_scores, pairwise_winners=pairwise_winners,
-        pairwise_margins=pairwise_margins, overrode_coverage=overrode,
+        ran=True,
+        ordered_ids=final,
+        contested_ids=contested_ids,
+        comparisons=comparisons,
+        cache_hits=cache_hits,
+        cost_usd=cost_usd,
+        reasons=reasons,
+        wins=wins,
+        borda_scores=borda_scores,
+        pairwise_winners=pairwise_winners,
+        pairwise_margins=pairwise_margins,
+        overrode_coverage=overrode,
     )

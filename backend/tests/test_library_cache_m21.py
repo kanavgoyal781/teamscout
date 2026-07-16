@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from app.schemas.resume import ResumeProfile
-from app.services.library import store as library_store
 from fastapi.testclient import TestClient
 
 
@@ -80,7 +79,6 @@ def test_reupload_identical_files_zero_parse_and_embed(client: TestClient, monke
 
 def test_upload_one_new_among_many_parses_exactly_one(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     """50 cached + 1 new → exactly 1 parse LLM call."""
-    profiles = {i: _profile(f"P{i}") for i in range(51)}
     parse_calls: list[str] = []
 
     def fake_parse_text(text: str) -> ResumeProfile:

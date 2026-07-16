@@ -1,26 +1,37 @@
 from __future__ import annotations
+
 import hmac
 import html
 from typing import Any
+
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.db.session import get_db
 from app.errors import OpsAuthError
 from app.services import feedback_store, observability
+
 router = APIRouter(tags=["ops"])
+
+
 def _extract_token(request: Request, token: str | None) -> str | None:
     auth = request.headers.get("authorization") or ""
     if auth.lower().startswith("bearer "):
         value = auth[7:].strip()
-        if value: return value
+        if value:
+            return value
     header = request.headers.get("x-ops-token")
-    if header and header.strip(): return header.strip()
+    if header and header.strip():
+        return header.strip()
     env = (settings.ENV or "").strip().lower()
-    if env not in {"prod", "production"} and token and token.strip(): return token.strip()
+    if env not in {"prod", "production"} and token and token.strip():
+        return token.strip()
     return None
+
+
 def require_ops_token(
     request: Request,
     token: str | None = Query(
@@ -29,14 +40,20 @@ def require_ops_token(
     ),
 ) -> None:
     expected = settings.OPS_TOKEN
-    if not is_set(expected): raise OpsAuthError("Ops access denied — OPS_TOKEN is not configured")
+    if not is_set(expected):
+        raise OpsAuthError("Ops access denied — OPS_TOKEN is not configured")
     provided = _extract_token(request, token)
-    if not provided or not _tokens_match(provided, expected or ""): raise OpsAuthError("Ops access denied — missing or invalid token")
+    if not provided or not _tokens_match(provided, expected or ""):
+        raise OpsAuthError("Ops access denied — missing or invalid token")
+
+
 def _tokens_match(provided: str, expected: str) -> bool:
     try:
         return hmac.compare_digest(provided, expected)
     except (TypeError, ValueError):
         return False
+
+
 def _table(headers: list[str], rows: list[list[Any]]) -> str:
     th = "".join(f"<th>{html.escape(str(h))}</th>" for h in headers)
     body_rows = []
@@ -47,6 +64,8 @@ def _table(headers: list[str], rows: list[list[Any]]) -> str:
         "<table border='1' cellpadding='4' cellspacing='0'>"
         f"<thead><tr>{th}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
     )
+
+
 def _ops_payload(db: Session) -> dict[str, Any]:
     stats = observability.ops_stats(db)
     learning = feedback_store.learning_file_stats()
@@ -56,15 +75,23 @@ def _ops_payload(db: Session) -> dict[str, Any]:
     err = stats.get("error_rate_by_service") or {}
     source_rows = []
     for op, v in lat.items():
-        if not str(op).startswith("source."): continue
+        if not str(op).startswith("source."):
+            continue
         name = str(op).split(".", 1)[-1]
         svc = err.get("source") or err.get(name) or {}
-        source_rows.append({
-            "source": name, "calls": v.get("count"), "p50_ms": v.get("p50_ms"),
-            "p95_ms": v.get("p95_ms"), "error_rate": svc.get("error_rate"),
-        })
+        source_rows.append(
+            {
+                "source": name,
+                "calls": v.get("count"),
+                "p50_ms": v.get("p50_ms"),
+                "p95_ms": v.get("p95_ms"),
+                "error_rate": svc.get("error_rate"),
+            }
+        )
     stats["job_sources"] = source_rows
     return stats
+
+
 def _render_html(stats: dict[str, Any]) -> str:
     lat_rows = [
         [op, v["count"], v["p50_ms"], v["p95_ms"]] for op, v in (stats.get("latency_by_operation") or {}).items()
@@ -138,7 +165,9 @@ th {{ background: #eee; text-align: left; }}
 <h2>Summary (today UTC)</h2>
 {_table(["metric", "value"], summary_rows)}
 <h2>Evals</h2>
-<p>Observe-only · feedback suite = score-separation (not re-rank) · weekly CI does not pull prod SQLite · evals_root={html.escape(str((stats.get("learning") or {}).get("evals_root") or ""))}</p>
+<p>Observe-only · feedback suite = score-separation (not re-rank) · weekly CI does not pull prod SQLite · evals_root={
+        html.escape(str((stats.get("learning") or {}).get("evals_root") or ""))
+    }</p>
 <h3>Feedback labels</h3>
 {_table(["kind", "count"], fb_rows or [["total", 0]])}
 <h3>Suite metrics (latest + trend)</h3>
@@ -151,10 +180,30 @@ th {{ background: #eee; text-align: left; }}
         )
     }
 <h2>Job sources (source.* traces)</h2>
-{_table(["source", "calls", "p50_ms", "p95_ms", "error_rate"], [[s.get("source"), s.get("calls"), s.get("p50_ms"), s.get("p95_ms"), s.get("error_rate")] for s in (stats.get("job_sources") or [])] or [["—", "", "", "", "no source traces"]])}
+{
+        _table(
+            ["source", "calls", "p50_ms", "p95_ms", "error_rate"],
+            [
+                [s.get("source"), s.get("calls"), s.get("p50_ms"), s.get("p95_ms"), s.get("error_rate")]
+                for s in (stats.get("job_sources") or [])
+            ]
+            or [["—", "", "", "", "no source traces"]],
+        )
+    }
 <h2>Per-workspace usage (today UTC)</h2>
-{_table(["workspace_id", "llm_cost_usd", "sumble_credits"], [[w.get("workspace_id"), w.get("llm_cost_usd"), w.get("sumble_credits")] for w in (stats.get("workspace_usage_today") or [])] or [["—", "", ""]])}
-<p>Workspace ceilings: LLM ${html.escape(str(stats.get("workspace_llm_ceiling_usd")))} / Sumble {html.escape(str(stats.get("workspace_sumble_ceiling")))} credits. Global ceilings still apply.</p>
+{
+        _table(
+            ["workspace_id", "llm_cost_usd", "sumble_credits"],
+            [
+                [w.get("workspace_id"), w.get("llm_cost_usd"), w.get("sumble_credits")]
+                for w in (stats.get("workspace_usage_today") or [])
+            ]
+            or [["—", "", ""]],
+        )
+    }
+<p>Workspace ceilings: LLM ${html.escape(str(stats.get("workspace_llm_ceiling_usd")))} / Sumble {
+        html.escape(str(stats.get("workspace_sumble_ceiling")))
+    } credits. Global ceilings still apply.</p>
 <h2>Latency by operation (p50 / p95 ms)</h2>
 {_table(["operation", "count", "p50_ms", "p95_ms"], lat_rows)}
 <h2>Error rate by service</h2>
@@ -179,12 +228,16 @@ th {{ background: #eee; text-align: left; }}
         )
     }
 </body></html>"""
+
+
 @router.get("/ops", response_class=HTMLResponse)
 def ops_dashboard(
     _auth: None = Depends(require_ops_token),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     return HTMLResponse(content=_render_html(_ops_payload(db)))
+
+
 @router.get("/ops/json")
 def ops_json(
     _auth: None = Depends(require_ops_token),

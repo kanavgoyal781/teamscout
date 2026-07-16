@@ -249,9 +249,7 @@ def test_experiment_harness_records_two_variants(tmp_path: Path, monkeypatch) ->
     by_name = {json.loads(L)["name"]: json.loads(L) for L in lines}
     assert by_name["defaults"]["variant_flags"]["use_mmr"] is True
     assert by_name["no_mmr"]["variant_flags"]["use_mmr"] is False
-    assert by_name["defaults"]["metrics"]["mmr_companies_top10"] != by_name["no_mmr"]["metrics"][
-        "mmr_companies_top10"
-    ]
+    assert by_name["defaults"]["metrics"]["mmr_companies_top10"] != by_name["no_mmr"]["metrics"]["mmr_companies_top10"]
 
 
 def _write_feedback_set(path: Path, *, n: int, invert: bool = False, bad_line: bool = False) -> None:
@@ -317,15 +315,9 @@ def test_weekly_threshold_gate(tmp_path: Path) -> None:
 
     floors = {"ndcg_at_10": 0.85, "mrr": 0.8}
     history = tmp_path / "history.jsonl"
-    history.write_text(
-        json.dumps({"suite": "ranking", "metrics": {"hybrid_ndcg10": 0.9, "hybrid_mrr": 0.9}})
-        + "\n"
-    )
+    history.write_text(json.dumps({"suite": "ranking", "metrics": {"hybrid_ndcg10": 0.9, "hybrid_mrr": 0.9}}) + "\n")
     assert check_ranking_thresholds(history, floors) == []
-    history.write_text(
-        json.dumps({"suite": "ranking", "metrics": {"hybrid_ndcg10": 0.5, "hybrid_mrr": 0.5}})
-        + "\n"
-    )
+    history.write_text(json.dumps({"suite": "ranking", "metrics": {"hybrid_ndcg10": 0.5, "hybrid_mrr": 0.5}}) + "\n")
     breaches = check_ranking_thresholds(history, floors)
     assert any("hybrid_ndcg10" in b for b in breaches)
 
@@ -338,9 +330,7 @@ def test_weekly_workflow_yaml_mentions_feedback_and_experiment() -> None:
     assert "scope" in jobs
     weekly = jobs["weekly"]
     assert "scope" in (weekly.get("needs") or [])
-    runs = "\n".join(
-        step.get("run", "") for step in weekly.get("steps", []) if isinstance(step.get("run"), str)
-    )
+    runs = "\n".join(step.get("run", "") for step in weekly.get("steps", []) if isinstance(step.get("run"), str))
     assert "--suite feedback" in runs or "--suite all" in runs
     assert "experiment.py" in runs
     assert "eval_threshold_gate" in runs
