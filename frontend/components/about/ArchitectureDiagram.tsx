@@ -28,18 +28,18 @@ type NodeDef = {
  *                      └→ Drive (optional, dashed)
  */
 const NODES: NodeDef[] = [
-  { id: "browser", label: "Browser", sub: "Next.js UI", c: "#5b8def", area: "browser" },
-  { id: "api", label: "FastAPI", sub: "Single process", c: "#3dd68c", area: "api" },
-  { id: "sqlite", label: "SQLite", sub: "State + traces", c: "#e8b84a", area: "sqlite" },
-  { id: "llm", label: "LLM", sub: "Parse · rerank", c: "#c084fc", area: "llm" },
-  { id: "emb", label: "Embeddings", sub: "Dense retrieval", c: "#22d3ee", area: "emb" },
-  { id: "jsearch", label: "Jobs", sub: "Multi-source", c: "#f472b6", area: "jobs" },
-  { id: "sumble", label: "Hiring team", sub: "People + email", c: "#fb923c", area: "team" },
+  { id: "browser", label: "Browser", sub: "Next.js UI", c: "var(--accent)", area: "browser" },
+  { id: "api", label: "FastAPI", sub: "Single process", c: "var(--accent)", area: "api" },
+  { id: "sqlite", label: "SQLite", sub: "State + traces", c: "var(--accent)", area: "sqlite" },
+  { id: "llm", label: "LLM", sub: "Parse · rerank", c: "var(--accent)", area: "llm" },
+  { id: "emb", label: "Embeddings", sub: "Dense retrieval", c: "var(--accent)", area: "emb" },
+  { id: "jsearch", label: "Jobs", sub: "Multi-source", c: "var(--accent)", area: "jobs" },
+  { id: "sumble", label: "Hiring team", sub: "People + email", c: "var(--accent)", area: "team" },
   {
     id: "drive",
     label: "Drive",
     sub: "Optional library",
-    c: "#94a3b8",
+    c: "var(--text-muted)",
     area: "drive",
     optional: true,
   },

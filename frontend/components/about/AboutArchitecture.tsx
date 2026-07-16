@@ -164,7 +164,7 @@ export default function AboutArchitecture() {
           <SelectableCard
             id="f1"
             active={selected === "f1"}
-            color="#3dd68c"
+            color="var(--accent)"
             icon={Users}
             title="Feature 1 — Resume → jobs → team"
             blurb="One resume against the market, then the people who own the hire."
@@ -173,7 +173,7 @@ export default function AboutArchitecture() {
           <SelectableCard
             id="f2"
             active={selected === "f2"}
-            color="#5b8def"
+            color="var(--accent)"
             icon={Search}
             title="Feature 2 — Library → best resume"
             blurb="Many resumes in a library; paste a JD; pick the best fit."
@@ -212,7 +212,7 @@ export default function AboutArchitecture() {
           <SelectableCard
             id="mlops_evals"
             active={selected === "mlops_evals"}
-            color="#5b8def"
+            color="var(--accent)"
             icon={Scale}
             title="Eval gates"
             blurb="thresholds.json floors · make eval-fit · history.jsonl"
@@ -221,7 +221,7 @@ export default function AboutArchitecture() {
           <SelectableCard
             id="mlops_traces"
             active={selected === "mlops_traces"}
-            color="#22d3ee"
+            color="var(--accent)"
             icon={Activity}
             title="Traces & prompts"
             blurb="SQLite traces · versioned prompts · token-gated /ops"
@@ -230,7 +230,7 @@ export default function AboutArchitecture() {
           <SelectableCard
             id="mlops_ceilings"
             active={selected === "mlops_ceilings"}
-            color="#fb923c"
+            color="var(--warning)"
             icon={Shield}
             title="Ceilings & cache"
             blurb="Daily USD/credit caps · embedding cache · make pipeline"
@@ -289,7 +289,7 @@ export default function AboutArchitecture() {
           <SelectableCard
             id="sqlite_why"
             active={selected === "sqlite_why"}
-            color="#e8b84a"
+            color="var(--accent)"
             icon={Database}
             title="SQLite at this scale"
             blurb="File-backed product state without a separate database service."
@@ -298,7 +298,7 @@ export default function AboutArchitecture() {
           <SelectableCard
             id="honesty"
             active={selected === "honesty"}
-            color="#f07178"
+            color="var(--danger)"
             icon={Shield}
             title="Honesty layer"
             blurb="Fail loud. No mocks in app code. No silent fallbacks."

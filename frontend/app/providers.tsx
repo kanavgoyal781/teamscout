@@ -15,7 +15,6 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <Toaster
         position="top-right"
         closeButton
-        richColors
         toastOptions={{
           className: "font-sans",
           duration: 5000,

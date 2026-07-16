@@ -176,6 +176,8 @@ python scripts/smoke_sumble.py
 
 ## UI screenshots
 
+Light mode (default cream + navy editorial theme). Dark variants land as `*-dark.png` under `frontend/public/screenshots/` from Playwright.
+
 Playwright e2e with mocked API (`cd frontend && pnpm test:e2e`):
 
 | Screen | Path |

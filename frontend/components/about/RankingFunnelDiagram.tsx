@@ -27,18 +27,18 @@ export default function RankingFunnelDiagram({ selected, onSelect }: Props) {
       <svg viewBox="0 0 720 120" className="about-funnel-svg" aria-hidden>
         <defs>
           <linearGradient id={`${uid}-funnel`} x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#5b8def" stopOpacity="0.35" />
-            <stop offset="50%" stopColor="#c084fc" stopOpacity="0.3" />
-            <stop offset="100%" stopColor="#3dd68c" stopOpacity="0.35" />
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.35" />
+            <stop offset="50%" stopColor="var(--accent)" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.35" />
           </linearGradient>
         </defs>
         <polygon
           points="20,20 700,40 700,80 20,100"
           fill={`url(#${uid}-funnel)`}
-          stroke="#3a4154"
+          stroke="var(--border-strong)"
           strokeWidth="1"
         />
-        <text x="40" y="66" fill="#eceef4" fontSize="12" fontFamily="var(--font-mono)">
+        <text x="40" y="66" fill="var(--ink)" fontSize="12" fontFamily="var(--font-mono)">
           150+ → RRF → CE(opt) → LLM → fuse → MMR top 10
         </text>
       </svg>

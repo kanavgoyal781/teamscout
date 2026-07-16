@@ -25,9 +25,9 @@ export function applyThemeClass(mode: ThemeMode): void {
 export function resolveInitialTheme(): ThemeMode {
   const stored = readThemeCookie();
   if (stored) return stored;
-  // Dark-mode-first: only flip to light if user preference is light
-  if (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: light)").matches) {
-    return "light";
+  // Light-mode-first editorial default; only flip to dark if OS prefers dark
+  if (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    return "dark";
   }
-  return "dark";
+  return "light";
 }

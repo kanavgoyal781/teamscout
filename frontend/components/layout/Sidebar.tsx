@@ -283,7 +283,7 @@ export default function Sidebar() {
     <aside className="sidebar" data-testid="app-sidebar">
       <div className="sidebar-brand">
         <div className="sidebar-brand-row">
-          <p className="eyebrow">TeamScout</p>
+          <p className="eyebrow brand-wordmark">TeamScout</p>
           <HealthDot />
         </div>
         <ThemeToggle />

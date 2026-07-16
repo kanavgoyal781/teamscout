@@ -13,12 +13,25 @@ export async function useDarkTheme(page: Page) {
   ]);
 }
 
+/** Force light product theme (M23 README/default shots). */
+export async function useLightTheme(page: Page) {
+  await page.context().addCookies([
+    {
+      name: "teamscout-theme",
+      value: "light",
+      domain: "127.0.0.1",
+      path: "/",
+    },
+  ]);
+}
+
 /**
  * Prefer reduced motion so entrance stagger / CountUp settle immediately
  * for stable screenshots and chip assertions.
+ * @param scheme OS color-scheme media; product theme still comes from cookie helpers.
  */
-export async function settleUi(page: Page) {
-  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+export async function settleUi(page: Page, scheme: "light" | "dark" = "light") {
+  await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
 }
 
 /** After navigation: wait for fonts for screenshot fidelity. */

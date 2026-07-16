@@ -10,9 +10,9 @@ type Props = {
 };
 
 const NODES = [
-  { id: "mlops_evals" as const, label: "Eval floors", x: 210, y: 36, c: "#5b8def" },
-  { id: "mlops_traces" as const, label: "Traces", x: 340, y: 150, c: "#22d3ee" },
-  { id: "mlops_ceilings" as const, label: "Ceilings", x: 80, y: 150, c: "#fb923c" },
+  { id: "mlops_evals" as const, label: "Eval floors", x: 210, y: 36, c: "var(--accent)" },
+  { id: "mlops_traces" as const, label: "Traces", x: 340, y: 150, c: "var(--accent)" },
+  { id: "mlops_ceilings" as const, label: "Ceilings", x: 80, y: 150, c: "var(--warning)" },
 ] as const;
 
 export default function MlopsCycleDiagram({ selected, onSelect }: Props) {
@@ -25,14 +25,14 @@ export default function MlopsCycleDiagram({ selected, onSelect }: Props) {
         <svg viewBox="0 0 420 240" className="about-mlops-svg" aria-hidden>
           <defs>
             <marker id={`${uid}-arr`} markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
-              <path d="M0,0 L6,3 L0,6 Z" fill="#3a4154" />
+              <path d="M0,0 L6,3 L0,6 Z" fill="var(--border-strong)" />
             </marker>
           </defs>
-          <circle cx="210" cy="120" r="88" fill="none" stroke="#3a4154" strokeWidth="1.5" strokeDasharray="6 4" />
+          <circle cx="210" cy="120" r="88" fill="none" stroke="var(--border-strong)" strokeWidth="1.5" strokeDasharray="6 4" />
           <path
             d="M210 32 A88 88 0 0 1 298 150"
             fill="none"
-            stroke="#5b8def"
+            stroke="var(--accent)"
             strokeWidth="2"
             markerEnd={`url(#${uid}-arr)`}
             opacity="0.7"
@@ -40,7 +40,7 @@ export default function MlopsCycleDiagram({ selected, onSelect }: Props) {
           <path
             d="M298 150 A88 88 0 0 1 122 150"
             fill="none"
-            stroke="#22d3ee"
+            stroke="var(--accent)"
             strokeWidth="2"
             markerEnd={`url(#${uid}-arr)`}
             opacity="0.7"
@@ -48,12 +48,12 @@ export default function MlopsCycleDiagram({ selected, onSelect }: Props) {
           <path
             d="M122 150 A88 88 0 0 1 210 32"
             fill="none"
-            stroke="#fb923c"
+            stroke="var(--warning)"
             strokeWidth="2"
             markerEnd={`url(#${uid}-arr)`}
             opacity="0.7"
           />
-          <text x="210" y="124" textAnchor="middle" fill="#a0a8b8" fontSize="12" fontFamily="var(--font-mono)">
+          <text x="210" y="124" textAnchor="middle" fill="var(--text-muted)" fontSize="12" fontFamily="var(--font-mono)">
             learn → ship → observe
           </text>
         </svg>

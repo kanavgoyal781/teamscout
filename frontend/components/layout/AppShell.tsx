@@ -27,7 +27,7 @@ export default function AppShell({ title, lede, children }: AppShellProps) {
       <main className="page">
         <HealthBanner />
         <header className="page-header">
-          <p className="eyebrow">TeamScout</p>
+          <p className="eyebrow brand-wordmark">TeamScout</p>
           <h1>{title}</h1>
           <p className="lede">{lede}</p>
         </header>

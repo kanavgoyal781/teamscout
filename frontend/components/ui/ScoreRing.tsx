@@ -63,7 +63,7 @@ export default function ScoreRing({
           cy={size / 2}
           r={r}
           fill="none"
-          stroke="var(--bg-muted)"
+          stroke="color-mix(in srgb, var(--ink) 22%, transparent)"
           strokeWidth={stroke}
         />
         <motion.circle
@@ -71,8 +71,9 @@ export default function ScoreRing({
           cy={size / 2}
           r={r}
           fill="none"
-          stroke="var(--accent)"
+          stroke="var(--brass)"
           strokeWidth={stroke}
+          className="score-ring-progress"
           strokeLinecap="round"
           strokeDasharray={c}
           initial={reduced ? { strokeDashoffset: offset } : { strokeDashoffset: c }}
