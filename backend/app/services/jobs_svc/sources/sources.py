@@ -228,7 +228,7 @@ class RemotiveSource:
                     and criteria.params.remote_mode in {"remote", "any"})
     def fetch(self, criteria: FetchCriteria, db: Session | None = None) -> list[Job]:
         q = f"{criteria.profile.title} {' '.join(criteria.profile.skills[:2])}".strip()
-        payload = _http_json("https://remotive.com/api/remote-jobs", params={"search": q, "limit": "50"})
+        payload = _http_json("https://remotive.com/api/remote-jobs", params={"search": q, "limit": "100"})
         if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list): raise ServiceFailingError("remotive", "expected {jobs: [...]}")
         out: list[Job] = []
         for i, item in enumerate(payload["jobs"]):
@@ -295,7 +295,7 @@ class AdzunaSource:
         payload = _http_json(
             "https://api.adzuna.com/v1/api/jobs/us/search/1",
             params={"app_id": settings.ADZUNA_APP_ID or "", "app_key": settings.ADZUNA_APP_KEY or "",
-                    "what": what, "where": where, "results_per_page": "50"},
+                    "what": what, "where": where, "results_per_page": "100"},
         )
         if not isinstance(payload, dict) or not isinstance(payload.get("results"), list): raise ServiceFailingError("adzuna", "expected {results: [...]}")
         out: list[Job] = []
@@ -333,7 +333,7 @@ class ArbeitnowSource:
         _ = db
         out: list[Job] = []
         url: str | None = "https://www.arbeitnow.com/api/job-board-api"
-        for _page in range(2):
+        for _page in range(3):
             if not url: break
             payload = _http_json(url)
             if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
@@ -370,7 +370,7 @@ class JobicySource:
                     and criteria.params.remote_mode in {"remote", "any"})
     def fetch(self, criteria: FetchCriteria, db: Session | None = None) -> list[Job]:
         _ = db
-        params: dict[str, str] = {"count": "50"}
+        params: dict[str, str] = {"count": "100"}
         # optional tag from first skill token helps relevance without new APIs
         skill = next((s.strip() for s in criteria.profile.skills if s and s.strip()), "")
         if skill: params["tag"] = skill.split()[0]
@@ -410,7 +410,7 @@ class HimalayasSource:
                     and criteria.params.remote_mode in {"remote", "any"})
     def fetch(self, criteria: FetchCriteria, db: Session | None = None) -> list[Job]:
         _ = db
-        payload = _http_json("https://himalayas.app/jobs/api", params={"limit": "50"})
+        payload = _http_json("https://himalayas.app/jobs/api", params={"limit": "100"})
         if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
             raise ServiceFailingError("himalayas", "expected {jobs: [...]}")
         out: list[Job] = []

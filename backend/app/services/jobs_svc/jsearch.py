@@ -107,6 +107,8 @@ def build_jsearch_queries(title: str, location: str, skills: list[str] | None = 
     if skill_bits: add(f"{role} {' '.join(skill_bits)}")
     if "remote" not in loc.lower() and "remote" not in role.lower(): add(f"{role} remote")
     if skill_bits: add(f"{' '.join(skill_bits)} {role} jobs")
+    add(f"{role} jobs")
+    if skill_bits: add(f"{skill_bits[0]} {role} {loc}")
     return dedupe_jsearch_queries(qs)
 def fetch_jsearch_raw(queries: list[str], *, base_params: dict[str, str], db=None) -> tuple[list[dict], int, int]:
     _ = db

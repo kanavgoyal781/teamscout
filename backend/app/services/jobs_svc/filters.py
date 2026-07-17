@@ -245,6 +245,6 @@ def jsearch_params_from_search(params: SearchParams) -> dict[str, str]:
     employment = "FULLTIME,CONTRACTOR,PARTTIME"
     if params.employment_type_pref == "hard" and params.employment_type == "fulltime": employment = "FULLTIME"
     elif params.employment_type_pref == "hard" and params.employment_type == "contractor": employment = "CONTRACTOR"
-    out = {"page": "1", "num_pages": "3", "date_posted": DATE_WINDOW_TO_JSEARCH.get(params.date_window, "month"), "employment_types": employment}
+    out = {"page": "1", "num_pages": "5", "date_posted": DATE_WINDOW_TO_JSEARCH.get(params.date_window, "month"), "employment_types": employment}
     if params.remote_mode == "remote" and params.remote_mode_pref == "hard": out["remote_jobs_only"] = "true"
     return out

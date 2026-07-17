@@ -266,11 +266,11 @@ def _diversify_ranked(
             pairwise[(a, b)] = cosine_similarity(vec_by_id[a], vec_by_id[b])
     order = mmr(ids, relevance, pairwise, lambda_=lambda_, k=None)
     company_by_id = {item.job.id: item.job.company for item in ranked}
+    limit = top_n if top_n is not None else len(order)
     order = apply_company_soft_cap(
-        order, company_by_id, top_k=10, max_per_company=3,
+        order, company_by_id, top_k=max(limit, 10), max_per_company=3,
         pool_company_count=len({c for c in company_by_id.values() if c}),
     )
-    limit = top_n if top_n is not None else len(order)
     return [by_id[i] for i in order[:limit] if i in by_id]
 def rank_jobs(
     profile: ResumeProfile, jobs: list[Job], *, use_llm: bool = True,
