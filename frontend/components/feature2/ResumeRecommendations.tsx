@@ -1,6 +1,7 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
+import { useState } from "react";
 
 import type { AdversarialCritique, RankedResumeRecommendation } from "../../lib/types";
 import { middleTruncate } from "../../lib/format";
@@ -10,6 +11,30 @@ import { JobCardSkeleton } from "../ui/Skeleton";
 import ScoreBars from "../ui/ScoreBars";
 import ScoreRing from "../ui/ScoreRing";
 import FeedbackButtons from "../feedback/FeedbackButtons";
+
+/** Clamp long text to 2 lines with keyboard-accessible expand (craft rule 3). */
+function ExpandClamp({ text, testId }: { text: string; testId?: string }) {
+  const [open, setOpen] = useState(false);
+  const long = (text || "").length > 72 || (text || "").split(/\s+/).length > 12;
+  if (!text) return <span>—</span>;
+  return (
+    <span className={`expand-clamp${open ? " is-open" : ""}`} data-testid={testId}>
+      <span className={open ? undefined : "line-clamp-2"} title={open ? undefined : text}>
+        {text}
+      </span>
+      {long ? (
+        <button
+          type="button"
+          className="expand-clamp-btn"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? "Show less" : "Expand"}
+        </button>
+      ) : null}
+    </span>
+  );
+}
 
 type ResumeRecommendationsProps = {
   /** True after paste-JD match completed (including zero results). */
@@ -266,13 +291,17 @@ export default function ResumeRecommendations({
                 <p className="rationale line-clamp-2">
                   {highlightCited(item.score_breakdown.rationale, citePhrases)}
                 </p>
-                <ScoreBars
-                  breakdown={item.score_breakdown}
-                  variant="resumes"
-                  coverageScore={item.coverage_score ?? null}
-                  mustHavesHit={item.must_haves_hit}
-                  mustHavesTotal={item.must_haves_total}
-                />
+                {/* ScoreBars behind disclosure — score ring remains sole hero number */}
+                <details className="why-match" data-testid={`why-resume-${index}`}>
+                  <summary>Why this match</summary>
+                  <ScoreBars
+                    breakdown={item.score_breakdown}
+                    variant="resumes"
+                    coverageScore={item.coverage_score ?? null}
+                    mustHavesHit={item.must_haves_hit}
+                    mustHavesTotal={item.must_haves_total}
+                  />
+                </details>
                 <div className="actions" style={{ marginTop: 10 }}>
                   <FeedbackButtons
                     targetType="resume_pick"
@@ -314,18 +343,14 @@ export default function ResumeRecommendations({
                           return (
                             <tr key={`${item.resume_id}-${row.requirement}`}>
                               <td className="col-req">
-                                <span className="line-clamp-2" title={row.requirement}>
-                                  {row.requirement}
-                                </span>
+                                <ExpandClamp text={row.requirement} />
                               </td>
                               <td className="col-kind meta">{row.kind}</td>
                               <td className="col-strength font-num">
                                 <StrengthBar strength={strength} />
                               </td>
                               <td className="col-evidence">
-                                <span className="line-clamp-2" title={evidenceCell(row.status, row.evidence_unit)}>
-                                  {evidenceCell(row.status, row.evidence_unit)}
-                                </span>
+                                <ExpandClamp text={evidenceCell(row.status, row.evidence_unit)} />
                               </td>
                             </tr>
                           );
@@ -347,15 +372,13 @@ export default function ResumeRecommendations({
                         {item.coverage.map((row) => (
                           <tr key={`${item.resume_id}-${row.requirement}`}>
                             <td className="col-req">
-                              <span className="line-clamp-2" title={row.requirement}>
-                                {row.requirement}
-                              </span>
+                              <ExpandClamp text={row.requirement} />
                             </td>
                             <td className={`col-kind font-num ${row.status === "hit" ? "coverage-hit" : "coverage-miss"}`}>
                               {row.status === "hit" ? "✓" : "✗"}
                             </td>
                             <td className="col-evidence">
-                              <span className="line-clamp-2">{row.evidence ?? "—"}</span>
+                              <ExpandClamp text={row.evidence ?? "—"} />
                             </td>
                           </tr>
                         ))}

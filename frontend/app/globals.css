@@ -3652,13 +3652,40 @@ td.font-num {
   height: 16px;
 }
 
-/* Clamp long copy */
+/* Clamp long copy + expand control */
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
+}
+.expand-clamp {
+  display: block;
+  min-width: 0;
+}
+.expand-clamp-btn {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.expand-clamp-btn:hover {
+  color: var(--ink-strong);
+}
+.expand-clamp-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* Alignment matrix — real table craft */

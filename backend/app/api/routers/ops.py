@@ -37,16 +37,25 @@ def _tokens_match(provided: str, expected: str) -> bool:
         return hmac.compare_digest(provided, expected)
     except (TypeError, ValueError):
         return False
+def _fmt_cell(h: str, c: Any) -> str:
+    hs = str(h).lower()
+    if c is None or c == "": return ""
+    try:
+        if "cost" in hs or "usd" in hs: return f"{float(c):.2f}"
+        if "ms" in hs or hs in {"count","calls","credits","sumble_credits","errors","total"}: return str(int(round(float(c))))
+    except (TypeError, ValueError): pass
+    return str(c)
 def _table(headers: list[str], rows: list[list[Any]]) -> str:
     th = "".join(f"<th>{html.escape(str(h))}</th>" for h in headers)
-    body_rows = []
+    body = []
     for row in rows:
-        tds = "".join(f"<td>{html.escape(str(c) if c is not None else '')}</td>" for c in row)
-        body_rows.append(f"<tr>{tds}</tr>")
-    return (
-        "<table border='1' cellpadding='4' cellspacing='0'>"
-        f"<thead><tr>{th}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
-    )
+        tds = []
+        for i, c in enumerate(row):
+            h = headers[i] if i < len(headers) else ""; hs = str(h).lower()
+            cls = "num" if any(k in hs for k in ("ms","cost","usd","count","calls","credits","errors","total","rate")) else ""
+            tds.append(f'<td class="{cls}">{html.escape(_fmt_cell(h, c))}</td>')
+        body.append(f"<tr>{''.join(tds)}</tr>")
+    return f"<table class='ops-table'><thead><tr>{th}</tr></thead><tbody>{''.join(body)}</tbody></table>"
 def _ops_payload(db: Session) -> dict[str, Any]:
     stats = observability.ops_stats(db)
     learning = feedback_store.learning_file_stats()
@@ -116,70 +125,44 @@ def _render_html(stats: dict[str, Any]) -> str:
     exp_rows: list[list[Any]] = []
     for e in learning.get("experiments") or []:
         m = e.get("metrics") or {}
-        exp_rows.append(
-            [
-                e.get("name") or e.get("variant"),
-                e.get("config_hash"),
-                e.get("git_sha"),
-                e.get("ts"),
-                " ".join(f"{k}={v}" for k, v in m.items()),
-            ]
-        )
-    return f"""<!DOCTYPE html>
-<html><head><title>TeamScout Ops</title>
-<style>
-body {{ font-family: system-ui, sans-serif; margin: 1.5rem; }}
-h1,h2 {{ margin-top: 1.5rem; }}
-table {{ border-collapse: collapse; margin: 0.5rem 0 1.5rem; font-size: 13px; }}
-th {{ background: #eee; text-align: left; }}
-</style></head>
-<body>
-<h1>TeamScout Ops</h1>
-<p>Numbers only. Token-gated. Observe-only learning loop (never auto-mutates production).</p>
-<h2>Summary (today UTC)</h2>
-{_table(["metric", "value"], summary_rows)}
-<h2>Evals</h2>
-<p>Observe-only · feedback suite = score-separation (not re-rank) · weekly CI does not pull prod SQLite · evals_root={html.escape(str((stats.get("learning") or {}).get("evals_root") or ""))}</p>
-<h3>Feedback labels</h3>
-{_table(["kind", "count"], fb_rows or [["total", 0]])}
-<h3>Suite metrics (latest + trend)</h3>
-{_table(["suite", "ts", "git_sha", "metrics", "trend_delta"], suite_rows or [["—", "", "", "no history", ""]])}
-<h2>Last experiments</h2>
-{
-        _table(
-            ["name", "config_hash", "git_sha", "ts", "metrics"],
-            exp_rows or [["—", "", "", "", "no experiments"]],
-        )
-    }
-<h2>Job sources (source.* traces)</h2>
-{_table(["source", "calls", "p50_ms", "p95_ms", "error_rate"], [[s.get("source"), s.get("calls"), s.get("p50_ms"), s.get("p95_ms"), s.get("error_rate")] for s in (stats.get("job_sources") or [])] or [["—", "", "", "", "no source traces"]])}
-<h2>Per-workspace usage (today UTC)</h2>
-{_table(["workspace_id", "llm_cost_usd", "sumble_credits"], [[w.get("workspace_id"), w.get("llm_cost_usd"), w.get("sumble_credits")] for w in (stats.get("workspace_usage_today") or [])] or [["—", "", ""]])}
-<p>Workspace ceilings: LLM ${html.escape(str(stats.get("workspace_llm_ceiling_usd")))} / Sumble {html.escape(str(stats.get("workspace_sumble_ceiling")))} credits. Global ceilings still apply.</p>
-<h2>Latency by operation (p50 / p95 ms)</h2>
-{_table(["operation", "count", "p50_ms", "p95_ms"], lat_rows)}
-<h2>Error rate by service</h2>
-{_table(["service", "errors", "total", "error_rate"], err_rows)}
-<h2>Last 100 traces</h2>
-{
-        _table(
-            [
-                "created_at",
-                "operation",
-                "status",
-                "latency_ms",
-                "cost_usd",
-                "credits",
-                "prompt",
-                "ver",
-                "cache_hit",
-                "error",
-                "request_id",
-            ],
-            trace_rows,
-        )
-    }
-</body></html>"""
+        exp_rows.append([e.get("name") or e.get("variant"), e.get("config_hash"), e.get("git_sha"), e.get("ts"), " ".join(f"{k}={v}" for k, v in m.items())])
+    css = (
+        ":root{--bg:#F7F4ED;--bg-raised:#FDFBF7;--ink:#0C1F3F;--ink-strong:#081426;--muted:#5C6B82;--line:rgba(12,31,63,.12);--accent:#0C1F3F}"
+        "html.dark,:root[data-theme=dark]{--bg:#0A182E;--bg-raised:#102340;--ink:#F2EDE2;--ink-strong:#FDFBF7;--muted:#9AA3B5;--line:rgba(242,237,226,.14);--accent:#F2EDE2}"
+        "body{font-family:system-ui,sans-serif;margin:1.5rem;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.45}"
+        "h1,h2,h3{color:var(--ink-strong);margin-top:1.5rem}h1{font-size:1.5rem}h2{font-size:1.15rem}p,.lede{color:var(--muted)}"
+        ".ops-table{border-collapse:collapse;margin:.5rem 0 1.5rem;font-size:13px;width:100%;background:var(--bg-raised);border:1px solid var(--line);border-radius:10px}"
+        ".ops-table th,.ops-table td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left}"
+        ".ops-table th{background:color-mix(in srgb,var(--ink) 4%,var(--bg-raised));color:var(--muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase;position:sticky;top:0}"
+        ".ops-table tbody tr:nth-child(even){background:color-mix(in srgb,var(--ink) 3%,transparent)}"
+        ".ops-table td.num{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace;text-align:right}"
+        "a{color:var(--accent)}a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}"
+        ".theme-bar{display:flex;gap:.5rem;margin-bottom:1rem}.theme-bar button{background:var(--bg-raised);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:6px 12px;cursor:pointer;font:inherit}"
+        ".theme-bar button:hover{border-color:var(--ink)}"
+    )
+    js = "(function(){try{var t=localStorage.getItem('ops-theme')||'light';document.documentElement.classList.toggle('dark',t==='dark');document.documentElement.dataset.theme=t}catch(e){}})();function setOpsTheme(t){document.documentElement.classList.toggle('dark',t==='dark');document.documentElement.dataset.theme=t;try{localStorage.setItem('ops-theme',t)}catch(e){}}"
+    src = [[s.get("source"), s.get("calls"), s.get("p50_ms"), s.get("p95_ms"), s.get("error_rate")] for s in (stats.get("job_sources") or [])] or [["—", "", "", "", "no source traces"]]
+    ws = [[w.get("workspace_id"), w.get("llm_cost_usd"), w.get("sumble_credits")] for w in (stats.get("workspace_usage_today") or [])] or [["—", "", ""]]
+    tr_h = ["created_at","operation","status","latency_ms","cost_usd","credits","prompt","ver","cache_hit","error","request_id"]
+    return (
+        f"<!DOCTYPE html><html data-theme='light'><head><title>TeamScout Ops</title><meta name='color-scheme' content='light dark'/>"
+        f"<style>{css}</style><script>{js}</script></head><body>"
+        f"<div class='theme-bar' role='group' aria-label='Theme'>"
+        f"<button type='button' onclick=\"setOpsTheme('light')\">Light</button>"
+        f"<button type='button' onclick=\"setOpsTheme('dark')\">Dark</button></div>"
+        f"<h1>TeamScout Ops</h1><p class='lede'>Numbers only. Token-gated. Observe-only learning loop (never auto-mutates production).</p>"
+        f"<h2>Summary (today UTC)</h2>{_table(['metric','value'], summary_rows)}"
+        f"<h2>Evals</h2><p>Observe-only · evals_root={html.escape(str((stats.get('learning') or {}).get('evals_root') or ''))}</p>"
+        f"<h3>Feedback labels</h3>{_table(['kind','count'], fb_rows or [['total',0]])}"
+        f"<h3>Suite metrics</h3>{_table(['suite','ts','git_sha','metrics','trend_delta'], suite_rows or [['—','','','no history','']])}"
+        f"<h2>Last experiments</h2>{_table(['name','config_hash','git_sha','ts','metrics'], exp_rows or [['—','','','','no experiments']])}"
+        f"<h2>Job sources</h2>{_table(['source','calls','p50_ms','p95_ms','error_rate'], src)}"
+        f"<h2>Per-workspace usage</h2>{_table(['workspace_id','llm_cost_usd','sumble_credits'], ws)}"
+        f"<p>Workspace ceilings: LLM ${html.escape(str(stats.get('workspace_llm_ceiling_usd')))} / Sumble {html.escape(str(stats.get('workspace_sumble_ceiling')))} credits.</p>"
+        f"<h2>Latency by operation</h2>{_table(['operation','count','p50_ms','p95_ms'], lat_rows)}"
+        f"<h2>Error rate by service</h2>{_table(['service','errors','total','error_rate'], err_rows)}"
+        f"<h2>Last 100 traces</h2>{_table(tr_h, trace_rows)}</body></html>"
+    )
 @router.get("/ops", response_class=HTMLResponse)
 def ops_dashboard(
     _auth: None = Depends(require_ops_token),
