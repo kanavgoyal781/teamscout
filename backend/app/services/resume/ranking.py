@@ -83,6 +83,7 @@ def rank_resumes_for_job(
     use_llm: bool = True,
     db: Session | None = None,
     metadata_hints: JobMetadata | None = None,
+    out_tournament: list | None = None,
 ) -> list[RankedResumeRecommendation]:
     if not candidates: return []
     by_id = {c.resume_id: c for c in candidates}
@@ -289,6 +290,5 @@ def rank_resumes_for_job(
         )
     # Tournament only reorders cards; match_score stays the weighted final blend
     # (never fudge rings to hide inverted scores — badge explains tournament order).
-    rank_resumes_for_job.last_tournament = tournament  # type: ignore[attr-defined]
+    if out_tournament is not None: out_tournament.append(tournament)
     return ranked
-rank_resumes_for_job.last_tournament = None  # type: ignore[attr-defined]

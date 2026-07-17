@@ -175,8 +175,17 @@ def test_flag_off_single_judge_one_call(monkeypatch) -> None:
     assert result.panel_models == [] and result.adversarial is None
 
 def test_advocate_grounding() -> None:
-    phrases = {"built production pytorch serving", "mlflow experiment tracking"}
-    assert argument_grounded("This resume built production pytorch serving at scale.", phrases)
+    from app.services.resume.tournament import evidence_phrases
+    ev = _ev("a", 0.9, rows=[{
+        "kind": "must", "requirement": "distributed systems",
+        "evidence_unit": "built production pytorch serving on k8s",
+        "status": "hit", "strength": "strong",
+    }])
+    phrases = evidence_phrases(ev)
+    assert "distributed systems" not in phrases  # JD requirement alone is not grounding
+    assert argument_grounded("This resume built production pytorch serving on k8s at scale.", phrases)
+    # Invented claim that only name-drops the requirement label must fail
+    assert not argument_grounded("Led distributed systems olympics with no real evidence unit text.", phrases)
     assert not argument_grounded("Won three olympic medals in fencing.", phrases)
     assert not argument_grounded("", phrases)
 
@@ -185,3 +194,99 @@ def test_adversarial_off_no_extra_calls(monkeypatch) -> None:
     monkeypatch.setattr(settings, "ADVERSARIAL_CRITIQUE", False)
     from app.services.resume.tournament import maybe_run_adversarial_critique
     assert maybe_run_adversarial_critique(_job(), [], [_ev("a", 0.9), _ev("b", 0.88)]) is None
+
+def test_adversarial_on_returns_critique_with_dual_models(monkeypatch) -> None:
+    """Drive maybe_run_adversarial_critique on real path with stub LLM."""
+    monkeypatch.setattr(settings, "ADVERSARIAL_CRITIQUE", True)
+    monkeypatch.setattr(settings, "JUDGE_PANEL_MODELS", "model-adv-a,model-adv-b,model-verdict")
+    monkeypatch.setattr(settings, "LLM_MODEL", "default-model")
+    from app.services.resume.tournament import maybe_run_adversarial_critique
+    a = _ev("a", 0.90, "ha", rows=[{
+        "kind": "must", "requirement": "PyTorch",
+        "evidence_unit": "shipped pytorch training pipeline in prod",
+        "status": "hit", "strength": "strong",
+    }])
+    b = _ev("b", 0.88, "hb", rows=[{
+        "kind": "must", "requirement": "PyTorch",
+        "evidence_unit": "ran pytorch notebooks for research",
+        "status": "hit", "strength": "solid",
+    }])
+    calls: list[tuple[str | None, str]] = []
+    def fake_complete_json(prompt, schema, **kwargs):
+        model = kwargs.get("llm_model")
+        op_hint = "advocate" if "arguing FOR" in prompt or "Alignment evidence" in prompt else "judge"
+        calls.append((model, op_hint))
+        name = getattr(schema, "__name__", str(schema))
+        if "Advocate" in name or (hasattr(schema, "model_fields") and "argument" in schema.model_fields):
+            # cite real evidence unit from whichever resume is in the prompt
+            if "shipped pytorch training pipeline" in prompt:
+                arg = "Strong fit: shipped pytorch training pipeline in prod for this role."
+            else:
+                arg = "Solid fit: ran pytorch notebooks for research with clear ownership."
+            return schema(argument=arg)
+        # verdict pairwise
+        left_is_a = "Resume A (a.pdf)" in prompt
+        # prefer a
+        winner = "A" if left_is_a else "B"
+        return schema(
+            winner=winner, margin="decisive",
+            key_differences=["clearer production pytorch pipeline evidence"],
+            reason="decisive unit on shipped pytorch training pipeline in prod",
+        )
+    with patch("app.services.resume.tournament.llm.complete_json", side_effect=fake_complete_json):
+        with patch("app.services.resume.tournament.load_prompt") as lp:
+            def _load(name):
+                if name == "advocate":
+                    return MagicMock(body="Argue FOR resume.", system="json", version="1", content_hash="ah", name="advocate", model_params={})
+                return MagicMock(body="Judge pair.", system="json", version="1", content_hash="ph", name="pairwise_judge", model_params={})
+            lp.side_effect = _load
+            crit = maybe_run_adversarial_critique(_job(), [JdRequirement(text="PyTorch", kind="must", category="skill", weight=2.0)], [a, b], db=None)
+    assert crit is not None
+    assert crit.side_a_resume_id == "a" and crit.side_b_resume_id == "b"
+    assert "pytorch" in crit.side_a_argument.lower()
+    assert "pytorch" in crit.side_b_argument.lower()
+    assert crit.verdict_winner_resume_id == "a"
+    assert crit.side_a_model != crit.side_b_model or crit.verdict_model  # dual models assigned
+    models_used = {m for m, _ in calls if m}
+    assert len(models_used) >= 2
+    assert any("advocate" == h for _, h in calls)
+    assert any("judge" == h for _, h in calls)
+
+def test_adversarial_grounding_reject_skips_critique(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "ADVERSARIAL_CRITIQUE", True)
+    monkeypatch.setattr(settings, "JUDGE_PANEL_MODELS", "m1,m2,m3")
+    from app.services.resume.tournament import maybe_run_adversarial_critique
+    a = _ev("a", 0.9, "ha"); b = _ev("b", 0.88, "hb")
+    def ungrounded(prompt, schema, **kwargs):
+        if hasattr(schema, "model_fields") and "argument" in schema.model_fields:
+            return schema(argument="Led distributed systems olympics inventing claims not in rows.")
+        return schema(winner="A", margin="decisive", key_differences=["x" * 30], reason="decisive unit on must-have evidence here")
+    with patch("app.services.resume.tournament.llm.complete_json", side_effect=ungrounded):
+        with patch("app.services.resume.tournament.load_prompt") as lp:
+            lp.return_value = MagicMock(body="body", system="json", version="1", content_hash="h", name="advocate", model_params={})
+            crit = maybe_run_adversarial_critique(_job(), [], [a, b], db=None)
+    assert crit is None  # fail closed
+
+def test_out_tournament_meta_not_process_global(monkeypatch) -> None:
+    """Critique/meta must come from out_tournament bucket for this call only."""
+    monkeypatch.setattr(settings, "JUDGE_PANEL_MODELS", "")
+    monkeypatch.setattr(settings, "ADVERSARIAL_CRITIQUE", False)
+    from app.api.routers.library import _tournament_response_fields
+    from app.services.resume.tournament import AdversarialCritique, TournamentResult
+    # Empty recs + None meta → no critique
+    fields = _tournament_response_fields([], None)
+    assert fields["adversarial_critique"] is None
+    # Explicit meta with critique → present
+    adv = AdversarialCritique(
+        side_a_resume_id="a1", side_a_filename="a.pdf", side_a_model="m1", side_a_argument="arg a with enough words for display",
+        side_b_resume_id="b1", side_b_filename="b.pdf", side_b_model="m2", side_b_argument="arg b with enough words for display",
+        verdict_winner_resume_id="a1", verdict_winner_filename="a.pdf", verdict_model="m3",
+        verdict_reason="clearer evidence", verdict_margin="decisive",
+    )
+    tmeta = TournamentResult(ran=True, ordered_ids=["a1", "b1"], adversarial=adv)
+    fields2 = _tournament_response_fields([], tmeta)
+    assert fields2["adversarial_critique"] is not None
+    assert fields2["adversarial_critique"].side_a_resume_id == "a1"
+    # Without tmeta, no leak even if prior call had critique
+    fields3 = _tournament_response_fields([], None)
+    assert fields3["adversarial_critique"] is None

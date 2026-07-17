@@ -368,6 +368,7 @@ def ops_stats(db: Session) -> dict[str, Any]:
     f2_costs = [sum(float(x.cost_usd or 0) for x in today if x.request_id == rid) for rid in f2_rids]
     embeds = [r for r in today if r.operation == "embed"]
     hits = sum(1 for r in embeds if r.cache_hit)
+    agr = [float(r.prompt_version) for r in today if r.operation == "pairwise_tournament" and (r.prompt_name or "") == "judge_agreement" and r.prompt_version]
     def _trace_row(r: Trace) -> dict[str, Any]:
         return {
             "id": r.id, "request_id": r.request_id, "operation": r.operation, "model": r.model,
@@ -393,6 +394,7 @@ def ops_stats(db: Session) -> dict[str, Any]:
         "feature1_runs_today": len(f1_costs),
         "cost_per_feature2_run_usd": round(statistics.mean(f2_costs) if f2_costs else 0.0, 6),
         "feature2_runs_today": len(f2_costs),
+        "judge_agreement_mean_today": (round(statistics.mean(agr), 4) if agr else None), "judge_agreement_samples_today": len(agr),
         "error_rate_by_service": {
             svc: {
                 "errors": c[0],

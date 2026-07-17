@@ -82,23 +82,23 @@ def select_pairs_by_gap(contested: list[AlignmentEvidence], max_pairs: int | Non
 def evidence_phrases(ev: AlignmentEvidence) -> set[str]:
     phrases: set[str] = set()
     for r in ev.alignment_rows:
-        for key in ("evidence_unit", "requirement"):
-            t = strip_weight_notation(str(r.get(key) or "")).strip()
-            if t and t != "No clear evidence": phrases.add(t.lower())
+        t = strip_weight_notation(str(r.get("evidence_unit") or "")).strip()
+        if t and t.lower() not in {"(none)", "no clear evidence"}: phrases.add(t.lower())
     for u in ev.top_units:
         t = strip_weight_notation(u).strip()
-        if t: phrases.add(t.lower())
+        if t and t.lower() not in {"(none)", "no clear evidence"}: phrases.add(t.lower())
     return phrases
 def argument_grounded(argument: str, phrases: set[str]) -> bool:
     arg = (argument or "").strip()
     if not arg or len(arg.split()) > 90: return False
-    if not phrases: return True
+    if not phrases: return False  # no evidence rows → cannot invent
     al = arg.lower()
-    if any(p in al for p in phrases if len(p) >= 6): return True
+    if any(p in al for p in phrases if len(p) >= 8): return True
     tokens = set(re.findall(r"[a-z0-9+]{4,}", al))
     ev_tok: set[str] = set()
     for p in phrases: ev_tok.update(re.findall(r"[a-z0-9+]{4,}", p))
-    return len(tokens & ev_tok) >= 2
+    # Need ≥3 overlapping content tokens with evidence units (stricter than requirement-name leak)
+    return len(tokens & ev_tok) >= 3
 def _cache_get(db: Session | None, key: str) -> tuple[str, str] | None:
     if db is None: return None
     row = db.query(PairwiseJudgeCache).filter(PairwiseJudgeCache.cache_key == key).one_or_none()
@@ -245,11 +245,11 @@ def maybe_run_tournament(job: Job, requirements: list[JdRequirement], ordered_by
     contested_ordered = borda_order(contested_ids, pairwise_winners, coverage_tiebreak=coverage_tb, pairwise_points=pairwise_points)
     final = merge_tournament_order(ids, contested_ordered); overrode = final != ids
     agree_mean = (sum(pair_agreements.values()) / len(pair_agreements)) if pair_agreements else None
-    adv = None
-    if settings.ADVERSARIAL_CRITIQUE and len(final) >= 2:
-        top2 = [by_id[rid] for rid in final[:2] if rid in by_id]
-        if len(top2) == 2: adv = maybe_run_adversarial_critique(job, requirements, top2, db=db)
+    top2 = [by_id[rid] for rid in final[:2] if rid in by_id] if settings.ADVERSARIAL_CRITIQUE and len(final) >= 2 else []
+    adv = maybe_run_adversarial_critique(job, requirements, top2, db=db) if len(top2) == 2 else None
     with observability.traced_call("pairwise_tournament", model=settings.LLM_MODEL, check_llm_ceiling=False) as trace:
         trace.input_tokens = trace.output_tokens = 0; trace.cost_usd = cost_usd; trace.cache_hit = cache_hits > 0 and cache_hits == comparisons
+        if agree_mean is not None and panel:
+            trace.prompt_name, trace.prompt_version = "judge_agreement", f"{agree_mean:.4f}"
         logger.info("pairwise_tournament.complete", comparisons=comparisons, cache_hits=cache_hits, contested=contested_ids, order=contested_ordered, overrode_coverage=overrode, cost_usd=cost_usd, panel=panel, judge_agreement_mean=agree_mean)
     return TournamentResult(ran=True, ordered_ids=final, contested_ids=contested_ids, comparisons=comparisons, cache_hits=cache_hits, cost_usd=cost_usd, reasons=reasons, wins=wins, borda_scores=borda_scores, pairwise_winners=pairwise_winners, pairwise_margins=pairwise_margins, overrode_coverage=overrode, judge_agreement_mean=agree_mean, pair_agreements=pair_agreements, panel_models=panel, adversarial=adv)
