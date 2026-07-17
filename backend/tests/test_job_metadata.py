@@ -108,7 +108,12 @@ def test_api_extract_metadata_endpoint() -> None:
     with patch("app.services.jobs_svc.jd_metadata.llm.complete_json", return_value=fake):
         r = client.post(
             "/jobs/extract-metadata",
-            json={"description": "Role for a person who likes APIs and tests. " * 5},
+            json={
+                "description": (
+                    "Backend Engineer at ExampleCo. You will design APIs and ship services. "
+                    "Requirements: Python, tests, and three years of experience. " * 2
+                )
+            },
         )
     assert r.status_code == 200, r.text
     assert r.json()["metadata"]["title"] == "Role"

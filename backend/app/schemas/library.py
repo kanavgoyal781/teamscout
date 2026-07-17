@@ -139,6 +139,8 @@ class RankedResumeRecommendation(BaseModel):
     cluster_size: int | None = None
     tournament: TournamentRecord | None = None
     content_hash: str | None = None
+    # ok | limited_evidence | fallback (alignment-derived text after grounding reject)
+    justification_status: str = "ok"
 class RecommendResumesResponse(BaseModel):
     job_id: str
     recommendations: list[RankedResumeRecommendation] = Field(default_factory=list)

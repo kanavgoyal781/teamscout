@@ -1,13 +1,11 @@
 import re
 from dataclasses import dataclass, field
-
 import httpx
 from app.core.config import settings
 from app.core.env_utils import is_set
 from app.core.http_timeouts import default_timeout, drive_download_timeout
 from app.core.redact import drive_user_reason, format_httpx_error, redact_error
 from app.errors import ServiceFailingError, ServiceNotConfiguredError, ValidationError
-
 _DRIVE_FOLDER_RE = re.compile(r"/folders/([a-zA-Z0-9_-]+)")
 _DRIVE_API = "https://www.googleapis.com/drive/v3"
 _ALLOWED_MIME = {
@@ -16,33 +14,24 @@ _ALLOWED_MIME = {
 }
 _GOOGLE_APPS_PREFIX = "application/vnd.google-apps."
 NATIVE_GOOGLE_REASON = "Google Docs format — download as PDF and re-add"
-
-
 @dataclass(frozen=True)
 class DriveFile:
     file_id: str
     name: str
     mime_type: str
     modified_time: str
-
-
 @dataclass(frozen=True)
 class DriveSkippedFile:
     """Non-ingestible listing entry with a plain-language reason."""
-
     file_id: str
     name: str
     mime_type: str
     reason: str
-
-
 @dataclass(frozen=True)
 class FolderListResult:
     supported_files: list[DriveFile]
     files_ignored: int
     skipped_native: list[DriveSkippedFile] = field(default_factory=list)
-
-
 def parse_folder_id(folder_url: str) -> str:
     url = folder_url.strip()
     if not url:
@@ -54,8 +43,6 @@ def parse_folder_id(folder_url: str) -> str:
             details={"folder_url": folder_url},
         )
     return match.group(1)
-
-
 def _require_drive_config() -> None:
     if is_set(settings.GOOGLE_DRIVE_API_KEY):
         return
@@ -70,8 +57,6 @@ def _require_drive_config() -> None:
         "Google Drive",
         "GOOGLE_DRIVE_API_KEY (public folder) or GOOGLE_DRIVE_CLIENT_ID/SECRET/REFRESH_TOKEN",
     )
-
-
 def _oauth_access_token() -> str:
     _require_drive_config()
     if not all(
@@ -102,25 +87,17 @@ def _oauth_access_token() -> str:
     if not token:
         raise ServiceFailingError("Google Drive", "OAuth token refresh returned no access_token")
     return str(token)
-
-
 def _auth_params() -> dict[str, str]:
     if is_set(settings.GOOGLE_DRIVE_API_KEY):
         return {"key": settings.GOOGLE_DRIVE_API_KEY or ""}
     return {}
-
-
 def _auth_headers() -> dict[str, str]:
     if is_set(settings.GOOGLE_DRIVE_API_KEY):
         return {}
     return {"Authorization": f"Bearer {_oauth_access_token()}"}
-
-
 def _raise_drive_http(exc: httpx.HTTPError) -> None:
     """Raise ServiceFailingError with host/status only — never key-bearing URLs."""
     raise ServiceFailingError("Google Drive", format_httpx_error(exc)) from exc
-
-
 def list_folder_files(folder_id: str) -> FolderListResult:
     _require_drive_config()
     query = f"'{folder_id}' in parents and trashed=false"
@@ -189,8 +166,6 @@ def list_folder_files(folder_id: str) -> FolderListResult:
         files_ignored=ignored,
         skipped_native=skipped_native,
     )
-
-
 def download_file(file_id: str) -> bytes:
     _require_drive_config()
     params = {"alt": "media", **_auth_params()}
@@ -206,8 +181,6 @@ def download_file(file_id: str) -> bytes:
     except httpx.HTTPError as exc:
         _raise_drive_http(exc)
     raise ServiceFailingError("Google Drive", "download failed")  # pragma: no cover
-
-
 def user_reason_for_download_error(exc: BaseException) -> str:
     """Map a download failure to a plain-language library UI reason (already redacted)."""
     status = None

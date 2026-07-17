@@ -32,6 +32,26 @@ _STUB_HEAD = re.compile(
     r"(?i)^\s*(?:recommended(?:\s+for\s+you)?|people\s+also\s+viewed|similar\s+jobs|"
     r"other\s+openings|jobs\s+you\s+may\s+like|sponsored|promoted)\b"
 )
+# Pre-flight: reject UI chrome / match widgets before any LLM spend.
+JD_NOT_POSTING_MSG = "This doesn't look like a job description — paste the posting text itself (responsibilities, requirements)."
+_JD_NOISE = re.compile(r"(?i)^(?:\d+%?|v\d+|simplify|keywords?|resume|match|of|and|or|the|a|an)$")
+_JD_STRUCT = re.compile(
+    r"(?i)\b(?:requirements?|responsibilities|qualifications|you(?:'ll| will)|must have|preferred|required|"
+    r"experience with|we(?:'re| are) (?:looking|hiring|seeking)|engineer|developer|manager|scientist|designer|analyst|director|architect)\b"
+)
+def looks_like_job_description(text: str) -> bool:
+    """Cheap pre-LLM gate: ~40 sentence-like words, or shorter + title/req structure."""
+    primary = extract_primary_posting(text or "")
+    if len(primary.strip()) < 40: return False
+    words = [w for w in re.findall(r"[A-Za-z][A-Za-z0-9+#./'-]{0,40}", primary) if len(w) > 1 and not _JD_NOISE.match(w)]
+    n = len(words)
+    if n >= 40: return True
+    struct = bool(_JD_STRUCT.search(primary)) or len(re.findall(r"(?m)^\s*[-*•]\s+\S.{10,}", primary)) >= 2
+    return n >= 12 and struct
+def assert_pasted_jd_looks_valid(text: str) -> None:
+    if not looks_like_job_description(text):
+        from app.errors import ValidationError
+        raise ValidationError(JD_NOT_POSTING_MSG, status_code=422, details={"reason": "not_a_job_description"})
 def extract_primary_posting(description: str) -> str:
     """Primary posting text; drop recommendation/ad tails."""
     text = (description or "").strip()
@@ -178,6 +198,8 @@ def decompose_jd(
     db: Session | None = None,
     metadata_hints: JobMetadata | None = None,
 ) -> list[JdRequirement]:
+    if (job.source or "") == "paste":
+        assert_pasted_jd_looks_valid(job.description or "")  # board jobs may be thin
     if not use_llm:
         return deterministic_requirements(job)
     tmpl = load_prompt("jd_decompose")
@@ -222,8 +244,8 @@ def decompose_jd(
     )
     reqs = _normalize_requirements(response.requirements)
     if not reqs:
-        from app.errors import ServiceFailingError
-        raise ServiceFailingError("LLM", "jd_decompose returned no requirements")
+        from app.errors import ValidationError  # user-input, not service outage
+        raise ValidationError(JD_NOT_POSTING_MSG, status_code=422, details={"reason": "empty_decomposition"})
     if db is not None:
         _cache_put(db, content_hash, tmpl.version, reqs)
     return reqs

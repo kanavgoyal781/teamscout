@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
 from app.schemas.jobs import Job
 from app.schemas.library import ResumeCandidate
 from app.schemas.resume import ResumeProfile, WorkExperience
@@ -133,17 +132,19 @@ def test_llm_justify_rejects_pandas_numpy_caliber_excuse() -> None:
     )
     with patch("app.services.resume.justify.llm.complete_json", side_effect=fake_complete):
         with patch("app.services.resume.justify.load_prompt", return_value=prompt_meta):
-            with pytest.raises(Exception) as ei:
-                llm_justify(
+            with patch("app.services.ops.observability.record_trace"):
+                out = llm_justify(
                     job,
                     [candidate],
                     alignment,
                     reqs,
                     rank_by_id={"r1": 1},
                 )
-    # After retry still excuse → ServiceFailingError
-    assert "inference-excuse" in str(ei.value).lower() or "failing" in str(ei.value).lower()
+    # After retry still excuse → structured fallback (never ServiceFailingError / kill ranking)
     assert calls["n"] >= 2
+    assert out["r1"].justification_status == "fallback"
+    assert "Must-haves without clear evidence" in out["r1"].rationale
+    assert "caliber" not in out["r1"].rationale.lower()
 
 
 def test_llm_justify_accepts_honest_missing_must_haves() -> None:

@@ -1,6 +1,6 @@
 ---
 name: justify
-version: "3"
+version: "4"
 system: You are a recruiting matcher. Return JSON only. Never claim a resume is the best match unless its final_rank is 1. Never invent or excuse missing skills.
 max_tokens: 6000
 ---
@@ -18,3 +18,8 @@ Rules:
 - Only the resume with final_rank=1 may use comparative superlatives like "best match", "strongest overall", "top choice", or "#1"
 - Resumes with final_rank>1 must describe fit without claiming they are the best or top overall match
 - Do not contradict the provided final ordering
+
+Limited-evidence mode (sparse_evidence=true on a resume):
+- That resume has fewer than K citable units above the evidence floor
+- Write a short limited-evidence summary: quote only the listed evidence lines, name which must-haves have no clear evidence, and do not invent filler experience
+- Citing one real unit plus honest gap statements is enough when evidence is sparse

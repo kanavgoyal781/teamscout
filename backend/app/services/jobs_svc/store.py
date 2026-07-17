@@ -9,7 +9,6 @@ from app.core.workspace import require_workspace_id
 from app.db.models import JobCache
 from app.errors import NotFoundError, ValidationError
 from app.schemas.jobs import Job
-
 _SKILL_STOP = frozenset(
     "tracking written verbal strong ability working using including related tools stack role team work "
     "build built develop developing knowledge familiarity proficient proficiency communication teamwork "
@@ -27,7 +26,6 @@ _TECH_ALLOW = frozenset({
     "mlflow", "airflow", "ci/cd", "graphql", "rest", "grpc", "hadoop", "hive", "snowflake",
     "databricks", "prometheus", "grafana", "elasticsearch", "opensearch", "helm",
 })
-
 def extract_skills_from_jd_text(description: str, title: str = "") -> list[str]:
     """High-precision skill list for pasted JDs (allowlist + JD-derived tech tokens)."""
     from app.services.ranking.math import extract_requirement_terms
@@ -47,17 +45,17 @@ def extract_skills_from_jd_text(description: str, title: str = "") -> list[str]:
             seen.add(key); out.append(key)
         if len(out) >= 16: break
     return out
-
 def resolve_job(job_id: str, db: Session) -> Job:
     row = db.query(JobCache).filter(JobCache.job_id == job_id).one_or_none()
     if row is None or not row.payload_json: raise NotFoundError("job", job_id)
     return Job.model_validate_json(row.payload_json)
-
 def cache_pasted_job(*, description: str, title: str = "", company: str = "", location: str = "", apply_url: str = "", db: Session) -> Job:
     """Persist a user-pasted JD as a JobCache row and return the Job."""
     desc = (description or "").strip()
     if len(desc) < 40:
         raise ValidationError("Job description is too short — paste the full posting (at least ~40 characters)")
+    from app.services.resume.jd_decompose import assert_pasted_jd_looks_valid
+    assert_pasted_jd_looks_valid(desc)
     title_clean = (title or "").strip() or "Pasted job"
     company_clean = (company or "").strip() or "Unknown company"
     location_clean = (location or "").strip() or ""

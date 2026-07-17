@@ -93,6 +93,17 @@ export function formatApiError(error: unknown): string {
   return "Request failed";
 }
 
+/** Backend 422 for non-posting paste chrome — UI shows inline under the textarea. */
+export function isJdNotPostingError(error: unknown): error is ApiClientError {
+  return (
+    error instanceof ApiClientError &&
+    error.status === 422 &&
+    (error.details?.reason === "not_a_job_description" ||
+      error.details?.reason === "empty_decomposition" ||
+      /doesn'?t look like a job description/i.test(error.message))
+  );
+}
+
 async function parseError(response: Response): Promise<ApiClientError> {
   const headerId = response.headers.get("X-Request-ID") ?? response.headers.get("x-request-id");
   try {

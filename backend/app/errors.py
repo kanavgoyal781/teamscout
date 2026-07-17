@@ -38,13 +38,8 @@ class ServiceFailingError(TeamScoutError):
             details={"service": service, "reason": safe_reason},
         )
 class ValidationError(TeamScoutError):
-    def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:
-        super().__init__(
-            message,
-            status_code=400,
-            error_code="validation_error",
-            details=details,
-        )
+    def __init__(self, message: str, *, details: dict[str, Any] | None = None, status_code: int = 400) -> None:
+        super().__init__(message, status_code=status_code, error_code="validation_error", details=details)
 class NotFoundError(TeamScoutError):
     def __init__(self, resource: str, resource_id: str) -> None:
         super().__init__(

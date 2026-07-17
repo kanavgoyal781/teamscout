@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
-from app.errors import ServiceFailingError
 from app.schemas.jobs import Job
 from app.schemas.library import ResumeCandidate
 from app.schemas.resume import ResumeProfile, WorkExperience
@@ -217,7 +216,8 @@ def test_llm_justify_retries_then_rejects_generic_rationale() -> None:
     assert result["best"].rationale.startswith("Built Python")
 
 
-def test_llm_justify_raises_after_generic_retry_exhausted() -> None:
+def test_llm_justify_fallback_after_generic_retry_exhausted() -> None:
+    """Grounding reject after retry degrades to alignment fallback — never ServiceFailingError."""
     job = Job(
         id="rank-job-3",
         source="fixture",
@@ -238,6 +238,7 @@ def test_llm_justify_raises_after_generic_retry_exhausted() -> None:
                 "evidence_unit": "Python services at Acme cloud",
                 "evidence_score": 0.8,
                 "status": "hit",
+                "kind": "must",
             }
         ]
     }
@@ -257,10 +258,12 @@ def test_llm_justify_raises_after_generic_retry_exhausted() -> None:
         "app.services.resume.justify.llm.complete_json",
         return_value=_ResumeRerankResponse(results=[generic]),
     ):
-        with pytest.raises(ServiceFailingError) as exc:
-            resume_ranking._llm_justify(job, [candidate], alignment, reqs)
+        with patch("app.services.ops.observability.record_trace"):
+            result = resume_ranking._llm_justify(job, [candidate], alignment, reqs)
 
-    assert "evidence units" in exc.value.message or "concrete" in exc.value.message
+    assert result["best"].justification_status == "fallback"
+    assert "Python services at Acme cloud" in result["best"].rationale
+    assert "Must-haves without clear evidence" in result["best"].rationale
 
 
 def test_rationale_cites_units_rejects_skill_name_only() -> None:

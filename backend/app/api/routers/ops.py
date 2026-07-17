@@ -107,7 +107,7 @@ def _render_html(stats: dict[str, Any]) -> str:
         ]
         for t in (stats.get("recent_traces") or [])
     ]
-    summary_rows = [
+    summary_rows: list[list[Any]] = [
         ["total_cost_today_usd", stats.get("total_cost_today_usd")],
         ["llm_cost_today_usd", stats.get("llm_cost_today_usd")],
         ["llm_ceiling_usd", stats.get("llm_ceiling_usd")],

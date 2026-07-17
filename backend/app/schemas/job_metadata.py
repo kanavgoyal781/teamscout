@@ -1,11 +1,8 @@
 """Generic JobMetadata extraction — no source-specific fields or defaults that invent content."""
 from __future__ import annotations
-
 import re
 from typing import Any, Literal
-
 from pydantic import BaseModel, Field, field_validator, model_validator
-
 FieldConfidence = Literal["high", "medium", "low"]
 RemoteModeMeta = Literal["remote", "hybrid", "onsite"]
 CONF_FIELDS = (
@@ -19,7 +16,6 @@ CONF_FIELDS = (
     "seniority",
     "department",
 )
-
 _CURRENCY_SYMBOLS = {"$": "USD", "£": "GBP", "€": "EUR", "¥": "JPY", "₹": "INR", "C$": "CAD", "A$": "AUD"}
 _ISO = re.compile(r"^[A-Z]{3}$")
 _TRAIL_PUNCT = re.compile(r"[\s,;:.\-–—|/]+$")
@@ -30,15 +26,11 @@ _NUM = re.compile(
     r"(?P<num>\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*"
     r"(?P<suf>[kKmMbB])?",
 )
-
-
 def _strip_name(value: str | None) -> str | None:
     if value is None:
         return None
     s = _LEAD_PUNCT.sub("", _TRAIL_PUNCT.sub("", str(value).strip()))
     return s or None
-
-
 def parse_salary_token(raw: str | int | float | None) -> int | None:
     """Normalize salary tokens. Hourly ( /hr, /hour, per hour) → None (no annualization)."""
     if raw is None:
@@ -73,8 +65,6 @@ def parse_salary_token(raw: str | int | float | None) -> int | None:
         base *= 1_000_000_000
     n = int(round(base))
     return n if n > 0 else None
-
-
 def detect_currency(text: str | None) -> str | None:
     if not text:
         return None
@@ -88,8 +78,6 @@ def detect_currency(text: str | None) -> str | None:
         if _ISO.match(code) and code not in {"THE", "AND", "FOR", "PER", "ANN", "YEA"}:
             return code
     return None
-
-
 def parse_salary_range(text: str | None) -> tuple[int | None, int | None, str | None]:
     """Parse free-text ranges: '$230K', 'up to $300K', '£60-70k', '$120,000 – $150,000'."""
     if text is None:
@@ -125,8 +113,6 @@ def parse_salary_range(text: str | None) -> tuple[int | None, int | None, str | 
         return a, b, cur
     n = parse_salary_token(s)
     return n, n, cur
-
-
 class JobMetadata(BaseModel):
     title: str | None = None
     company: str | None = None
@@ -138,7 +124,6 @@ class JobMetadata(BaseModel):
     seniority: str | None = None
     department: str | None = None
     confidence: dict[str, FieldConfidence] = Field(default_factory=dict)
-
     @field_validator("title", "company", "location", "seniority", "department", mode="before")
     @classmethod
     def _clean_text(cls, v: Any) -> str | None:
@@ -147,7 +132,6 @@ class JobMetadata(BaseModel):
         if not isinstance(v, str):
             v = str(v)
         return _strip_name(v)
-
     @field_validator("salary_currency", mode="before")
     @classmethod
     def _currency_upper(cls, v: Any) -> str | None:
@@ -162,7 +146,6 @@ class JobMetadata(BaseModel):
         if len(s) == 3 and s.isalpha():
             return s
         return detect_currency(s)
-
     @field_validator("salary_min", "salary_max", mode="before")
     @classmethod
     def _salary_num(cls, v: Any) -> int | None:
@@ -171,7 +154,6 @@ class JobMetadata(BaseModel):
         if isinstance(v, str) and any(x in v.lower() for x in ("/hr", "hour", "hourly")):
             return None
         return parse_salary_token(v)
-
     @field_validator("remote_mode", mode="before")
     @classmethod
     def _remote(cls, v: Any) -> str | None:
@@ -187,7 +169,6 @@ class JobMetadata(BaseModel):
         if "onsite" in s or "on-site" in s or "office" in s:
             return "onsite"
         return None
-
     @model_validator(mode="after")
     def _normalize_confidence_and_order(self) -> JobMetadata:
         conf: dict[str, FieldConfidence] = {}
@@ -203,12 +184,8 @@ class JobMetadata(BaseModel):
             self.salary_min, self.salary_max = self.salary_max, self.salary_min
         self.confidence = conf
         return self
-
-
 class ExtractMetadataRequest(BaseModel):
     description: str = Field(min_length=1)
-
-
 class ExtractMetadataResponse(BaseModel):
     metadata: JobMetadata
     cache_hit: bool = False

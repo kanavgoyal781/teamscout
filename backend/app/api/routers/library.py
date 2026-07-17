@@ -21,7 +21,6 @@ from app.services import drive, jobs, library_store, ranking, resume_ranking
 from app.services.jobs_svc.jd_metadata import extract_job_metadata
 from app.services.jobs_svc.store import cache_pasted_job, resolve_job
 router = APIRouter(prefix="/library", tags=["library"])
-
 def _tournament_response_fields(recommendations, tmeta=None):
     from app.schemas.library import AdversarialCritiqueOut
     tournament_ran = any(r.tournament and r.tournament.ran for r in recommendations)
@@ -33,7 +32,6 @@ def _tournament_response_fields(recommendations, tmeta=None):
     if adv is not None and isinstance(getattr(adv, "side_a_resume_id", None), str):
         crit = AdversarialCritiqueOut(side_a_resume_id=adv.side_a_resume_id, side_a_filename=adv.side_a_filename, side_a_model=adv.side_a_model, side_a_argument=adv.side_a_argument, side_b_resume_id=adv.side_b_resume_id, side_b_filename=adv.side_b_filename, side_b_model=adv.side_b_model, side_b_argument=adv.side_b_argument, verdict_winner_resume_id=adv.verdict_winner_resume_id, verdict_winner_filename=adv.verdict_winner_filename, verdict_model=adv.verdict_model, verdict_reason=adv.verdict_reason, verdict_margin=adv.verdict_margin)
     return dict(tournament_ran=tournament_ran, tournament_comparisons=comparisons, tournament_judge_agreement=agree, tournament_judge_agreement_label=agree_lbl, adversarial_critique=crit)
-
 @router.get("/resumes", response_model=LibraryResumeListResponse)
 def list_resumes(db: Session = Depends(get_db)) -> LibraryResumeListResponse:
     resumes = library_store.list_library_resumes(db)
@@ -97,11 +95,14 @@ def recommend_from_jd(
     if not candidates:
         raise ValidationError("Resume library is empty — upload resumes or sync Drive first")
     from app.errors import ServiceFailingError, ServiceNotConfiguredError
-
     meta = None
     try:
         meta, _, _ = extract_job_metadata(payload.job_description, db=db)
-    except (ValidationError, ServiceNotConfiguredError, ServiceFailingError):
+    except ValidationError as exc:
+        if (exc.details or {}).get("reason") in {"not_a_job_description", "empty_decomposition"}:
+            raise  # user-input 422; other validation is assist-only
+        meta = None
+    except (ServiceNotConfiguredError, ServiceFailingError):
         meta = None
     job = cache_pasted_job(
         description=payload.job_description,

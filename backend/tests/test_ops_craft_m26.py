@@ -1,4 +1,5 @@
 """M26: ops Summary table formats values from metric names; real _render_html path."""
+
 from __future__ import annotations
 
 import re

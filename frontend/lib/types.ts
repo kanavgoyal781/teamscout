@@ -311,6 +311,8 @@ export type RankedResumeRecommendation = {
   tournament?: TournamentRecord | null;
   /** Resume content hash for feedback provenance when present. */
   content_hash?: string | null;
+  /** ok | limited_evidence | fallback (alignment-derived text after grounding reject). */
+  justification_status?: string;
 };
 
 export type RecommendResumesResponse = {

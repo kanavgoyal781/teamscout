@@ -38,6 +38,7 @@ export default function LibraryPage() {
         company={state.jdCompany}
         location={state.jdLocation}
         matching={state.matching}
+        pasteError={state.jdPasteError}
         onJdTextChange={state.setJdText}
         onTitleChange={state.setJdTitle}
         onCompanyChange={state.setJdCompany}

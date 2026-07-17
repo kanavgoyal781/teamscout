@@ -36,16 +36,17 @@ describe("M23 design tokens", () => {
     expect(css).not.toMatch(/rgba\(\s*251\s*,\s*191\s*,\s*36/);
     expect(css).not.toMatch(/rgba\(\s*52\s*,\s*211\s*,\s*153/);
     expect(css).not.toMatch(/rgba\(\s*99\s*,\s*102\s*,\s*241/);
-    expect(css).toMatch(/\.chip-dup\s*\{[^}]*var\(--accent-soft\)/s);
-    expect(css).toMatch(/\.chip-salary-unknown\s*\{[^}]*var\(--warning-soft\)/s);
-    expect(css).toMatch(/\.chip-salary\s*\{[^}]*var\(--success-soft\)/s);
-    expect(css).toMatch(/\.facet-group button:hover\s*\{[^}]*var\(--surface-hover\)/s);
-    expect(css).toMatch(/\.filter-hint\s*\{[^}]*border-radius:\s*var\(--radius\)/s);
+    // Use [\s\S] (not /s) so typecheck target ES2017 accepts these patterns.
+    expect(css).toMatch(/\.chip-dup\s*\{[^}]*var\(--accent-soft\)/);
+    expect(css).toMatch(/\.chip-salary-unknown\s*\{[^}]*var\(--warning-soft\)/);
+    expect(css).toMatch(/\.chip-salary\s*\{[^}]*var\(--success-soft\)/);
+    expect(css).toMatch(/\.facet-group button:hover\s*\{[^}]*var\(--surface-hover\)/);
+    expect(css).toMatch(/\.filter-hint\s*\{[^}]*border-radius:\s*var\(--radius\)/);
   });
 
   it("uses single 10px radius and no decorative card shadows by default", () => {
     expect(css).toMatch(/--radius:\s*10px/);
-    expect(css).toMatch(/\.panel\s*\{[^}]*box-shadow:\s*none/s);
+    expect(css).toMatch(/\.panel\s*\{[^}]*box-shadow:\s*none/);
   });
 
   it("wires display face and mono numbers", () => {
@@ -59,7 +60,7 @@ describe("M23 design tokens", () => {
 
   it("M26 craft: tabular-nums, sticky matrix header, filename trunc, focus-visible", () => {
     expect(css).toMatch(/font-variant-numeric:\s*tabular-nums/);
-    expect(css).toMatch(/\.coverage-table th[\s\S]*position:\s*sticky/s);
+    expect(css).toMatch(/\.coverage-table th[\s\S]*position:\s*sticky/);
     expect(css).toMatch(/\.filename-trunc/);
     expect(css).toMatch(/:focus-visible/);
     expect(css).toMatch(/line-clamp:\s*2|line-clamp-2/);

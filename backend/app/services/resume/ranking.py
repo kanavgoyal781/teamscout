@@ -203,6 +203,7 @@ def rank_resumes_for_job(
                 f"best evidence: {units_preview[0][:160]}"
             )
         )
+        j_status = item.justification_status if item else "ok"
         if not rationale_rank_consistent(rationale, final_rank=rank_idx + 1):
             if rank_idx == 0:
                 pass
@@ -211,6 +212,8 @@ def rank_resumes_for_job(
                     f"Rank #{rank_idx + 1}: {must_hit_preview} of {must_n or len(requirements)} "
                     f"must-haves evidenced; evidence: {units_preview[0][:160]}"
                 )
+                if j_status == "ok":
+                    j_status = "fallback"
         matched = item.matched_skills if item else [r["requirement"] for r in rows if r.get("status") == "hit"][:12]
         missing = item.missing_skills if item else [r["requirement"] for r in rows if r.get("status") == "miss"][:12]
         llm_fit = float(item.fit_score) if item else cov * 100.0
@@ -253,6 +256,7 @@ def rank_resumes_for_job(
                     missing_skills=missing,
                     rationale=rationale,
                 ),
+                justification_status=j_status,
                 coverage=cov_rows,
                 coverage_score=round(cov, 4),
                 must_haves_hit=must_hit,

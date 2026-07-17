@@ -1,5 +1,6 @@
 from __future__ import annotations
 import re
+from typing import Literal
 from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.errors import ServiceFailingError
@@ -9,8 +10,8 @@ from app.schemas.library import RequirementCoverage, ResumeCandidate
 from app.schemas.resume import ResumeProfile
 from app.services import llm
 from app.services.resume.jd_decompose import JdRequirement
-_MIN_CITE_SPAN = 16
-_MIN_CITE_RATIO = 0.35
+_MIN_CITE_SPAN, _MIN_CITE_RATIO = 16, 0.35
+JustificationStatus = Literal["ok", "fallback", "limited_evidence"]
 _RANK_SUPERLATIVE = re.compile(
     r"(?:(?<!\w)#\s*1\b|\b(?:best\s+(?:match|fit|candidate|pick|resume|overall)|"
     r"strongest\s+(?:overall\s+)?(?:match|candidate|fit)|strongest\s+overall|"
@@ -20,13 +21,12 @@ _RANK_SUPERLATIVE = re.compile(
     r"clearest\s+best|unambiguously\s+best)\b)", re.IGNORECASE,
 )
 _INFERENCE_EXCUSE = re.compile(
-    r"(?i)\b(?:"
-    r"standard\s+(?:libraries?|tools?|skills?|stack)?\s*(?:for|of)\b|"
+    r"(?i)\b(?:standard\s+(?:libraries?|tools?|skills?|stack)?\s*(?:for|of)\b|"
     r"of\s+this\s+caliber\b|would\s+typically\b|presumably\b|"
     r"as\s+expected\s+for\s+(?:a\s+)?(?:senior|staff|principal|lead)\b|"
-    r"implicitly\s+(?:has|knows|possesses)\b|can\s+be\s+assumed\b|goes\s+without\s+saying\b"
-    r")",
+    r"implicitly\s+(?:has|knows|possesses)\b|can\s+be\s+assumed\b|goes\s+without\s+saying\b)",
 )
+_ELLIPSIS_SPLIT = re.compile(r"\s*(?:\.{3}|…)\s*")
 def rationale_has_inference_excuse(rationale: str) -> bool:
     text = (rationale or "").strip()
     return bool(text and _INFERENCE_EXCUSE.search(text))
@@ -37,43 +37,63 @@ class ResumeRerankItem(BaseModel):
     missing_skills: list[str] = Field(default_factory=list)
     rationale: str = ""
     coverage: list[RequirementCoverage] = Field(default_factory=list)
+    justification_status: JustificationStatus = "ok"
 class ResumeRerankResponse(BaseModel):
     results: list[ResumeRerankItem]
-def evidence_units_from_alignment(rows: list[dict]) -> list[str]:
+def evidence_units_from_alignment(rows: list[dict], *, min_score: float | None = None) -> list[str]:
+    floor = 0.0 if min_score is None else float(min_score)
     units: list[str] = []
     for row in sorted(rows, key=lambda r: float(r.get("evidence_score") or 0), reverse=True):
+        if float(row.get("evidence_score") or 0) < floor: continue
         text = row.get("evidence_unit")
         if not text or str(text) == "No clear evidence" or text in units: continue
         units.append(str(text))
-        if len(units) >= 8:
-            break
+        if len(units) >= 8: break
     return units
+def citable_unit_count(rows: list[dict], *, evidence_floor: float | None = None) -> int:
+    floor = float(settings.EVIDENCE_FLOOR if evidence_floor is None else evidence_floor)
+    return len(evidence_units_from_alignment(rows, min_score=floor))
+def is_sparse_evidence(rows: list[dict], *, k: int | None = None, evidence_floor: float | None = None) -> bool:
+    return citable_unit_count(rows, evidence_floor=evidence_floor) < int(settings.JUSTIFY_SPARSE_UNIT_K if k is None else k)
+def _norm(s: str) -> str:
+    return " ".join((s or "").lower().split())
 def _span_in_text(unit: str, rationale: str) -> bool:
-    u = " ".join(unit.strip().lower().split())
-    text = " ".join(rationale.strip().lower().split())
+    """Case/whitespace-normalized match; ellipsized ≥8-word quotes OK."""
+    u, text = _norm(unit), _norm(rationale)
     if not u or not text: return False
-    if len(u) < 8:
-        return u in text
+    if len(u) < 8: return u in text
     if u in text: return True
+    uw = u.split()
+    if len(uw) >= 8:
+        for i in range(0, len(uw) - 7):
+            if " ".join(uw[i : i + 8]) in text: return True
+    raw = " ".join((rationale or "").lower().split())
+    parts = [_norm(p) for p in _ELLIPSIS_SPLIT.split(raw) if p.strip()]
+    substantial = [p for p in parts if len(p.split()) >= 2 and len(p) >= 6]
+    if len(substantial) >= 2 and sum(len(p.split()) for p in substantial) >= 8 and all(p in u for p in substantial):
+        return True
     min_span = min(len(u), max(_MIN_CITE_SPAN, int(len(u) * _MIN_CITE_RATIO)))
     return any(u[s : s + min_span] in text for s in range(0, len(u) - min_span + 1, 2))
-def rationale_cites_units(rationale: str, evidence_units: list[str]) -> bool:
+def rationale_cites_units(rationale: str, evidence_units: list[str], *, sparse_mode: bool = False) -> bool:
+    """≥1 real unit citation required; quoted invent still fails (citations ⊆ units)."""
     text = (rationale or "").strip()
-    if len(text) < 20: return False
+    if len(text) < (12 if sparse_mode else 20): return False
     cleaned = [u for u in evidence_units if u and u.strip()]
     if not cleaned: return False
-    long_units = [u for u in cleaned if len(u.strip()) >= _MIN_CITE_SPAN]
-    return any(_span_in_text(unit, text) for unit in (long_units or cleaned))
-def rationale_references_resume(rationale: str, profile: ResumeProfile) -> bool:
+    pool = cleaned if sparse_mode else ([u for u in cleaned if len(u.strip()) >= _MIN_CITE_SPAN] or cleaned)
+    if not any(_span_in_text(unit, text) for unit in pool): return False
+    for q in re.findall(r"[\"“]([^\"”]{12,})[\"”]", rationale or ""):
+        if not any(_span_in_text(unit, q) or _span_in_text(q, unit) for unit in cleaned):
+            return False
+    return True
+def rationale_references_resume(rationale: str, profile: ResumeProfile, *, sparse_mode: bool = False) -> bool:
     units: list[str] = []
-    if profile.title.strip():
-        units.append(profile.title.strip())
+    if profile.title.strip(): units.append(profile.title.strip())
     units.extend(s.strip() for s in profile.skills if s.strip())
     for role in profile.work_experience:
         units.extend(b for b in role.bullets[:3] if b.strip())
-    if profile.summary.strip():
-        units.append(profile.summary.strip()[:200])
-    return rationale_cites_units(rationale, units)
+    if profile.summary.strip(): units.append(profile.summary.strip()[:200])
+    return rationale_cites_units(rationale, units, sparse_mode=sparse_mode)
 def rationale_rank_consistent(rationale: str, *, final_rank: int) -> bool:
     if final_rank <= 1: return True
     text = (rationale or "").strip()
@@ -88,15 +108,8 @@ def clamp_fit_scores_to_rank(items: list[ResumeRerankItem], ranks: dict[str, int
             ordered[i].fit_score = float(ordered[i - 1].fit_score)
 def evidence_in_units(evidence: str | None, units: list[str]) -> bool:
     if not evidence or not evidence.strip(): return False
-    ev = evidence.strip().lower()
-    for unit in units:
-        u = unit.strip().lower()
-        if not u: continue
-        if ev in u or u in ev or _span_in_text(unit, evidence) or _span_in_text(evidence, unit): return True
-    return False
-def filter_llm_coverage(
-    llm_coverage: list[RequirementCoverage], units: list[str]
-) -> list[RequirementCoverage]:
+    return any(_span_in_text(unit, evidence) or _span_in_text(evidence, unit) for unit in units if unit.strip())
+def filter_llm_coverage(llm_coverage: list[RequirementCoverage], units: list[str]) -> list[RequirementCoverage]:
     out: list[RequirementCoverage] = []
     for row in llm_coverage:
         if row.status == "hit" and not evidence_in_units(row.evidence, units):
@@ -104,48 +117,65 @@ def filter_llm_coverage(
         else:
             out.append(row)
     return out
+def build_fallback_justification(rows: list[dict], *, top_n: int = 3) -> str:
+    """Pure template over alignment rows — never LLM-generated."""
+    hits = sorted(
+        (r for r in rows if r.get("status") == "hit" and r.get("evidence_unit") and str(r.get("evidence_unit")) != "No clear evidence"),
+        key=lambda r: float(r.get("evidence_score") or 0), reverse=True,
+    )
+    must_miss = sum(1 for r in rows if str(r.get("kind") or "must") == "must" and r.get("status") == "miss")
+    head = (
+        "Evidence: " + "; ".join(f"{h.get('requirement')}: {str(h.get('evidence_unit'))[:120]}" for h in hits[:top_n]) + "."
+        if hits else "Evidence: no clear unit-level matches above the evidence floor."
+    )
+    return f"{head} Must-haves without clear evidence: {must_miss}."
+def _record_grounding_rejected(reason: str) -> None:
+    from app.services.ops.observability import record_trace
+    record_trace(operation="justify", status="grounding_rejected", error_type=reason[:200], prompt_name="justify")
+def _item_fail_reason(item: ResumeRerankItem, *, units: list[str], profile: ResumeProfile, sparse: bool, final_rank: int) -> str | None:
+    if not units:
+        if not rationale_references_resume(item.rationale, profile, sparse_mode=sparse):
+            return f"resume justify rationale lacks concrete resume references for {item.resume_id}"
+    elif not rationale_cites_units(item.rationale, units, sparse_mode=sparse):
+        return f"resume justify rationale does not cite evidence units for {item.resume_id}"
+    if rationale_has_inference_excuse(item.rationale):
+        return f"resume justify rationale uses inference-excuse language for {item.resume_id}"
+    if not rationale_rank_consistent(item.rationale, final_rank=final_rank):
+        return f"resume justify rationale rank-inconsistent superlative for rank {final_rank} resume {item.resume_id}"
+    return None
 def _build_justify_prompt(
-    job: Job,
-    candidates: list[ResumeCandidate],
-    alignment_by_id: dict[str, list[dict]],
-    requirements: list[JdRequirement],
-    instructions: str,
-    *,
-    rank_by_id: dict[str, int] | None = None,
-    tournament_wins: dict[str, int] | None = None,
-    contested_ids: set[str] | None = None,
+    job: Job, candidates: list[ResumeCandidate], alignment_by_id: dict[str, list[dict]],
+    requirements: list[JdRequirement], instructions: str, *, rank_by_id: dict[str, int] | None = None,
+    tournament_wins: dict[str, int] | None = None, contested_ids: set[str] | None = None,
 ) -> str:
     ranks, wins, contested = rank_by_id or {}, tournament_wins or {}, contested_ids or set()
-    lines = [
-        instructions.strip(), "",
-        f"Job title: {job.title}", f"Company: {job.company}", f"Location: {job.location}",
-        f"Required skills: {', '.join(job.skills)}", f"Description: {job.description[:1200]}",
-        "", "Atomic requirements:",
-    ]
+    k, floor = int(settings.JUSTIFY_SPARSE_UNIT_K), float(settings.EVIDENCE_FLOOR)
+    lines = [instructions.strip(), "", f"Job title: {job.title}", f"Company: {job.company}", f"Location: {job.location}",
+             f"Required skills: {', '.join(job.skills)}", f"Description: {job.description[:1200]}", "", "Atomic requirements:"]
     for req in requirements[:14]:
         lines.append(f"- [{req.kind}/{req.category}] {req.text}")
     lines += ["", "Resumes (final ranking FIXED — only final_rank=1 may claim best match):"]
     for candidate in candidates:
-        rows = alignment_by_id.get(candidate.resume_id, [])
-        rid = candidate.resume_id
+        rows, rid = alignment_by_id.get(candidate.resume_id, []), candidate.resume_id
+        sparse = is_sparse_evidence(rows, k=k, evidence_floor=floor)
         lines.append(
             f"- resume_id={rid}; filename={candidate.filename}; final_rank={ranks.get(rid, 0)}; "
-            f"tournament_wins={wins.get(rid, 0)}; contested={rid in contested}; "
+            f"tournament_wins={wins.get(rid, 0)}; contested={rid in contested}; sparse_evidence={'true' if sparse else 'false'}; "
+            f"citable_units_above_floor={citable_unit_count(rows, evidence_floor=floor)}; "
             f"title={candidate.profile.title}; skills={', '.join(candidate.profile.skills[:12])};"
         )
+        if sparse:
+            lines.append(
+                f"    LIMITED-EVIDENCE MODE (<{k} units above floor {floor:.2f}): cite only listed evidence, "
+                "state must-have gaps plainly, never invent experience."
+            )
         for u in evidence_units_from_alignment(rows):
             lines.append(f"    evidence: {u}")
     return "\n".join(lines)
 def llm_justify(
-    job: Job,
-    candidates: list[ResumeCandidate],
-    alignment_by_id: dict[str, list[dict]],
-    requirements: list[JdRequirement],
-    *,
-    attempt: int = 0,
-    rank_by_id: dict[str, int] | None = None,
-    tournament_wins: dict[str, int] | None = None,
-    contested_ids: set[str] | None = None,
+    job: Job, candidates: list[ResumeCandidate], alignment_by_id: dict[str, list[dict]],
+    requirements: list[JdRequirement], *, attempt: int = 0, rank_by_id: dict[str, int] | None = None,
+    tournament_wins: dict[str, int] | None = None, contested_ids: set[str] | None = None,
 ) -> dict[str, ResumeRerankItem]:
     if not candidates: return {}
     expected_ids = {c.resume_id for c in candidates}
@@ -159,7 +189,8 @@ def llm_justify(
         prompt += (
             "\n\nPrevious response failed grounding or rank-consistency checks. "
             "Quote evidence units; only final_rank=1 may use best-match superlatives; "
-            "fit_score must be non-increasing with final_rank."
+            "fit_score must be non-increasing with final_rank. "
+            "For sparse_evidence=true resumes, write a limited-evidence summary citing only listed units."
         )
     response = llm.complete_json(
         prompt, ResumeRerankResponse,
@@ -175,28 +206,37 @@ def llm_justify(
         missing, extra = sorted(expected_ids - returned_set), sorted(returned_set - expected_ids)
         raise ServiceFailingError("LLM", f"resume justify resume_id mismatch: missing={missing}, extra={extra}")
     by_id = {c.resume_id: c for c in candidates}
-    def _retry(msg: str) -> dict[str, ResumeRerankItem]:
-        if attempt == 0: return llm_justify(
+    floor, k = float(settings.EVIDENCE_FLOOR), int(settings.JUSTIFY_SPARSE_UNIT_K)
+    need_retry = False
+    for item in response.results:
+        rows = alignment_by_id.get(item.resume_id, [])
+        units = evidence_units_from_alignment(rows)
+        sparse = is_sparse_evidence(rows, k=k, evidence_floor=floor)
+        reason = _item_fail_reason(
+            item, units=units, profile=by_id[item.resume_id].profile, sparse=sparse,
+            final_rank=ranks.get(item.resume_id, 99),
+        )
+        if reason is None:
+            item.justification_status = "limited_evidence" if sparse else "ok"
+            if item.coverage: item.coverage = filter_llm_coverage(item.coverage, units)
+            continue
+        if attempt == 0:
+            need_retry = True
+            break
+        item.rationale = build_fallback_justification(rows)
+        item.justification_status = "fallback"
+        item.coverage = filter_llm_coverage(item.coverage, units) if item.coverage else []
+        _record_grounding_rejected(reason)
+    if need_retry:
+        return llm_justify(
+            job, candidates, alignment_by_id, requirements, attempt=1,
+            rank_by_id=ranks, tournament_wins=tournament_wins, contested_ids=contested_ids,
+        )
+    if not fit_scores_rank_monotonic(response.results, ranks):
+        if attempt == 0:
+            return llm_justify(
                 job, candidates, alignment_by_id, requirements, attempt=1,
                 rank_by_id=ranks, tournament_wins=tournament_wins, contested_ids=contested_ids,
             )
-        raise ServiceFailingError("LLM", msg)
-    for item in response.results:
-        units = evidence_units_from_alignment(alignment_by_id.get(item.resume_id, []))
-        if not units:
-            if not rationale_references_resume(item.rationale, by_id[item.resume_id].profile):
-                return _retry(f"resume justify rationale lacks concrete resume references for {item.resume_id}")
-        elif not rationale_cites_units(item.rationale, units):
-            return _retry(f"resume justify rationale does not cite evidence units for {item.resume_id}")
-        if rationale_has_inference_excuse(item.rationale):
-            return _retry(f"resume justify rationale uses inference-excuse language for {item.resume_id}")
-        final_rank = ranks.get(item.resume_id, 99)
-        if not rationale_rank_consistent(item.rationale, final_rank=final_rank): return _retry(
-                f"resume justify rationale rank-inconsistent superlative for rank {final_rank} resume {item.resume_id}"
-            )
-        if item.coverage:
-            item.coverage = filter_llm_coverage(item.coverage, units)
-    if not fit_scores_rank_monotonic(response.results, ranks):
-        if attempt == 0: return _retry("resume justify fit_score not monotonic with final_rank")
         clamp_fit_scores_to_rank(response.results, ranks)
     return {item.resume_id: item for item in response.results}

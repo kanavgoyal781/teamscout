@@ -12,6 +12,8 @@ type PasteJdPanelProps = {
   company: string;
   location: string;
   matching: boolean;
+  /** Inline 422 under the paste textarea (non-posting chrome, too short, etc.) */
+  pasteError?: string | null;
   onJdTextChange: (v: string) => void;
   onTitleChange: (v: string) => void;
   onCompanyChange: (v: string) => void;
@@ -34,6 +36,7 @@ export default function PasteJdPanel({
   company,
   location,
   matching,
+  pasteError = null,
   onJdTextChange,
   onTitleChange,
   onCompanyChange,
@@ -128,7 +131,7 @@ export default function PasteJdPanel({
         <label className="field field-span-all">
           <span className="field-label">Job description</span>
           <textarea
-            className="paste-textarea"
+            className={`paste-textarea${pasteError ? " input-invalid" : ""}`}
             value={jdText}
             onChange={(e) => onJdTextChange(e.target.value)}
             onPaste={(e) => {
@@ -140,7 +143,14 @@ export default function PasteJdPanel({
             required
             disabled={disabled}
             data-testid="jd-paste"
+            aria-invalid={pasteError ? true : undefined}
+            aria-describedby={pasteError ? "jd-paste-error" : undefined}
           />
+          {pasteError ? (
+            <p className="field-error" id="jd-paste-error" data-testid="jd-paste-error" role="alert">
+              {pasteError}
+            </p>
+          ) : null}
         </label>
         <div className="field-span-all paste-actions">
           <button type="submit" className="primary" disabled={disabled || !jdText.trim()}>

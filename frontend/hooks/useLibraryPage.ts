@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import {
   formatApiError,
+  isJdNotPostingError,
   listLibraryResumes,
   recommendFromJd,
   syncDrive,
@@ -27,6 +28,7 @@ export function useLibraryPage() {
   const [jdTitle, setJdTitle] = useState("");
   const [jdCompany, setJdCompany] = useState("");
   const [jdLocation, setJdLocation] = useState("");
+  const [jdPasteError, setJdPasteError] = useState<string | null>(null);
   const [matchedJobTitle, setMatchedJobTitle] = useState<string>("");
   const [matchedJobCompany, setMatchedJobCompany] = useState<string>("");
   const [recommendations, setRecommendations] = useState<RankedResumeRecommendation[]>([]);
@@ -132,6 +134,7 @@ export function useLibraryPage() {
       }),
     retry: false,
     onSuccess: (response) => {
+      setJdPasteError(null);
       setMatchedJobTitle(response.job_title);
       setMatchedJobCompany(response.job_company);
       setRecommendations(response.recommendations);
@@ -147,7 +150,14 @@ export function useLibraryPage() {
           : "No recommendations returned.",
       );
     },
-    onError: (error) => toast.error(formatApiError(error)),
+    onError: (error) => {
+      if (isJdNotPostingError(error)) {
+        setJdPasteError(error.message);
+        return;
+      }
+      setJdPasteError(null);
+      toast.error(formatApiError(error));
+    },
   });
 
   function handleUpload(event: FormEvent<HTMLFormElement>) {
@@ -174,13 +184,14 @@ export function useLibraryPage() {
   function handleMatchJd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (jdText.trim().length < 40) {
-      toast.error("Paste a fuller job description (at least ~40 characters).");
+      setJdPasteError("Paste a fuller job description (at least ~40 characters).");
       return;
     }
     if ((libraryQuery.data?.resumes.length ?? 0) === 0) {
       toast.error("Upload or sync resumes into the library first.");
       return;
     }
+    setJdPasteError(null);
     setRecommendations([]);
     setMatched(false);
     setTournamentRan(false);
@@ -188,6 +199,11 @@ export function useLibraryPage() {
     setJudgeAgreementLabel(null);
     setAdversarialCritique(null);
     matchMutation.mutate();
+  }
+
+  function onJdTextChange(v: string) {
+    setJdPasteError(null);
+    setJdText(v);
   }
 
   return {
@@ -207,6 +223,7 @@ export function useLibraryPage() {
     jdTitle,
     jdCompany,
     jdLocation,
+    jdPasteError,
     matching: matchMutation.isPending,
     matched,
     matchedJobTitle,
@@ -218,7 +235,7 @@ export function useLibraryPage() {
     judgeAgreementLabel,
     adversarialCritique,
     setDriveUrl,
-    setJdText,
+    setJdText: onJdTextChange,
     setJdTitle,
     setJdCompany,
     setJdLocation,

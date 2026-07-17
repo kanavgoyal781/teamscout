@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { toast } from "sonner";
 
-import { formatApiError, ingestJobFromText } from "../../lib/api";
+import { formatApiError, ingestJobFromText, isJdNotPostingError } from "../../lib/api";
 import type { JobTeamState } from "../../hooks/useJobTeam";
 import { useJdMetadataPrefill } from "../../hooks/useJdMetadataPrefill";
 import type { Contact } from "../../lib/types";
@@ -34,6 +34,7 @@ export default function JobPasteTeamPanel({
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobMeta, setJobMeta] = useState<{ title: string; company: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [pasteError, setPasteError] = useState<string | null>(null);
 
   const prefill = useJdMetadataPrefill(description, {
     setTitle: setTitleState,
@@ -44,9 +45,10 @@ export default function JobPasteTeamPanel({
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (description.trim().length < 40) {
-      toast.error("Paste a fuller job description (at least ~40 characters).");
+      setPasteError("Paste a fuller job description (at least ~40 characters).");
       return;
     }
+    setPasteError(null);
     setSubmitting(true);
     try {
       const res = await ingestJobFromText({
@@ -61,7 +63,11 @@ export default function JobPasteTeamPanel({
       toast.success("Job saved — extract the hiring team below.");
       onHydrate(res.job_id);
     } catch (error) {
-      toast.error(formatApiError(error));
+      if (isJdNotPostingError(error)) {
+        setPasteError(error.message);
+      } else {
+        toast.error(formatApiError(error));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -133,9 +139,12 @@ export default function JobPasteTeamPanel({
         <label className="field field-span-all">
           <span className="field-label">Job description</span>
           <textarea
-            className="paste-textarea"
+            className={`paste-textarea${pasteError ? " input-invalid" : ""}`}
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => {
+              setPasteError(null);
+              setDescription(e.target.value);
+            }}
             onPaste={(e) => {
               const pasted = e.clipboardData.getData("text");
               if (pasted) prefill.onDescriptionPaste(pasted);
@@ -144,7 +153,14 @@ export default function JobPasteTeamPanel({
             placeholder="Paste the full job description…"
             required
             data-testid="job-paste-description"
+            aria-invalid={pasteError ? true : undefined}
+            aria-describedby={pasteError ? "job-paste-error" : undefined}
           />
+          {pasteError ? (
+            <p className="field-error" id="job-paste-error" data-testid="jd-paste-error" role="alert">
+              {pasteError}
+            </p>
+          ) : null}
         </label>
         <div className="field-span-all paste-actions">
           <button type="submit" className="primary" disabled={submitting || !description.trim()}>

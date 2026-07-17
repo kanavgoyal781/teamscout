@@ -1,6 +1,6 @@
 .PHONY: dev backend frontend test install install-backend install-frontend \
 	check-scope demo-check eval eval-fit eval-report pipeline pipeline-offline \
-	deploy-api deploy-web deploy-status
+	deploy-api deploy-web deploy-status verify
 
 # Backend loads repo-root .env automatically (see backend/app/core/config.py).
 dev:
@@ -56,6 +56,28 @@ pipeline-offline:
 test: check-scope
 	cd backend && pytest -q
 	cd frontend && pnpm test
+
+# Full local gate suite ≡ red CI jobs that recently shipped without a local run:
+# scope → ruff check/format → mypy → backend pytest → frontend typecheck/test/build.
+# Run before every milestone complete/push so lint/typecheck/frontend cannot go red on main.
+# (Playwright e2e stays CI-only — needs browsers; not required for this target.)
+verify: check-scope
+	@set -e; \
+	echo "== verify: ruff check + format (backend) =="; \
+	( cd backend && python3 -m ruff check app tests && python3 -m ruff format --check app tests ); \
+	echo "== verify: ruff check . + format --check . (backend) =="; \
+	( cd backend && python3 -m ruff check . && python3 -m ruff format --check . ); \
+	echo "== verify: mypy app =="; \
+	( cd backend && python3 -m mypy app ); \
+	echo "== verify: pytest (backend) =="; \
+	( cd backend && python3 -m pytest -q ); \
+	echo "== verify: pnpm typecheck =="; \
+	( cd frontend && pnpm typecheck ); \
+	echo "== verify: pnpm test =="; \
+	( cd frontend && pnpm test ); \
+	echo "== verify: pnpm build =="; \
+	( cd frontend && pnpm build ); \
+	echo "verify: OK (scope + lint + mypy + backend tests + frontend typecheck/test/build)"
 
 # —— Deploy wrappers (operator CLIs; never commit tokens) ——
 # See docs/DEPLOYMENT.md. Fail loudly if CLIs are missing or unauthenticated.

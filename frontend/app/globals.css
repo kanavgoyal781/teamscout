@@ -3408,6 +3408,18 @@ input:focus, textarea:focus, select:focus {
   box-shadow: none;
 }
 
+textarea.input-invalid,
+input.input-invalid {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--line));
+}
+
+.field-error {
+  margin: var(--space-2) 0 0;
+  color: var(--danger);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
 /* Breakdown bars — navy (accent) opacity scale, not rainbow */
 .breakdown-fill {
   background: var(--accent) !important;

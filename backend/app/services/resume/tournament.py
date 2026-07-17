@@ -1,5 +1,7 @@
 from __future__ import annotations
-import hashlib, random, re
+import hashlib
+import random
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from pydantic import BaseModel, Field
