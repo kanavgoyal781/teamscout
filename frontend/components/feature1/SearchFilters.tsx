@@ -333,7 +333,7 @@ export default function SearchFilters({
 
   return (
     <div className="search-filters" data-testid="search-filters">
-      <h3 style={{ margin: "16px 0 8px", fontSize: "0.95rem" }}>Search options</h3>
+      <h3>Search options</h3>
       {showHint ? (
         <div className="filter-hint" data-testid="filter-prefer-hint" role="note">
           <p>
@@ -380,7 +380,7 @@ export default function SearchFilters({
           ) : null}
         </div>
         {p.location_country ? (
-          <label className="checkbox-row filter-worldwide">
+          <label className="filter-subrow checkbox-row filter-worldwide" data-testid="filter-worldwide-row">
             <input
               type="checkbox"
               checked={Boolean(p.include_worldwide_remote)}
@@ -528,12 +528,13 @@ export default function SearchFilters({
           ) : null}
         </div>
 
-        <label className="checkbox-row">
+        <label className="filter-subrow checkbox-row" data-testid="filter-expand-row">
           <input
             type="checkbox"
             checked={Boolean(p.use_expand)}
             disabled={disabled}
             onChange={(e) => set("use_expand", e.target.checked)}
+            data-testid="filter-expand"
           />
           Expand search queries with AI
         </label>

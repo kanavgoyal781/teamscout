@@ -16,7 +16,11 @@ function wrap(ui: React.ReactElement) {
 }
 
 vi.mock("../../lib/api", () => ({
-  fetchWorkspace: vi.fn(async () => ({ workspace_id: "w", ttl_days: 7, prefs: { filter_hint_dismissed: true } })),
+  fetchWorkspace: vi.fn(async () => ({
+    workspace_id: "w",
+    ttl_days: 7,
+    prefs: { filter_hint_dismissed: true },
+  })),
   patchWorkspacePrefs: vi.fn(),
 }));
 
@@ -47,7 +51,6 @@ describe("M29 SearchFilters", () => {
     wrap(<SearchFilters params={params} onChange={onChange} />);
     expect(screen.queryByTestId("filter-remote-mode")).toBeNull();
     expect(screen.queryByTestId("filter-seniority-mode")).toBeNull();
-    // Location set → mode visible
     expect(screen.getByTestId("filter-location-mode")).toBeTruthy();
     expect(screen.getByTestId("filter-location-mode-require")).toBeTruthy();
   });
@@ -83,7 +86,6 @@ describe("M29 SearchFilters", () => {
 
   it("setting seniority to Any hides mode toggle", () => {
     const onChange = vi.fn();
-    // employment must not be fulltime or sanitize clears intern
     const params = {
       ...defaultSearchParams(),
       employment_type: "any" as const,
@@ -103,7 +105,6 @@ describe("M29 SearchFilters", () => {
     );
     expect(screen.queryByTestId("filter-seniority-mode")).toBeNull();
   });
-});
 
   it("sanitizeSearchParams clears Full-time + Intern conflict", () => {
     expect(employmentSeniorityConflict({ employment_type: "fulltime", seniority: "intern" })).toBe(true);
@@ -123,7 +124,12 @@ describe("M29 SearchFilters", () => {
     const onChange = vi.fn();
     wrap(
       <SearchFilters
-        params={{ ...defaultSearchParams(), employment_type: "fulltime", employment_type_pref: "hard", seniority: "any" }}
+        params={{
+          ...defaultSearchParams(),
+          employment_type: "fulltime",
+          employment_type_pref: "hard",
+          seniority: "any",
+        }}
         onChange={onChange}
       />,
     );
@@ -137,7 +143,12 @@ describe("M29 SearchFilters", () => {
     const onChange = vi.fn();
     wrap(
       <SearchFilters
-        params={{ ...defaultSearchParams(), employment_type: "any", seniority: "intern", seniority_pref: "soft" }}
+        params={{
+          ...defaultSearchParams(),
+          employment_type: "any",
+          seniority: "intern",
+          seniority_pref: "soft",
+        }}
         onChange={onChange}
       />,
     );
@@ -163,3 +174,28 @@ describe("M29 SearchFilters", () => {
     expect(s).toMatch(/Full-time \(require\)/);
     expect(s).not.toMatch(/intern/i);
   });
+
+  it("layout: worldwide nests under location; expand and summary present", () => {
+    wrap(
+      <SearchFilters
+        params={{
+          ...defaultSearchParams("United States"),
+          location_country: "US",
+          location_country_pref: "hard",
+          include_worldwide_remote: true,
+          use_expand: true,
+        }}
+        onChange={vi.fn()}
+        profileTitle="Data Scientist"
+      />,
+    );
+    expect(screen.getByTestId("filter-location")).toBeTruthy();
+    expect(screen.getByTestId("filter-worldwide-row")).toBeTruthy();
+    expect(screen.getByTestId("filter-expand-row")).toBeTruthy();
+    expect(screen.getByTestId("filter-expand")).toBeChecked();
+    expect(screen.getByTestId("search-summary").textContent).toMatch(/Searching: Data Scientist/);
+    expect(screen.getByTestId("search-summary").textContent).toMatch(/United States \(require\)/);
+    expect(screen.getByTestId("filter-location-mode")).toBeTruthy();
+    expect(screen.queryByTestId("filter-seniority-mode")).toBeNull();
+  });
+});

@@ -349,29 +349,48 @@ a {
   line-height: 1;
 }
 
-/* M29 filter rows: value + optional Require|Prefer segment */
+/* Search options: stacked rows — value control + Require|Prefer on one line */
+.search-filters {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised, var(--bg));
+}
+.search-filters > h3 {
+  margin: 0 0 var(--space-3);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+}
 .filter-rows {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 0.65rem;
 }
 .filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-3);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  column-gap: 0.75rem;
+  row-gap: 0.35rem;
 }
 .filter-value {
-  flex: 1 1 12rem;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 0.88rem;
-  color: var(--text-muted);
+  gap: 0.3rem;
+  min-width: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--ink-muted, var(--text-muted));
+  letter-spacing: 0.01em;
 }
 .filter-value select,
-.filter-value input {
+.filter-value input[type="number"] {
   width: 100%;
+  min-height: 2.25rem;
+  margin: 0;
+  box-sizing: border-box;
 }
 .mode-seg {
   display: inline-flex;
@@ -379,32 +398,68 @@ a {
   border-radius: var(--radius);
   overflow: hidden;
   flex: 0 0 auto;
+  height: 2.25rem;
+  align-self: end;
 }
 .mode-seg button {
   border: none;
   background: var(--bg-muted);
   color: var(--ink-muted);
-  padding: 6px 12px;
-  font-size: 0.82rem;
+  padding: 0 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 500;
   cursor: pointer;
   border-radius: 0;
   box-shadow: none;
+  height: 100%;
+  line-height: 1;
 }
 .mode-seg button.mode-seg-active {
   background: var(--accent);
   color: var(--accent-text);
 }
-.search-summary {
-  margin: var(--space-4) 0 0;
-  padding: 10px 12px;
-  background: var(--accent-soft);
-  border-radius: var(--radius-sm);
-  font-size: 0.9rem;
+/* Nested under parent control — not free-floating centered checkboxes */
+.filter-subrow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: -0.15rem 0 0.15rem 0.15rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.65rem;
+  border-left: 2px solid var(--line);
+  font-size: 0.82rem;
   color: var(--ink);
-  line-height: 1.4;
+}
+.filter-subrow input[type="checkbox"] {
+  margin: 0;
+  flex: 0 0 auto;
+}
+.filter-subrow.checkbox-row {
+  /* reset any legacy checkbox-row centering */
+  justify-content: flex-start;
+  width: 100%;
+  max-width: 100%;
+}
+.search-summary {
+  margin: var(--space-3) 0 0;
+  padding: 0.7rem 0.85rem;
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  color: var(--ink);
+  line-height: 1.45;
+  font-weight: 500;
 }
 .filter-worldwide {
-  margin: calc(-1 * var(--space-2)) 0 var(--space-1);
+  /* superseded by filter-subrow */
+  margin: 0;
+}
+.search-filters-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: var(--space-3);
+  align-items: center;
 }
 
 /* Feature-1 empty/partial pool — results state, not a blocking toast */

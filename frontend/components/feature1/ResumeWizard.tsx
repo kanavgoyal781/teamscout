@@ -330,7 +330,7 @@ export default function ResumeWizard({
             profileLocation={location}
             profileTitle={title}
           />
-          <div className="actions" style={{ marginTop: 16 }}>
+          <div className="search-filters-actions actions" data-testid="search-actions">
             <button
               type="button"
               onClick={() => confirmMutation.mutate()}
