@@ -103,21 +103,21 @@ export default function JobResultsList({
               data-testid={`job-card-${index}`}
             >
               <div className="job-card-header">
-                <div>
+                <div className="job-card-copy">
                   <h3>
                     <span className="rank-badge font-num" aria-label={`Rank ${index + 1}`}>
                       #{index + 1}
                     </span>
                     {item.job.title}
                   </h3>
-                  <p className="meta" style={{ margin: 0 }}>
+                  <p className="meta card-meta-line" style={{ margin: 0 }}>
                     <strong>{item.job.company}</strong>
                     {" · "}
                     {item.job.location || "Location n/a"}
                     {" · "}
                     <span className="font-num">{formatPostedAgo(item.job.posted_at)}</span>
                   </p>
-                  <div className="chip-row job-flags" style={{ marginTop: 6 }}>
+                  <div className="chip-row job-flags">
                     {item.job.source ? (
                       <span
                         className="chip chip-source"
@@ -152,13 +152,15 @@ export default function JobResultsList({
                     ) : null}
                   </div>
                 </div>
+                {/* Sole hero number on the card */}
                 <ScoreRing
                   score={item.match_score}
                   matchLikelihood={item.score_breakdown.match_likelihood}
+                  size={56}
                 />
               </div>
 
-              <p className="job-description">
+              <p className="job-description line-clamp-2">
                 {item.job.description.length > 280
                   ? `${item.job.description.slice(0, 280)}…`
                   : item.job.description}

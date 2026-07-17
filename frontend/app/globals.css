@@ -3489,3 +3489,350 @@ html.dark .breakdown-row:nth-child(n+5) .breakdown-fill {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===========================================================================
+   M26 UI craft — density, hero number, tabular nums, truncate, matrix, states
+   Tokens only (M23 cream/navy/brass). No new palette colors.
+   =========================================================================== */
+
+/* Ink hierarchy: strong / body / muted only */
+.ink-strong, h1, h2, h3, .page-header h1, .section-title { color: var(--ink-strong); }
+.ink-body, body, .job-description, .rationale { color: var(--ink); }
+.ink-muted, .meta, .card-meta-line, .score-ring-label, .eyebrow { color: var(--text-muted); }
+
+/* Tabular nums everywhere numeric */
+.font-num,
+.score-value,
+.credit-value,
+.mono-id,
+.breakdown-val,
+.coverage-table .font-num,
+.col-strength,
+.rank-badge,
+td.font-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Density: tighter vertical stack so ~3 cards above fold at 1440×900 */
+.job-list {
+  gap: var(--space-3);
+}
+.job-card,
+.recommendation-card,
+.card {
+  padding: 14px 16px;
+}
+.job-card-header {
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+.job-card-copy {
+  min-width: 0;
+  flex: 1;
+}
+.job-card h3 {
+  margin: 0 0 2px;
+  font-size: 1rem;
+  line-height: 1.3;
+  color: var(--ink-strong);
+}
+.rank-badge {
+  min-width: 24px;
+  height: 22px;
+  font-size: 0.72rem;
+  padding: 0 6px;
+  margin-right: 6px;
+  color: var(--text-muted);
+  background: transparent;
+  border-color: var(--line);
+  vertical-align: 0.1em;
+}
+.card-meta-line {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chip-row {
+  gap: 6px;
+  margin-top: var(--space-2);
+}
+.chip {
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+.job-description,
+.rationale {
+  margin-top: var(--space-2);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.job-card .actions {
+  margin-top: 10px !important;
+  gap: var(--space-2);
+  align-items: center;
+}
+.job-card .actions .meta {
+  font-size: 0.75rem;
+}
+
+/* One hero: score ring primary; secondary labels muted */
+.score-ring-wrap {
+  gap: 2px;
+}
+.score-ring-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+}
+.score-ring-likelihood {
+  font-size: 10px !important;
+  color: var(--text-muted) !important;
+}
+
+/* Middle-truncated filenames — never wrap-break a card */
+.filename-trunc,
+.library-row-name {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.library-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+.library-row-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 42%;
+}
+.library-row-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.library-cluster-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.library-cluster-toggle:hover {
+  color: var(--ink-strong);
+}
+.library-cluster-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+.library-cluster-toggle svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+/* Clamp long copy */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Alignment matrix — real table craft */
+.coverage-table-scroll {
+  max-height: 220px;
+  overflow: auto;
+  margin-top: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.coverage-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: 0;
+  font-size: 0.8rem;
+  table-layout: fixed;
+}
+.coverage-table th,
+.coverage-table td {
+  border: none;
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+  height: 36px;
+  vertical-align: middle;
+  overflow: hidden;
+}
+.coverage-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  font-size: var(--type-label-size);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.coverage-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.coverage-table .col-req { width: 32%; }
+.coverage-table .col-kind { width: 12%; }
+.coverage-table .col-strength { width: 22%; text-align: left; }
+.coverage-table .col-evidence { width: 34%; }
+.coverage-table .col-kind,
+.coverage-table td.font-num {
+  text-align: left;
+}
+.strength-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+.strength-bar-track {
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
+  height: 6px;
+  flex-shrink: 0;
+}
+.strength-bar-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+/* Interactive states — hover / active / focus-visible / disabled */
+button,
+.btn,
+.apply-link,
+.sidebar-link,
+.theme-toggle,
+.feedback-btn {
+  transition:
+    background var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out),
+    color var(--dur) var(--ease-out),
+    transform var(--dur) var(--ease-out),
+    opacity var(--dur) var(--ease-out);
+}
+button:active:not(:disabled),
+.btn:active:not(:disabled),
+.apply-link:active {
+  transform: translateY(1px);
+}
+button:disabled,
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+button:focus-visible,
+.btn:focus-visible,
+.apply-link:focus-visible,
+a:focus-visible,
+.sidebar-link:focus-visible,
+.theme-toggle:focus-visible,
+.feedback-btn:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.job-card:hover,
+.recommendation-card:hover {
+  border-color: var(--border-strong);
+}
+.job-card:focus-within,
+.recommendation-card:focus-within {
+  border-color: var(--border-strong);
+}
+
+/* Optical: icons 16px default, actions baseline */
+.actions button svg,
+.actions .apply-link svg,
+.sidebar-link svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.actions > * {
+  vertical-align: middle;
+}
+
+/* Why panel denser */
+details.why-match {
+  margin-top: var(--space-2);
+  padding: 8px 10px;
+}
+.breakdown-row {
+  grid-template-columns: 100px 1fr 40px;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+.breakdown-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Recommendation column density */
+.recommendation-list {
+  gap: var(--space-3);
+}
+.recommendation-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Empty states */
+.empty-state {
+  padding: var(--space-5) var(--space-4);
+}
+
+/* Mobile density: ~1.5 cards above fold */
+@media (max-width: 480px) {
+  .job-card,
+  .recommendation-card {
+    padding: 12px;
+  }
+  .job-list {
+    gap: var(--space-2);
+  }
+  .page {
+    padding: var(--space-4) var(--space-3) var(--space-6);
+  }
+}
+

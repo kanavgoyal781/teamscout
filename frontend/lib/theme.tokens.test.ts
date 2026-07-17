@@ -56,6 +56,14 @@ describe("M23 design tokens", () => {
     expect(layout).toMatch(/Fraunces/);
     expect(layout).toMatch(/--font-fraunces/);
   });
+
+  it("M26 craft: tabular-nums, sticky matrix header, filename trunc, focus-visible", () => {
+    expect(css).toMatch(/font-variant-numeric:\s*tabular-nums/);
+    expect(css).toMatch(/\.coverage-table th[\s\S]*position:\s*sticky/s);
+    expect(css).toMatch(/\.filename-trunc/);
+    expect(css).toMatch(/:focus-visible/);
+    expect(css).toMatch(/line-clamp:\s*2|line-clamp-2/);
+  });
 });
 
 describe("M23 brass discipline", () => {

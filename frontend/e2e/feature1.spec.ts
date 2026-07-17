@@ -38,6 +38,9 @@ async function runFeature1HappyPath(
   await expect(page.getByText("87").first()).toBeVisible();
   await waitForOpacityOne(page, "job-card-0");
   await waitForOpacityOne(page, "job-card-1");
+  // Craft pass: open why-panel on first card for screenshot
+  await page.getByTestId("job-card-0").getByText("Why this match").click();
+  await expect(page.getByTestId("job-card-0").locator(".breakdown-bars")).toBeVisible();
 
   await page.screenshot({
     path: `public/screenshots/03-job-matches${suffix}.png`,

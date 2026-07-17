@@ -246,35 +246,67 @@ export async function mockApi(
       if (options.libraryEmpty) {
         return json({ resumes: [], total: 0 });
       }
-      return json({
-        resumes: [
-          {
-            id: "lib-1",
-            filename: "ada.pdf",
-            content_hash: "h1",
-            source: "upload",
-            profile: sampleProfile,
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: "lib-2",
-            filename: "grace.pdf",
-            content_hash: "h2",
-            source: "upload",
-            profile: { ...sampleProfile, name: "Grace Hopper", title: "Systems Engineer" },
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: "lib-3",
-            filename: "alan.pdf",
-            content_hash: "h3",
-            source: "upload",
-            profile: { ...sampleProfile, name: "Alan Turing", title: "Researcher" },
-            created_at: new Date().toISOString(),
-          },
-        ],
-        total: 3,
-      });
+      // 30+ library rows including pathological long names for craft/layout assertions
+      // IDs sorted so pathological names appear at top of virtualized list (cid localeCompare)
+      const resumes = [
+        {
+          id: "aaa-path-0",
+          filename: "Kanav_Data_Science_______.pdf",
+          content_hash: "hp0",
+          source: "upload",
+          profile: { ...sampleProfile, name: "Path 0", title: "Data Scientist" },
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: "aaa-path-1",
+          filename: "Kanav Goyal_AI (2) (3).pdf",
+          content_hash: "hp1",
+          source: "upload",
+          profile: { ...sampleProfile, name: "Path 1", title: "AI Engineer" },
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: "aaa-path-2",
+          filename: "Kanav________________________Resume_FINAL_v12.pdf",
+          content_hash: "hp2",
+          source: "upload",
+          profile: { ...sampleProfile, name: "Path 2", title: "Engineer" },
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: "lib-1",
+          filename: "ada.pdf",
+          content_hash: "h1",
+          source: "upload",
+          profile: sampleProfile,
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: "lib-2",
+          filename: "grace.pdf",
+          content_hash: "h2",
+          source: "upload",
+          profile: { ...sampleProfile, name: "Grace Hopper", title: "Systems Engineer" },
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: "lib-3",
+          filename: "alan.pdf",
+          content_hash: "h3",
+          source: "upload",
+          profile: { ...sampleProfile, name: "Alan Turing", title: "Researcher" },
+          created_at: new Date().toISOString(),
+        },
+        ...Array.from({ length: 27 }, (_, i) => ({
+          id: `zzz-bulk-${String(i).padStart(2, "0")}`,
+          filename: `resume_bulk_${String(i).padStart(2, "0")}.pdf`,
+          content_hash: `hb${i}`,
+          source: "upload",
+          profile: { ...sampleProfile, name: `Bulk ${i}`, title: "Software Engineer" },
+          created_at: new Date().toISOString(),
+        })),
+      ];
+      return json({ resumes, total: resumes.length });
     }
 
     const recPayload = {
@@ -284,7 +316,7 @@ export async function mockApi(
       recommendations: [
         {
           resume_id: "lib-1",
-          filename: "ada.pdf",
+          filename: "Kanav Goyal_AI (2) (3).pdf",
           match_score: 91,
           score_breakdown: {
             ...rankedJob.score_breakdown,
@@ -299,10 +331,34 @@ export async function mockApi(
             { requirement: "Python APIs", status: "hit", evidence: "Python systems experience" },
             { requirement: "Kubernetes", status: "miss", evidence: null },
           ],
+          must_haves_hit: 1,
+          must_haves_total: 2,
+          alignment: [
+            {
+              requirement: "Python APIs",
+              kind: "must",
+              category: "skill",
+              weight: 2,
+              evidence_unit: "Python systems experience",
+              evidence_score: 0.9,
+              strength: "strong",
+              status: "hit",
+            },
+            {
+              requirement: "Kubernetes",
+              kind: "must",
+              category: "skill",
+              weight: 1.5,
+              evidence_unit: null,
+              evidence_score: 0,
+              strength: "none",
+              status: "miss",
+            },
+          ],
         },
         {
           resume_id: "lib-2",
-          filename: "grace.pdf",
+          filename: "Kanav_Data_Science_______.pdf",
           match_score: 78,
           score_breakdown: {
             ...rankedJob.score_breakdown,

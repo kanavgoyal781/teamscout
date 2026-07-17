@@ -3,6 +3,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 
 import type { AdversarialCritique, RankedResumeRecommendation } from "../../lib/types";
+import { middleTruncate } from "../../lib/format";
 import { easeOut, shouldSkipEntrance, staggerContainer, staggerItem } from "../../lib/motion";
 import EmptyState from "../ui/EmptyState";
 import { JobCardSkeleton } from "../ui/Skeleton";
@@ -229,37 +230,42 @@ export default function ResumeRecommendations({
               >
                 {isWinner ? <span className="winner-label">Best match</span> : null}
                 <div className="job-card-header">
-                  <div>
+                  <div className="job-card-copy">
                     <h3 style={{ margin: 0 }}>
-                      <span className="rank-badge font-num">#{index + 1}</span>
-                      {item.filename}
+                      <span className="rank-badge font-num" aria-label={`Rank ${index + 1}`}>
+                        #{index + 1}
+                      </span>
+                      <span className="filename-trunc" title={item.filename}>
+                        {middleTruncate(item.filename)}
+                      </span>
                     </h3>
-                    {item.cluster_label ? (
-                      <p className="meta" style={{ margin: "4px 0 0" }} data-testid={`cluster-${index}`}>
-                        {item.cluster_label}
-                        {item.cluster_size && item.cluster_size > 1
-                          ? ` · cluster of ${item.cluster_size}`
-                          : ""}
-                      </p>
-                    ) : null}
-                    {coverageLabel(item) ? (
-                      <p className="meta font-num" style={{ margin: "4px 0 0" }} data-testid={`coverage-label-${index}`}>
-                        {coverageLabel(item)}
-                      </p>
-                    ) : null}
+                    {/* One quiet metadata line: coverage + cluster + tournament — score ring is sole hero */}
+                    <p className="meta card-meta-line font-num" data-testid={`card-meta-${index}`}>
+                      <span data-testid={`coverage-label-${index}`}>
+                        {[
+                          coverageLabel(item) || null,
+                          item.cluster_label
+                            ? `${item.cluster_label}${item.cluster_size && item.cluster_size > 1 ? ` · cluster of ${item.cluster_size}` : ""}`
+                            : null,
+                          item.tournament?.ran && item.tournament.contested
+                            ? `Tournament ${item.tournament.wins} win${item.tournament.wins === 1 ? "" : "s"}${reasonRaw ? ` — ${reasonRaw}` : ""}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                      {item.tournament?.ran && item.tournament.contested ? (
+                        <span className="sr-only" data-testid={`tournament-${index}`}>
+                          Tournament: {item.tournament.wins} wins
+                        </span>
+                      ) : null}
+                    </p>
                   </div>
-                  <ScoreRing score={item.match_score} size={48} />
+                  <ScoreRing score={item.match_score} size={52} />
                 </div>
-                <p className="rationale">
+                <p className="rationale line-clamp-2">
                   {highlightCited(item.score_breakdown.rationale, citePhrases)}
                 </p>
-                {item.tournament?.ran && item.tournament.contested ? (
-                  <p className="meta font-num" data-testid={`tournament-${index}`}>
-                    Tournament: {item.tournament.wins} win
-                    {item.tournament.wins === 1 ? "" : "s"}
-                    {reasonRaw ? ` — ${reasonRaw}` : ""}
-                  </p>
-                ) : null}
                 <ScoreBars
                   breakdown={item.score_breakdown}
                   variant="resumes"
@@ -291,57 +297,71 @@ export default function ResumeRecommendations({
                   ))}
                 </div>
                 {align ? (
-                  <table className="coverage-table" data-testid={`alignment-${index}`}>
-                    <thead>
-                      <tr>
-                        <th>Requirement</th>
-                        <th>Kind</th>
-                        <th>Strength</th>
-                        <th>Best evidence unit</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {align.map((row) => {
-                        const strength =
-                          row.strength ?? strengthFromScore(row.evidence_score, row.status);
-                        return (
-                          <tr key={`${item.resume_id}-${row.requirement}`}>
-                            <td>{row.requirement}</td>
-                            <td className="meta">{row.kind}</td>
-                            <td
-                              className={
-                                row.status === "hit" ? "coverage-hit font-num" : "coverage-miss font-num"
-                              }
-                            >
-                              <StrengthBar strength={strength} />
-                            </td>
-                            <td>{evidenceCell(row.status, row.evidence_unit)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                ) : item.coverage.length > 0 ? (
-                  <table className="coverage-table">
-                    <thead>
-                      <tr>
-                        <th>Requirement</th>
-                        <th>Status</th>
-                        <th>Evidence</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {item.coverage.map((row) => (
-                        <tr key={`${item.resume_id}-${row.requirement}`}>
-                          <td>{row.requirement}</td>
-                          <td className={row.status === "hit" ? "coverage-hit" : "coverage-miss"}>
-                            {row.status === "hit" ? "✓" : "✗"}
-                          </td>
-                          <td>{row.evidence ?? "—"}</td>
+                  <div className="coverage-table-scroll">
+                    <table className="coverage-table" data-testid={`alignment-${index}`}>
+                      <thead>
+                        <tr>
+                          <th className="col-req">Requirement</th>
+                          <th className="col-kind">Kind</th>
+                          <th className="col-strength">Strength</th>
+                          <th className="col-evidence">Best evidence unit</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {align.map((row) => {
+                          const strength =
+                            row.strength ?? strengthFromScore(row.evidence_score, row.status);
+                          return (
+                            <tr key={`${item.resume_id}-${row.requirement}`}>
+                              <td className="col-req">
+                                <span className="line-clamp-2" title={row.requirement}>
+                                  {row.requirement}
+                                </span>
+                              </td>
+                              <td className="col-kind meta">{row.kind}</td>
+                              <td className="col-strength font-num">
+                                <StrengthBar strength={strength} />
+                              </td>
+                              <td className="col-evidence">
+                                <span className="line-clamp-2" title={evidenceCell(row.status, row.evidence_unit)}>
+                                  {evidenceCell(row.status, row.evidence_unit)}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : item.coverage.length > 0 ? (
+                  <div className="coverage-table-scroll">
+                    <table className="coverage-table">
+                      <thead>
+                        <tr>
+                          <th className="col-req">Requirement</th>
+                          <th className="col-kind">Status</th>
+                          <th className="col-evidence">Evidence</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {item.coverage.map((row) => (
+                          <tr key={`${item.resume_id}-${row.requirement}`}>
+                            <td className="col-req">
+                              <span className="line-clamp-2" title={row.requirement}>
+                                {row.requirement}
+                              </span>
+                            </td>
+                            <td className={`col-kind font-num ${row.status === "hit" ? "coverage-hit" : "coverage-miss"}`}>
+                              {row.status === "hit" ? "✓" : "✗"}
+                            </td>
+                            <td className="col-evidence">
+                              <span className="line-clamp-2">{row.evidence ?? "—"}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 ) : null}
               </motion.article>
             );

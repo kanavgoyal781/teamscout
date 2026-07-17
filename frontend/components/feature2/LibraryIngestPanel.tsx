@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 
 import type { IngestFileResult, LibraryResume } from "../../lib/types";
+import { middleTruncate } from "../../lib/format";
 import EmptyState from "../ui/EmptyState";
 import { SkeletonLines } from "../ui/Skeleton";
 
@@ -415,10 +416,17 @@ export default function LibraryIngestPanel({
                           ) : (
                             <ChevronRight size={16} aria-hidden />
                           )}
-                          <strong className="library-row-name">
+                          <strong
+                            className="library-row-name filename-trunc"
+                            title={
+                              row.count > 1
+                                ? `Base ${row.cid.slice(0, 8)}`
+                                : primary?.filename ?? row.cid.slice(0, 8)
+                            }
+                          >
                             {row.count > 1
                               ? `Base ${row.cid.slice(0, 8)}`
-                              : primary?.filename ?? row.cid.slice(0, 8)}
+                              : middleTruncate(primary?.filename ?? row.cid.slice(0, 8))}
                           </strong>
                           {row.count > 1 ? (
                             <span className="library-count-badge font-num" aria-label={`${row.count} versions`}>
@@ -460,7 +468,9 @@ export default function LibraryIngestPanel({
                       style={{ height: ROW_HEIGHT }}
                       role="listitem"
                     >
-                      <strong className="library-row-name">{r.filename}</strong>
+                      <strong className="library-row-name filename-trunc" title={r.filename}>
+                        {middleTruncate(r.filename)}
+                      </strong>
                       {badgeStatus ? (
                         <span className={`library-cache-badge library-cache-badge--${badgeStatus}`}>
                           {badgeStatus}
