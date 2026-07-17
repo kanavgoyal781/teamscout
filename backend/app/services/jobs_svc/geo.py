@@ -9,7 +9,11 @@ _IN_HINT = re.compile(r"(?i)\b(india|bangalore|bengaluru|hyderabad|gurugram|gurg
 _WW = re.compile(r"(?i)\b(worldwide|global(?:ly)?|anywhere|work\s+from\s+anywhere|wfa)\b")
 _REGIONS = [(re.compile(r"(?i)\b(northern\s+america|north\s+america|americas?|latam|latin\s+america|us\s+time\s*zones?)\b"), frozenset({"US","CA","MX","BR"})), (re.compile(r"(?i)\b(emea|europe(?:an)?|eu\b)\b"), frozenset({"GB","DE","FR","NL","IE","ES","IT","SE","CH","PL","PT"})), (re.compile(r"(?i)\b(apac|asia[-\s]?pacific)\b"), frozenset({"IN","SG","JP","KR","AU"}))]
 _CTRY = re.compile(r"(?i)\b(united\s+states|usa|u\.s\.a\.|u\.s\.|united\s+kingdom|great\s+britain|canada|india|germany|france|netherlands|australia|singapore|ireland|israel|brazil|mexico|spain|italy|japan|south\s+korea|korea|sweden|switzerland|poland|portugal)\b")
-_ISO = re.compile(r"\b(US|USA|UK|U\.K\.|GB|CA|IN|DE|FR|NL|AU|SG|IE|IL|BR|MX|ES|IT|JP|KR|SE|CH|PL|PT)\b")  # uppercase only
+# ISO: multi-list allows IN/IT/DE/CA; bare singles exclude English/Latin 2-letter words
+_ISO_T = r"US|USA|UK|U\.K\.|GB|CA|IN|DE|FR|NL|AU|SG|IE|IL|BR|MX|ES|IT|JP|KR|SE|CH|PL|PT"
+_ISO_LIST = re.compile(rf"\b((?:{_ISO_T})(?:\s*[,/;|&]\s*(?:and\s+)?(?:{_ISO_T}))+)\b")
+_ISO_SAFE = re.compile(r"\b(US|USA|UK|U\.K\.|GB|FR|NL|AU|SG|BR|MX|ES|JP|KR|SE|CH|PL|PT)\b")  # no IN/IT/DE/CA/IL/IE
+_ISO_TOK = re.compile(rf"(?:{_ISO_T})")
 def _alias(k: str) -> str | None:
     k = k.lower().replace(".", ""); return _ALIASES.get(k) or _ALIASES.get(k.replace(" ", ""))
 def parse_country(text: str | None) -> str | None:
@@ -35,7 +39,11 @@ def region_countries(text: str) -> set[str]:
     for m in _CTRY.finditer(blob):
         c = _alias(m.group(1))
         if c: found.add(c)
-    for m in _ISO.finditer(blob):
+    for m in _ISO_LIST.finditer(blob):
+        for tok in _ISO_TOK.findall(m.group(0)):
+            c = _alias(tok)
+            if c: found.add(c)
+    for m in _ISO_SAFE.finditer(blob):
         c = _alias(m.group(1))
         if c: found.add(c)
     return found

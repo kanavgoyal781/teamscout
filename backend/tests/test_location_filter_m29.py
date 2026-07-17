@@ -97,3 +97,19 @@ def test_job_geo_match_edges() -> None:
     assert job_geo_match(user_country=None, job_location="x", job_description="y", remote_mode="remote") == "skip"
     assert job_geo_match(user_country="US", job_location="San Francisco, CA", job_description="Onsite", remote_mode="onsite") == "match"
     assert job_geo_match(user_country="US", job_location="Gurugram, India", job_description="US, UK, Canada remote", remote_mode="remote") == "match"
+
+def test_require_keeps_allcaps_english_in_not_india() -> None:
+    """Bare IN/IT in ALL-CAPS JDs must not invent regions → hard-drop."""
+    desc = (
+        "WE ARE HIRING A REMOTE ENGINEER. EXPERIENCE IN PYTHON REQUIRED. "
+        "IT IS A FULLY REMOTE ROLE WITH COMPETITIVE PAY. NO RELOCATION."
+    )
+    jobs = [_job("caps", loc="Remote", desc=desc, remote="remote")]
+    params = SearchParams(location_country="US", location_country_pref="hard", use_expand=False)
+    # region_countries must not treat English IN/IT as India/Italy
+    codes = region_countries(desc)
+    assert "IN" not in codes and "IT" not in codes
+    assert job_geo_match(user_country="US", job_location="Remote", job_description=desc, remote_mode="remote") == "unknown"
+    kept, dropped = apply_hard_filters(jobs, params)
+    assert [j.id for j in kept] == ["caps"]
+    assert dropped.hard_location == 0
