@@ -25,15 +25,6 @@ find_best_matching_job_post = sumble_jobs.find_best_matching_job_post
 get_related_people_for_job = sumble_jobs.get_related_people_for_job
 logger = get_logger(__name__)
 def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str]) -> tuple[list[str], list[str], int]:
-    """Small mapping helper: department + titles -> (job_functions, job_levels).
-    Per https://docs.sumble.com/api/lookups/job-title-lookup.md the response
-    shapes are objects:
-      job_function: {id, slug, name} | null
-      job_level: {id, name, level_rank} | null
-    Prefers slug for job_function (docs DSL examples use slugs e.g. EQ '<slug>'),
-    falls back to name. This is validated by scripts/smoke_sumble.py.
-    A parse error must surface (narrow except); broad except is forbidden.
-    """
     funcs: list[str] = []
     levels: list[str] = []
     dept = (department or "").strip()
@@ -100,12 +91,6 @@ def build_people_query(
     department: str,
     likely_hiring_titles: list[str],
 ) -> tuple[str | None, int]:
-    """Build documented advanced query string for people filter.query.query .
-    Uses only supported fields from docs (job_function EQ, job_level EQ).
-    Never uses non-existent "team CONTAINS".
-    Prefers slugs (from title-lookup) for job_function values per DSL examples.
-    Validated via scripts/smoke_sumble.py.
-    """
     funcs, levels, title_credits = map_llm_extraction_to_sumble(department, likely_hiring_titles)
     clauses: list[str] = []
     if funcs:
@@ -123,9 +108,6 @@ def build_people_query(
     query = " AND ".join(clauses) if clauses else None
     return query, title_credits
 def _derive_domain(company_name: str, apply_url: str | None = None) -> str | None:
-    """Heuristic to derive domain for org resolve-by-url (per docs preference for url/domain).
-    Uses apply_url host (stripping common job boards) or slug+ .com from company name.
-    """
     if apply_url:
         try:
             host = (urlparse(apply_url).netloc or "").lower().strip()
@@ -164,9 +146,6 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
         return f"{slug}.com"
     return None
 def lookup_organization(company_name: str, apply_url: str | None = None) -> tuple[SumbleOrganization, int]:
-    """Resolve org using documented /v6/organizations. Prefer url/domain per docs.
-    Tries name+url derived, then name. Raises clear error (no fabricated id) on failure.
-    """
     company_name = (company_name or "").strip()
     if not company_name:
         raise ServiceFailingError("Sumble", "company name is required for organization lookup")
@@ -211,10 +190,6 @@ def search_people(
     department: str = "",
     likely_hiring_titles: list[str] | None = None,
 ) -> tuple[list[SumblePerson], int]:
-    """Documented filter-mode people search as fallback path.
-    Request body uses only documented keys: filter.organization_ids + filter.query.query (EQ),
-    select.attributes, limit (default 10).
-    """
     lim = getattr(settings, "SUMBLE_SEARCH_LIMIT", sumble_client.DEFAULT_LIMIT)
     titles = likely_hiring_titles or []
     filter_body: dict[str, Any] = {"organization_ids": [organization_id]}
@@ -263,12 +238,6 @@ def find_hiring_team(
     jd_title: str = "",
     company: str = "",
 ) -> tuple[list[SumblePerson], int, str]:
-    """Primary path: org job-posts match -> find-related-people.
-    Fallback: people filter by function/level.
-    Returns (people, credits_used, path_label)
-    Path labels exactly: "Matched Sumble job post" or "Filtered by function/level"
-    Credits aggregated for job match / people search + title-lookup inside fallback.
-    """
     lim = getattr(settings, "SUMBLE_SEARCH_LIMIT", sumble_client.DEFAULT_LIMIT)
     total_credits = 0
     # Preferred: job post match
@@ -300,9 +269,6 @@ def find_hiring_team(
     logger.info("sumble.team_path", path="Filtered by function/level", count=len(people))
     return people, total_credits, "Filtered by function/level"
 def reveal_email(person_id: int) -> tuple[str | None, int]:
-    """Documented list-mode enrich for email (people list + email attr).
-    Keeps billing/terminal cache intact in callers. Matches current docs contract.
-    """
     data = sumble_client.post(
         "/v6/people",
         {

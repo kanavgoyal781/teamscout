@@ -45,10 +45,15 @@ def _run_one(src: JobSource, criteria: FetchCriteria, db: Session | None) -> Sou
             counts.kept_after_filters = len(jobs)
             trace.input_tokens, trace.output_tokens = counts.fetched, counts.kept_after_filters
             return SourceFetchOutcome(name=src.name, jobs=jobs, counts=counts)
-        except Exception as exc:  # isolate sources
+        except Exception as exc:  # isolate sources — never abort siblings
+            from app.services.jobs_svc.jsearch import JSearchQuotaError, JSEARCH_QUOTA_NOTICE
             counts.errors = 1
             trace.status, trace.error_type = "error", type(exc).__name__
-            msg = f"{type(exc).__name__}: {str(exc)[:140]}"
+            if isinstance(exc, JSearchQuotaError) or JSEARCH_QUOTA_NOTICE in str(exc):
+                msg = JSEARCH_QUOTA_NOTICE
+            else:
+                from app.core.redact import redact_error
+                msg = redact_error(f"{type(exc).__name__}: {str(exc)[:140]}")
             logger.warning("jobs.source_failed", source=src.name, error=msg)
             return SourceFetchOutcome(name=src.name, counts=counts, error=msg)
 def fetch_from_registry(criteria: FetchCriteria, db: Session | None = None

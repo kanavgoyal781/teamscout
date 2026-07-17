@@ -47,7 +47,6 @@ def ingest_job_from_text(
         location=job.location,
         description_preview=preview,
     )
-
 @router.post("/extract-metadata", response_model=ExtractMetadataResponse)
 @limiter.limit(llm_limit)
 def extract_metadata(
@@ -57,7 +56,6 @@ def extract_metadata(
 ) -> ExtractMetadataResponse:
     meta, hit, content_hash = extract_job_metadata(payload.description, db=db)
     return ExtractMetadataResponse(metadata=meta, cache_hit=hit, content_hash=content_hash)
-
 def _extraction_hash(extraction: TeamExtraction) -> str:
     payload = extraction.model_dump_json()
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()

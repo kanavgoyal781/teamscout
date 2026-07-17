@@ -65,7 +65,6 @@ def _maybe_index_units(row: Resume, profile: ResumeProfile, db: Session) -> tupl
     except (ServiceNotConfiguredError, ServiceFailingError, SQLAlchemyError, ValueError) as exc:
         from app.core.logging import get_logger
         from app.core.redact import redact_error
-
         safe = redact_error(exc)
         get_logger(__name__).warning(
             "library_store.unit_index_skipped",
@@ -156,7 +155,6 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
     from app.core.logging import get_logger
     from app.core.redact import redact_error
     from app.errors import ServiceFailingError, TeamScoutError, ValidationError
-
     log = get_logger(__name__)
     wid = require_workspace_id()
     listing = drive.list_folder_files(folder_id)
@@ -165,7 +163,6 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
     failed = 0
     resumes: list[LibraryResumeOut] = []
     file_results: list[IngestFileResult] = []
-
     # Native Google Docs/Sheets/etc. — skip up front with a clear reason (no silent ignore).
     for native in listing.skipped_native:
         failed += 1
@@ -176,7 +173,6 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
                 reason=native.reason,
             )
         )
-
     for item in listing.supported_files:
         synced = (
             db.query(DriveSyncedFile)

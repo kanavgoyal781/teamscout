@@ -120,6 +120,9 @@ def _render_html(stats: dict[str, Any]) -> str:
         ["embedding_cache_hit_rate", stats.get("embedding_cache_hit_rate")],
         ["embedding_cache_hits", stats.get("embedding_cache_hits")],
         ["embedding_cache_total", stats.get("embedding_cache_total")],
+        ["jsearch_requests_last_search", stats.get("jsearch_requests_last_search")],
+        ["jsearch_requests_today", stats.get("jsearch_requests_today")],
+        ["jsearch_searches_today", stats.get("jsearch_searches_today")],
         ["m24_panel", f"models={(__import__('app.core.config', fromlist=['settings']).settings.JUDGE_PANEL_MODELS or '(single)')} critique={__import__('app.core.config', fromlist=['settings']).settings.ADVERSARIAL_CRITIQUE} max_pairs={__import__('app.core.config', fromlist=['settings']).settings.PAIRWISE_PANEL_MAX_PAIRS} agree={stats.get('judge_agreement_mean_today')} n={stats.get('judge_agreement_samples_today')}"],
     ]
     learning = stats.get("learning") or {}

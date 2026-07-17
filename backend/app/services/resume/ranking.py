@@ -38,7 +38,6 @@ def _row_strength(r: dict) -> Literal["none", "weak", "solid", "strong"]:
     s = r.get("strength")
     if s in ("none", "weak", "solid", "strong"): return s  # type: ignore[return-value]
     return evidence_strength(float(r.get("evidence_score") or 0.0))  # type: ignore[return-value]
-
 _rationale_cites_units, _rationale_references_resume = rationale_cites_units, rationale_references_resume
 _rationale_rank_consistent, _llm_justify, _llm_rerank = rationale_rank_consistent, llm_justify, llm_justify
 _ = (_ResumeRerankItem, _ResumeRerankResponse)

@@ -32,7 +32,6 @@ def require_sumble_config() -> None:
         raise ServiceNotConfiguredError("Sumble", "SUMBLE_API_KEY")
 def redact_url(url: str) -> str:
     from app.core.redact import redact_error
-
     parsed = urlparse(url)
     return redact_error(f"{parsed.scheme}://{parsed.netloc}{parsed.path}")
 def auth_headers() -> dict[str, str]:

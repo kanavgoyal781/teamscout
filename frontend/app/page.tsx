@@ -23,6 +23,8 @@ export default function HomePage() {
   const [teamStepActive, setTeamStepActive] = useState(false);
   const [facets, setFacets] = useState<JobFacets | null>(null);
   const [droppedCounts, setDroppedCounts] = useState<Record<string, number>>({});
+  const [poolNotices, setPoolNotices] = useState<string[]>([]);
+  const [poolEmptyReason, setPoolEmptyReason] = useState<string | null>(null);
   const [facetSelection, setFacetSelection] = useState<FacetSelection>(EMPTY_FACET_SELECTION);
   const [profileHash, setProfileHash] = useState<string | null>(null);
 
@@ -84,6 +86,8 @@ export default function HomePage() {
           setTeamStepActive(false);
           setFacets(null);
           setDroppedCounts({});
+          setPoolNotices([]);
+          setPoolEmptyReason(null);
           setFacetSelection(EMPTY_FACET_SELECTION);
           resetTeams();
           // Keep profileHash after confirm so job-card feedback still has provenance.
@@ -96,11 +100,15 @@ export default function HomePage() {
           setSearched(true);
           setFacets(meta?.facets ?? null);
           setDroppedCounts(meta?.dropped_counts ?? {});
+          setPoolNotices(meta?.pool_notices ?? []);
+          setPoolEmptyReason(meta?.pool_empty_reason ?? null);
           setFacetSelection(EMPTY_FACET_SELECTION);
         }}
         onSearchError={() => {
           setSearching(false);
           setSearched(false);
+          setPoolNotices([]);
+          setPoolEmptyReason(null);
         }}
       />
 
@@ -117,6 +125,8 @@ export default function HomePage() {
           results={filteredResults}
           loading={searching}
           searched={searched}
+          poolNotices={poolNotices}
+          poolEmptyReason={poolEmptyReason}
           getTeamState={getTeamState}
           onHydrate={(jobId) => hydrateJobTeam(jobId)}
           onExtract={(jobId) => handleExtractTeam(jobId)}

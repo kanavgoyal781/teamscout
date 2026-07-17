@@ -23,6 +23,8 @@ class JobFetchResult:
     queries: list[str] = field(default_factory=list)
     per_source_counts: dict[str, SourceCounts] = field(default_factory=dict)
     source_errors: list[str] = field(default_factory=list)
+    pool_notices: list[str] = field(default_factory=list)
+    pool_empty_reason: str | None = None  # filters | partial_sources when empty
 def _require_jobs_config() -> None:
     if not is_set(settings.JOBS_API_KEY):
         raise ServiceNotConfiguredError("Jobs API", "JOBS_API_KEY")
@@ -112,6 +114,37 @@ def _mark_deduped(per_source: dict[str, SourceCounts], before: list[Job], after:
         if job.id not in kept_ids:
             sc = per_source.setdefault(job.source, SourceCounts())
             sc.deduped_away += 1
+def _source_name(err: str) -> str:
+    return err.split(":", 1)[0].strip() if ":" in err else err.strip()
+def all_enabled_sources_errored(per_source: dict[str, SourceCounts], source_errors: list[str]) -> bool:
+    if not per_source: return bool(source_errors)
+    if not source_errors or any(sc.fetched > 0 for sc in per_source.values()): return False
+    return all(sc.errors > 0 for sc in per_source.values())
+def format_all_sources_failed_message(source_errors: list[str]) -> str:
+    names = sorted({_source_name(e) for e in source_errors if e})
+    return f"All job sources failed ({', '.join(names) if names else 'unknown'})."
+def build_pool_notices(*, params: SearchParams, per_source: dict[str, SourceCounts], source_errors: list[str], empty: bool) -> tuple[list[str], str | None]:
+    from app.services.jobs_svc.jsearch import JSEARCH_QUOTA_NOTICE
+    notices: list[str] = []
+    empty_reason: str | None = None
+    for err in source_errors:
+        if JSEARCH_QUOTA_NOTICE in err or "quota" in err.lower():
+            if JSEARCH_QUOTA_NOTICE not in notices: notices.append(JSEARCH_QUOTA_NOTICE)
+        else:
+            src = _source_name(err)
+            line = f"{src} failed — results may be partial."
+            if src and line not in notices: notices.append(line)
+    if empty:
+        short = params.date_window in {"day", "3days"}
+        if source_errors and not all_enabled_sources_errored(per_source, source_errors):
+            empty_reason = "partial_sources"
+            notices.append("No postings kept for this window — try widening Posted within (week or month)." if short else "Sources ran but no jobs were kept after filters — try loosening hard filters.")
+        else:
+            empty_reason = "filters"
+            notices.append("No jobs matched this date window — try widening Posted within (week or month)." if short else "No jobs matched your filters — try refining title, skills, or location.")
+        for name, sc in sorted(per_source.items()):
+            notices.append(f"{name}: fetched={sc.fetched} kept={sc.kept_after_filters} errors={sc.errors}")
+    return notices, empty_reason
 def _merge_fetch(
     profile: ResumeProfile, db: Session, *, queries: list[str],
     params: SearchParams | None = None, remote_only: bool = False,
@@ -150,19 +183,23 @@ def _merge_fetch(
     capped = sorted(deduped, key=sort_key)[: settings.JOBS_FETCH_TARGET]
     if len(deduped) > len(capped):
         dropped.fetch_cap += len(deduped) - len(capped)
-    logger.info(
-        "jobs.fetch_merged", final=len(capped), sources=list(per_source.keys()),
-        dropped=dropped.as_dict(), source_errors=source_errors, queries=queries,
+    logger.info("jobs.fetch_merged", final=len(capped), sources=list(per_source.keys()), dropped=dropped.as_dict(), errors=len(source_errors))
+    if not capped and all_enabled_sources_errored(per_source, source_errors):
+        raise ServiceFailingError("Jobs API", format_all_sources_failed_message(source_errors))
+    notices, empty_reason = build_pool_notices(
+        params=params, per_source=per_source, source_errors=source_errors, empty=not capped,
     )
-    if not capped:
-        detail = f"no jobs matched filters (date_window={params.date_window})"
-        if source_errors:
-            detail += f"; source_errors={source_errors[:3]}"
-        raise ServiceFailingError("Jobs API", detail)
-    _cache_jobs(db, capped)
+    if capped:
+        _cache_jobs(db, capped)
+        notices = [
+            n for n in notices
+            if "quota" in n.lower() or "failed" in n.lower() or "partial" in n.lower()
+        ]
+        empty_reason = None
     return JobFetchResult(
         jobs=capped, dropped_counts=dropped, queries=list(queries),
         per_source_counts=per_source, source_errors=source_errors,
+        pool_notices=notices, pool_empty_reason=empty_reason,
     )
 def fetch_jobs(
     profile: ResumeProfile, db: Session, *, params: SearchParams | None = None,
@@ -186,3 +223,4 @@ def fetch_jobs_for_intent(intent: IntentProfile, db: Session) -> list[Job]:
     return _merge_fetch(
         intent.as_query_profile(), db, queries=queries, params=params, remote_only=remote_only,
     ).jobs
+

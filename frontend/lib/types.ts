@@ -120,6 +120,10 @@ export type SearchResponse = {
   queries?: string[];
   per_source_counts?: Record<string, SourceCounts>;
   source_errors?: string[];
+  /** Context-aware strip lines (quota, partial source fail, widen date window). */
+  pool_notices?: string[];
+  /** When results empty: filters | partial_sources */
+  pool_empty_reason?: string | null;
 };
 
 export type ApiErrorBody = {

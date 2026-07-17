@@ -16,12 +16,18 @@ type ConfirmedSnapshot = {
   skills: string[];
 };
 
+export type SearchCompleteMeta = {
+  facets?: JobFacets;
+  dropped_counts?: Record<string, number>;
+  queries?: string[];
+  per_source_counts?: Record<string, import("../../lib/types").SourceCounts>;
+  source_errors?: string[];
+  pool_notices?: string[];
+  pool_empty_reason?: string | null;
+};
+
 type ResumeWizardProps = {
-  onSearchComplete: (
-    results: RankedJob[],
-    searchId: string,
-    meta?: { facets?: JobFacets; dropped_counts?: Record<string, number>; queries?: string[] },
-  ) => void;
+  onSearchComplete: (results: RankedJob[], searchId: string, meta?: SearchCompleteMeta) => void;
   onSearchStart: () => void;
   onSearchError?: () => void;
   searching?: boolean;
@@ -126,18 +132,23 @@ export default function ResumeWizard({
       onSearchStart();
     },
     onSuccess: (response) => {
+      // Zero-pool is a results state — never toast.error; strip shows notices.
       onSearchComplete(response.results, response.search_id, {
         facets: response.facets,
         dropped_counts: response.dropped_counts,
         queries: response.queries,
+        per_source_counts: response.per_source_counts,
+        source_errors: response.source_errors,
+        pool_notices: response.pool_notices,
+        pool_empty_reason: response.pool_empty_reason,
       });
-      toast.success(
-        response.results.length > 0
-          ? `Found top ${response.results.length} matches.`
-          : "Search complete — no jobs matched.",
-      );
+      if (response.results.length > 0) {
+        toast.success(`Found top ${response.results.length} matches.`);
+      }
+      // Empty success: JobResultsList warning strip carries the story (no blocking toast).
     },
     onError: (error) => {
+      // Reserved for true failures (e.g. all sources errored → service_failing).
       onSearchError?.();
       toast.error(formatApiError(error));
     },

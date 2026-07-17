@@ -90,7 +90,6 @@ def skill_match_level_atomic(req_atom: str, skill: str) -> str | None:
     if all(tokens_match(a, b) for a, b in zip(req_t, skill_t, strict=True)): return "alias"
     return None
 def skill_match_level(req: str, skill: str) -> str | None:
-    """Atomic/alias equality, or skill contained in phrased req ('SQL' ⊂ 'Strong SQL skills')."""
     req_t, skill_t = tokenize_tech(req), tokenize_tech(skill)
     if not req_t or not skill_t: return None
     if len(req_t) == len(skill_t):
@@ -120,7 +119,6 @@ def evidence_strength(score: float) -> str:
 def skill_requirement_score(
     requirement_text: str, *, skills: list[str], unit_texts: list[str], semantic_score: float
 ) -> float:
-    """Exact 1.0 / alias 0.9 short-circuit before semantic cap (floor applied only for semantic)."""
     best = 0.0
     for skill in skills:
         level = skill_match_level(requirement_text, skill)

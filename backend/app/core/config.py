@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     RRF_K: int = 60
     JOBS_FETCH_TARGET: int = 150
     JOBS_RECENCY_DAYS: int = 14
+    JSEARCH_MAX_REQUESTS_PER_SEARCH: int = 4  # cap expansion-variant HTTP calls per search
     RERANK_TOP_N: int = 30
     SEARCH_RESULTS_TOP_N: int = 10
     RECENCY_HALF_LIFE_DAYS: int = 7

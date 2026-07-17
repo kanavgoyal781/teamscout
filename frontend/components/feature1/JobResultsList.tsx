@@ -34,6 +34,9 @@ type JobResultsListProps = {
   searched?: boolean;
   /** Optional profile content hash for feedback provenance. */
   profileHash?: string | null;
+  /** Soft notices from backend (quota, partial sources, widen window). */
+  poolNotices?: string[];
+  poolEmptyReason?: string | null;
   getTeamState: (jobId: string) => JobTeamState;
   onHydrate: (jobId: string) => void;
   onExtract: (jobId: string) => void;
@@ -43,11 +46,39 @@ type JobResultsListProps = {
   onTeamPanelOpenChange?: (open: boolean) => void;
 };
 
+function PoolWarningStrip({
+  notices,
+  emptyReason,
+}: {
+  notices: string[];
+  emptyReason?: string | null;
+}) {
+  if (!notices.length) return null;
+  const title =
+    emptyReason === "partial_sources"
+      ? "Search finished with partial source coverage"
+      : emptyReason === "filters"
+        ? "No jobs matched this search"
+        : "Source notice";
+  return (
+    <div className="pool-warning-strip" data-testid="pool-warning-strip" role="status">
+      <p className="pool-warning-title">{title}</p>
+      <ul className="pool-warning-list">
+        {notices.map((n) => (
+          <li key={n}>{n}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function JobResultsList({
   results,
   loading = false,
   searched = false,
   profileHash = null,
+  poolNotices = [],
+  poolEmptyReason = null,
   getTeamState,
   onHydrate,
   onExtract,
@@ -78,12 +109,15 @@ export default function JobResultsList({
 
   if (results.length === 0) {
     if (!searched) return null;
-    return <JobResultsEmpty />;
+    return (
+      <JobResultsEmpty notices={poolNotices} emptyReason={poolEmptyReason} />
+    );
   }
 
   return (
     <section className="panel" data-testid="job-results" data-tour="job-results">
       <h2>Top matches &amp; team discovery</h2>
+      <PoolWarningStrip notices={poolNotices} emptyReason={poolEmptyReason} />
       <motion.div
         className="job-list"
         variants={skipEntrance ? undefined : staggerContainer}
@@ -265,10 +299,21 @@ export default function JobResultsList({
   );
 }
 
-export function JobResultsEmpty() {
+export function JobResultsEmpty({
+  notices = [],
+  emptyReason = null,
+}: {
+  notices?: string[];
+  emptyReason?: string | null;
+}) {
+  const instruction =
+    emptyReason === "partial_sources"
+      ? "Some job sources failed or returned nothing in this window. Check the notices below — try widening Posted within or retrying later."
+      : "No ranked jobs matched this search. Try refining title, location, skills, or widening Posted within, then search again.";
   return (
     <section className="panel" data-testid="job-results-empty">
-      <EmptyState instruction="No ranked jobs matched this search. Try refining title, location, or skills, then search again." />
+      <PoolWarningStrip notices={notices} emptyReason={emptyReason} />
+      <EmptyState instruction={instruction} />
     </section>
   );
 }

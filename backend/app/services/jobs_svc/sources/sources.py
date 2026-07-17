@@ -31,7 +31,6 @@ def _job(**kw) -> Job:
 def _http_json(url: str, *, params: dict | None = None) -> object:
     from app.core.redact import format_httpx_error, redact_error
     from urllib.parse import urlparse
-
     host = urlparse(url).netloc or "job_source"
     try:
         with httpx.Client(timeout=default_timeout(), headers=_UA) as client:
@@ -54,7 +53,10 @@ class JSearchSource:
         base = jsearch_params_from_search(criteria.params)
         if criteria.params.remote_mode == "remote" and criteria.params.remote_mode_pref == "hard":
             base = {**base, "remote_jobs_only": "true"}
-        raw, _ = fetch_jsearch_raw(criteria.queries or ["software engineer"], base_params=base)
+        # JSearchQuotaError propagates to registry as soft source_error (other sources continue).
+        raw, _, _ = fetch_jsearch_raw(
+            criteria.queries or ["software engineer"], base_params=base, db=db,
+        )
         out: list[Job] = []
         for i, item in enumerate(raw):
             if not isinstance(item, dict):

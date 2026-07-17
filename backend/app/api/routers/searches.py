@@ -23,6 +23,8 @@ class SearchResponse(BaseModel):
     facets: JobFacets | None = None
     per_source_counts: dict[str, dict[str, int]] = Field(default_factory=dict)
     source_errors: list[str] = Field(default_factory=list)
+    pool_notices: list[str] = Field(default_factory=list)
+    pool_empty_reason: str | None = None  # filters | partial_sources when results empty
 @router.post("", response_model=SearchResponse)
 @limiter.limit(search_limit)
 def create_search(request: Request, payload: SearchRequest, db: Session = Depends(get_db)) -> SearchResponse:
@@ -39,8 +41,8 @@ def create_search(request: Request, payload: SearchRequest, db: Session = Depend
         raise ValidationError("At least one skill is required before search")
     params = payload.params or SearchParams()
     detailed = jobs.fetch_jobs_detailed(profile, db, params=params)
-    fetched_jobs = detailed.jobs if hasattr(detailed, 'jobs') else detailed
-    dropped = getattr(detailed, 'dropped_counts', None) or DroppedCounts()
+    fetched_jobs = detailed.jobs if hasattr(detailed, "jobs") else detailed
+    dropped = getattr(detailed, "dropped_counts", None) or DroppedCounts()
     ranked = ranking.rank_jobs(profile, fetched_jobs, params=params)
     facets = compute_facets(fetched_jobs)
     search_row = Search(workspace_id=wid, resume_id=row.id, label=f"{profile.title} @ {profile.location}".strip(), query_json=profile.model_dump_json(), results_json=json.dumps([item.model_dump(mode="json") for item in ranked]))
@@ -49,4 +51,11 @@ def create_search(request: Request, payload: SearchRequest, db: Session = Depend
     db.refresh(search_row)
     per_source = getattr(detailed, "per_source_counts", {}) or {}
     per_source_out = {k: (v.model_dump() if hasattr(v, "model_dump") else dict(v)) for k, v in per_source.items()}
-    return SearchResponse(search_id=search_row.id, resume_id=row.id, results=ranked, dropped_counts=dropped.as_dict() if hasattr(dropped, "as_dict") else dict(dropped or {}), facets=facets, per_source_counts=per_source_out, source_errors=list(getattr(detailed, "source_errors", None) or []))
+    return SearchResponse(
+        search_id=search_row.id, resume_id=row.id, results=ranked,
+        dropped_counts=dropped.as_dict() if hasattr(dropped, "as_dict") else dict(dropped or {}),
+        facets=facets, per_source_counts=per_source_out,
+        source_errors=list(getattr(detailed, "source_errors", None) or []),
+        pool_notices=list(getattr(detailed, "pool_notices", None) or []),
+        pool_empty_reason=getattr(detailed, "pool_empty_reason", None),
+    )

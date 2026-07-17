@@ -1,5 +1,4 @@
 """Services; lazy `from app.services import name` → domain module.
-
 Package names under app.services/ (ranking, resume, team, …) always win over _L —
 `from app.services import ranking` is the ranking package (proxies engine via
 ranking/__init__.__getattr__). Monkeypatch internal engine symbols on
