@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from app.services.ops.html_render import _fmt_cell, _is_num_key, _render_html, _table, render_ops_html
+from app.services.ops.html_render import _fmt_cell, _is_num_key, _render_html, _table
 
 
 def _realistic_stats() -> dict:
