@@ -37,23 +37,33 @@ def _tokens_match(provided: str, expected: str) -> bool:
         return hmac.compare_digest(provided, expected)
     except (TypeError, ValueError):
         return False
-def _fmt_cell(h: str, c: Any) -> str:
-    hs = str(h).lower()
+def _is_num_key(key: str) -> bool:
+    hs = (key or "").lower()
+    return any(k in hs for k in ("ms", "cost", "usd", "count", "calls", "credits", "errors", "total", "rate", "runs", "ceiling", "hits"))
+def _fmt_cell(key: str, c: Any) -> str:
     if c is None or c == "": return ""
+    hs = (key or "").lower()
     try:
         if "cost" in hs or "usd" in hs: return f"{float(c):.2f}"
-        if "ms" in hs or hs in {"count","calls","credits","sumble_credits","errors","total"}: return str(int(round(float(c))))
+        if "rate" in hs and "error_rate" not in hs: return f"{float(c):.4f}".rstrip("0").rstrip(".") or "0"
+        if "ms" in hs or any(k in hs for k in ("count", "calls", "credits", "errors", "total", "runs", "hits", "ceiling")):
+            return str(int(round(float(c))))
+        if "error_rate" in hs: return f"{float(c):.4f}".rstrip("0").rstrip(".") or "0"
     except (TypeError, ValueError): pass
     return str(c)
 def _table(headers: list[str], rows: list[list[Any]]) -> str:
+    """KV tables (metric,value): format/class value cells from metric name in col0."""
     th = "".join(f"<th>{html.escape(str(h))}</th>" for h in headers)
+    kv = len(headers) == 2 and str(headers[1]).lower() in {"value", "val"}
     body = []
     for row in rows:
         tds = []
         for i, c in enumerate(row):
-            h = headers[i] if i < len(headers) else ""; hs = str(h).lower()
-            cls = "num" if any(k in hs for k in ("ms","cost","usd","count","calls","credits","errors","total","rate")) else ""
-            tds.append(f'<td class="{cls}">{html.escape(_fmt_cell(h, c))}</td>')
+            if i == 0:
+                tds.append(f"<td>{html.escape(str(c) if c is not None else '')}</td>"); continue
+            fmt_key = str(row[0] or "") if kv else str(headers[i] if i < len(headers) else "")
+            cls = "num" if _is_num_key(fmt_key) else ""
+            tds.append(f'<td class="{cls}">{html.escape(_fmt_cell(fmt_key, c))}</td>')
         body.append(f"<tr>{''.join(tds)}</tr>")
     return f"<table class='ops-table'><thead><tr>{th}</tr></thead><tbody>{''.join(body)}</tbody></table>"
 def _ops_payload(db: Session) -> dict[str, Any]:

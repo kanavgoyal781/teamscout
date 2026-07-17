@@ -53,42 +53,57 @@ test.describe("M26 craft surfaces", () => {
     });
   });
 
-  test("ops craft light + dark screenshots", async ({ page }) => {
-    const opsHtml = (theme: "light" | "dark") => `<!DOCTYPE html>
-<html data-theme="${theme}" class="${theme === "dark" ? "dark" : ""}"><head><title>TeamScout Ops</title>
-<style>
-:root{--bg:#F7F4ED;--bg-raised:#FDFBF7;--ink:#0C1F3F;--ink-strong:#081426;--muted:#5C6B82;--line:rgba(12,31,63,.12);--accent:#0C1F3F}
-html.dark,:root[data-theme=dark]{--bg:#0A182E;--bg-raised:#102340;--ink:#F2EDE2;--ink-strong:#FDFBF7;--muted:#9AA3B5;--line:rgba(242,237,226,.14);--accent:#F2EDE2}
-body{font-family:system-ui,sans-serif;margin:1.5rem;background:var(--bg);color:var(--ink)}
-h1,h2{color:var(--ink-strong)}.ops-table{border-collapse:collapse;width:100%;background:var(--bg-raised);border:1px solid var(--line)}
-.ops-table th,.ops-table td{border-bottom:1px solid var(--line);padding:8px 10px}
-.ops-table th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
-.ops-table td.num{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace;text-align:right}
-.ops-table tbody tr:nth-child(even){background:color-mix(in srgb,var(--ink) 3%,transparent)}
-</style></head><body data-testid="ops-root">
-<h1>TeamScout Ops</h1>
-<table class="ops-table" data-testid="ops-table"><thead><tr><th>metric</th><th>value</th></tr></thead>
-<tbody>
-<tr><td>llm_cost_today_usd</td><td class="num">1.23</td></tr>
-<tr><td>p50_ms</td><td class="num">320</td></tr>
-<tr><td>feature2_runs_today</td><td class="num">4</td></tr>
-</tbody></table>
-</body></html>`;
+test("ops craft light + dark screenshots from real _render_html", async ({ page }) => {
+    // Drive shipped ops renderer (not a toy HTML reimplementation)
+    const { execFileSync } = await import("node:child_process");
+    const path = await import("node:path");
+    const backend = path.join(__dirname, "../../backend");
+    const py = `
+from app.api.routers.ops import _render_html
+stats = {
+  "latency_by_operation": {"rerank": {"count": 3, "p50_ms": 320.7, "p95_ms": 410.2}},
+  "error_rate_by_service": {"llm": {"errors": 1, "total": 10, "error_rate": 0.1}},
+  "recent_traces": [{"created_at":"2026-07-16T12:00:00","operation":"rerank","status":"ok","latency_ms":120.4,"cost_usd":0.0123,"credits_used":None,"prompt_name":"rerank","prompt_version":"1","cache_hit":False,"error_type":None,"request_id":"r1"}],
+  "total_cost_today_usd": 1.234, "llm_cost_today_usd": 1.234, "llm_ceiling_usd": 5.0,
+  "sumble_credits_today": 12, "sumble_ceiling": 1000,
+  "cost_per_feature1_run_usd": 0.4567, "feature1_runs_today": 3,
+  "cost_per_feature2_run_usd": 0.1, "feature2_runs_today": 4,
+  "embedding_cache_hit_rate": 0.55, "embedding_cache_hits": 11, "embedding_cache_total": 20,
+  "workspace_llm_ceiling_usd": 1.0, "workspace_sumble_ceiling": 100,
+  "workspace_usage_today": [{"workspace_id":"w1","llm_cost_usd":0.5,"sumble_credits":2}],
+  "learning": {"evals_root":"/evals","feedback_counts":{"thumbs_up":2},"suites":[],"experiments":[]},
+  "job_sources": [{"source":"jsearch","calls":5,"p50_ms":90.2,"p95_ms":120.0,"error_rate":0.0}],
+}
+print(_render_html(stats))
+`
+    const html = execFileSync("python3", ["-c", py], {
+      cwd: backend,
+      env: { ...process.env, PYTHONPATH: backend },
+      encoding: "utf-8",
+      maxBuffer: 2_000_000,
+    });
+    expect(html).toContain("ops-table");
+    expect(html).toMatch(/llm_cost_today_usd<\/td><td class="num">1\.23<\/td>/);
+    expect(html).toContain("theme-bar");
+    expect(html).toContain("Summary");
 
-    await page.setContent(opsHtml("light"));
-    await expect(page.getByTestId("ops-table")).toBeVisible();
-    const numAlign = await page.locator("td.num").first().evaluate((el) => getComputedStyle(el).textAlign);
-    expect(numAlign).toBe("right");
-    const tnum = await page.locator("td.num").first().evaluate((el) => getComputedStyle(el).fontVariantNumeric);
-    expect(tnum).toMatch(/tabular-nums|lining-nums|normal/); // browsers may report differently; class is present
+    await page.setContent(html);
+    await expect(page.getByRole("heading", { name: "TeamScout Ops" })).toBeVisible();
+    // Summary value cell for cost is .num and 2dp from real renderer
+    const costCell = page.locator("td", { hasText: "llm_cost_today_usd" }).locator("xpath=following-sibling::td[1]");
+    await expect(costCell).toHaveClass(/num/);
+    await expect(costCell).toHaveText("1.23");
+    const align = await costCell.evaluate((el) => getComputedStyle(el).textAlign);
+    expect(align).toBe("right");
     await page.screenshot({ path: "public/screenshots/09-ops.png", fullPage: true });
 
-    await page.setContent(opsHtml("dark"));
-    await expect(page.getByTestId("ops-table")).toBeVisible();
+    await page.getByRole("button", { name: "Dark" }).click();
+    await expect(page.locator("html")).toHaveClass(/dark/);
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     expect(bg).toMatch(/rgb\(10,\s*24,\s*46\)/);
     await page.screenshot({ path: "public/screenshots/09-ops-dark.png", fullPage: true });
   });
+
 
   test("recommendation score bars stay behind why disclosure", async ({ page }) => {
     await useLightTheme(page);
