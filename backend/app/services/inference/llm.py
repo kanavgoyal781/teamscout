@@ -41,8 +41,10 @@ def complete(
     max_tokens: int = 2048,
     operation: str = "llm",
     prompt_meta: PromptTemplate | None = None,
+    model: str | None = None,
 ) -> str:
     _require_llm_config()
+    use_model = (model or settings.LLM_MODEL).strip() or settings.LLM_MODEL
     messages: list[dict[str, str]] = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -52,7 +54,7 @@ def complete(
         "Content-Type": "application/json",
     }
     payload: dict[str, Any] = {
-        "model": settings.LLM_MODEL,
+        "model": use_model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -60,13 +62,13 @@ def complete(
     est_in = observability.approx_token_count((system or "") + prompt)
     with observability.traced_call(
         operation,
-        model=settings.LLM_MODEL,
+        model=use_model,
         prompt_name=prompt_meta.name if prompt_meta else None,
         prompt_version=prompt_meta.version if prompt_meta else None,
         prompt_hash=prompt_meta.content_hash if prompt_meta else None,
         check_llm_ceiling=True,
         estimated_cost_usd=observability.estimate_llm_cost_usd(
-            model=settings.LLM_MODEL, input_tokens=est_in, output_tokens=max_tokens
+            model=use_model, input_tokens=est_in, output_tokens=max_tokens
         ),
     ) as trace:
         try:
@@ -95,7 +97,7 @@ def complete(
             trace.input_tokens = est_in
             trace.output_tokens = observability.approx_token_count(content)
         trace.cost_usd = observability.estimate_llm_cost_usd(
-            model=settings.LLM_MODEL,
+            model=use_model,
             input_tokens=trace.input_tokens,
             output_tokens=trace.output_tokens,
         )
@@ -190,6 +192,7 @@ def complete_json(
     max_retries: int = 1,
     operation: str = "llm",
     prompt_meta: PromptTemplate | None = None,
+    llm_model: str | None = None,
 ) -> T:
     base_system = system or "Return valid JSON only. No markdown or commentary."
     budget = max_tokens if max_tokens is not None else settings.max_tokens_for_operation(operation)
@@ -204,6 +207,7 @@ def complete_json(
             max_tokens=attempt_budget,
             operation=operation,
             prompt_meta=prompt_meta,
+            model=llm_model,
         )
         try:
             payload = _loads_llm_json(raw)

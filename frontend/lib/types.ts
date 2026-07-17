@@ -272,6 +272,26 @@ export type TournamentRecord = {
   /** Borda points (decisive=1.0, slight=0.5); may diverge from win count. */
   borda_score?: number;
   reasons: string[];
+  /** Panel mean agreement 0–1 when JUDGE_PANEL_MODELS set. */
+  judge_agreement?: number | null;
+  /** e.g. "3/3 judges agree" or "2/3 split". */
+  judge_agreement_label?: string | null;
+};
+
+export type AdversarialCritique = {
+  side_a_resume_id: string;
+  side_a_filename: string;
+  side_a_model: string;
+  side_a_argument: string;
+  side_b_resume_id: string;
+  side_b_filename: string;
+  side_b_model: string;
+  side_b_argument: string;
+  verdict_winner_resume_id: string;
+  verdict_winner_filename: string;
+  verdict_model: string;
+  verdict_reason: string;
+  verdict_margin?: string;
 };
 
 export type RankedResumeRecommendation = {
@@ -298,6 +318,9 @@ export type RecommendResumesResponse = {
   recommendations: RankedResumeRecommendation[];
   tournament_comparisons?: number;
   tournament_ran?: boolean;
+  tournament_judge_agreement?: number | null;
+  tournament_judge_agreement_label?: string | null;
+  adversarial_critique?: AdversarialCritique | null;
 };
 
 export type RecommendFromJdRequest = {
@@ -315,6 +338,9 @@ export type RecommendFromJdResponse = {
   recommendations: RankedResumeRecommendation[];
   tournament_comparisons?: number;
   tournament_ran?: boolean;
+  tournament_judge_agreement?: number | null;
+  tournament_judge_agreement_label?: string | null;
+  adversarial_critique?: AdversarialCritique | null;
 };
 
 export type IngestJobFromTextRequest = {

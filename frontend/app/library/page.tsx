@@ -52,6 +52,8 @@ export default function LibraryPage() {
         jdCompany={state.matchedJobCompany}
         tournamentRan={state.tournamentRan}
         tournamentComparisons={state.tournamentComparisons}
+        judgeAgreementLabel={state.judgeAgreementLabel}
+        adversarialCritique={state.adversarialCritique}
         jdHash={state.jdHash}
       />
     </AppShell>

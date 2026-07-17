@@ -93,7 +93,7 @@ jobs:
           python3 scripts/eval_ranking.py --suite synthetic
           python3 scripts/eval_ranking.py --suite feedback
 
-      - name: Resume-pick eval
+      - name: Resume-pick eval (+ judge-stability suite)
         if: steps.secrets.outputs.embeddings == 'true'
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
@@ -103,6 +103,14 @@ jobs:
           EMBEDDINGS_API: ${{ secrets.EMBEDDINGS_API }}
           EMBEDDINGS_MODEL: ${{ secrets.EMBEDDINGS_MODEL }}
         run: python3 scripts/eval_resume_pick.py
+
+      - name: Judge-stability offline (injectable panel; no Friendli required)
+        if: steps.secrets.outputs.embeddings != 'true'
+        run: |
+          # Coverage-only resume-pick + always-on judge_stability bookkeeping
+          TEAMSCOUT_EVAL_SYNTHETIC_EMBED=1 python3 scripts/eval_resume_pick.py || true
+          # Ensure stability suite is always exercised even if resume-pick floors fail offline:
+          python3 -c "from scripts.eval_resume_pick import run_judge_stability_suite, append_eval_history; m=run_judge_stability_suite(synthetic=True); append_eval_history(m, suite='judge_stability'); print(m)"
 
       - name: Experiment harness (defaults vs no-MMR)
         env:

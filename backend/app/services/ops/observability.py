@@ -21,7 +21,14 @@ from app.db.models import Trace
 from app.db.session import SessionLocal
 from app.errors import CostCeilingExceededError
 logger = get_logger(__name__)
-LLM_OPERATIONS = frozenset({"parse_resume", "rerank", "team_extract", "justify", "embed", "cross_encode", "jd_metadata", "jd_decompose", "pairwise_judge"})
+LLM_OPERATIONS = frozenset({"parse_resume", "rerank", "team_extract", "justify", "embed", "cross_encode", "jd_metadata", "jd_decompose", "pairwise_judge", "advocate", "pairwise_tournament"})
+# Per-model USD / 1M tokens (Friendli-class + default). Unknown models fall back to settings defaults.
+_LLM_MODEL_PRICES: dict[str, tuple[float, float]] = {
+    "gpt-4o-mini": (0.15, 0.60),
+    "MiniMaxAI/MiniMax-M2.5": (0.30, 1.20),
+    "deepseek-ai/DeepSeek-V3.2": (0.27, 1.10),
+    "Qwen/Qwen3-235B-A22B-Instruct-2507": (0.40, 1.60),
+}
 FEATURE1_OPS = frozenset(
     {
         "parse_resume",
@@ -37,7 +44,7 @@ FEATURE1_OPS = frozenset(
         "sumble.unknown",
     }
 )
-FEATURE2_OPS = frozenset({"justify"})
+FEATURE2_OPS = frozenset({"justify", "pairwise_judge", "advocate", "pairwise_tournament"})
 def current_request_id() -> str | None:
     try:
         ctx = structlog.contextvars.get_contextvars()
@@ -48,12 +55,13 @@ def current_request_id() -> str | None:
 def estimate_llm_cost_usd(
     *, model: str | None, input_tokens: int | None, output_tokens: int | None
 ) -> float:
-    _ = model
     inp = max(int(input_tokens or 0), 0)
     out = max(int(output_tokens or 0), 0)
-    return (inp / 1_000_000.0) * settings.LLM_PRICE_INPUT_PER_1M + (
-        out / 1_000_000.0
-    ) * settings.LLM_PRICE_OUTPUT_PER_1M
+    pin, pout = _LLM_MODEL_PRICES.get(
+        (model or "").strip(),
+        (float(settings.LLM_PRICE_INPUT_PER_1M), float(settings.LLM_PRICE_OUTPUT_PER_1M)),
+    )
+    return (inp / 1_000_000.0) * pin + (out / 1_000_000.0) * pout
 def estimate_embedding_cost_usd(*, input_tokens: int | None) -> float:
     return (max(int(input_tokens or 0), 0) / 1_000_000.0) * settings.EMBEDDINGS_PRICE_PER_1M
 def approx_token_count(text: str) -> int:

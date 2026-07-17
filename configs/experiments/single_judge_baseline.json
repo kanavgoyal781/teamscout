@@ -1,0 +1,12 @@
+{
+  "name": "single_judge_baseline",
+  "description": "M24 baseline: empty JUDGE_PANEL_MODELS (single LLM_MODEL judge), ADVERSARIAL_CRITIQUE off",
+  "weights": {
+    "llm": 0.38, "rrf": 0.2, "skills": 0.12, "recency": 0.08,
+    "experience": 0.12, "requirements": 0.1, "cross_encoder": 0.0
+  },
+  "tournament_threshold": 0.05,
+  "judge_panel_models": [],
+  "pairwise_panel_max_pairs": 6,
+  "adversarial_critique": false
+}

@@ -17,7 +17,7 @@ from app.schemas.library import (
 from app.schemas.resume import ResumeProfile
 from app.services import embeddings
 from app.services.resume.jd_decompose import decompose_jd
-from app.services.resume.tournament import AlignmentEvidence, maybe_run_tournament
+from app.services.resume.tournament import AlignmentEvidence, agreement_label, maybe_run_tournament
 from app.services.ranking.math import skill_jaccard
 from app.services.ranking.math_align import (
     align_resume,
@@ -278,19 +278,17 @@ def rank_resumes_for_job(
                     cache_hits=tournament.cache_hits if tournament.ran else 0,
                     cost_usd=tournament.cost_usd if tournament.ran else None,
                     wins=tournament.wins.get(rid, 0) if tournament.ran else 0,
-                    borda_score=(
-                        float(tournament.borda_scores.get(rid, 0.0)) if tournament.ran else 0.0
-                    ),
+                    borda_score=float(tournament.borda_scores.get(rid, 0.0)) if tournament.ran else 0.0,
                     contested=rid in tournament.contested_ids if tournament.ran else False,
                     overrode_coverage=bool(tournament.overrode_coverage) if tournament.ran else False,
-                    reasons=[
-                        reason
-                        for (a, b), reason in tournament.reasons.items()
-                        if rid in (a, b) and reason
-                    ][:3],
+                    reasons=[reason for (a, b), reason in tournament.reasons.items() if rid in (a, b) and reason][:3],
+                    judge_agreement=tournament.judge_agreement_mean if tournament.ran else None,
+                    judge_agreement_label=(agreement_label(tournament.judge_agreement_mean, max(1, len(tournament.panel_models) or 1)) if tournament.ran and tournament.panel_models else None),
                 ),
             )
         )
     # Tournament only reorders cards; match_score stays the weighted final blend
     # (never fudge rings to hide inverted scores — badge explains tournament order).
+    rank_resumes_for_job.last_tournament = tournament  # type: ignore[attr-defined]
     return ranked
+rank_resumes_for_job.last_tournament = None  # type: ignore[attr-defined]

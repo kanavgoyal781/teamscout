@@ -101,6 +101,11 @@ class Settings(BaseSettings):
     LLM_PRICE_INPUT_PER_1M: float = 0.15
     LLM_PRICE_OUTPUT_PER_1M: float = 0.60
     EMBEDDINGS_PRICE_PER_1M: float = 0.02
+    # M24: empty = single-judge identity; comma-separated Friendli model ids for PoLL panel
+    JUDGE_PANEL_MODELS: str = ""
+    PAIRWISE_PANEL_MAX_PAIRS: int = 6
+    ADVERSARIAL_CRITIQUE: bool = False
+    LLM_MAX_TOKENS_ADVOCATE: int = 400
     OTEL_EXPORTER_OTLP_ENDPOINT: str | None = None
     model_config = SettingsConfigDict(
         env_file=_resolve_env_files(),
@@ -116,9 +121,13 @@ class Settings(BaseSettings):
             "justify": self.LLM_MAX_TOKENS_JUSTIFY,
             "jd_decompose": self.LLM_MAX_TOKENS_JD_DECOMPOSE,
             "pairwise_judge": self.LLM_MAX_TOKENS_PAIRWISE_JUDGE,
+            "advocate": self.LLM_MAX_TOKENS_ADVOCATE,
             "outreach_draft": self.LLM_MAX_TOKENS_OUTREACH_DRAFT,
         }
         return mapping.get(operation, self.LLM_MAX_TOKENS_DEFAULT)
+    @property
+    def judge_panel_models(self) -> list[str]:
+        return [m.strip() for m in (self.JUDGE_PANEL_MODELS or "").split(",") if m.strip()]
     @field_validator(
         "RATE_LIMIT_ENABLED",
         "JOBS_EXTRA_SOURCES_ENABLED",
@@ -129,6 +138,7 @@ class Settings(BaseSettings):
         "CROSS_ENCODER_SHORTLIST",
         "RANKING_LLM_LISTWISE",
         "RANKING_USE_CALIBRATION",
+        "ADVERSARIAL_CRITIQUE",
         mode="before",
     )
     @classmethod

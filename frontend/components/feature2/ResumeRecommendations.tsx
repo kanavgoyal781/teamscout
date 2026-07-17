@@ -2,7 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 
-import type { RankedResumeRecommendation } from "../../lib/types";
+import type { AdversarialCritique, RankedResumeRecommendation } from "../../lib/types";
 import { easeOut, shouldSkipEntrance, staggerContainer, staggerItem } from "../../lib/motion";
 import EmptyState from "../ui/EmptyState";
 import { JobCardSkeleton } from "../ui/Skeleton";
@@ -20,6 +20,8 @@ type ResumeRecommendationsProps = {
   jdHash?: string | null;
   tournamentRan?: boolean;
   tournamentComparisons?: number;
+  judgeAgreementLabel?: string | null;
+  adversarialCritique?: AdversarialCritique | null;
 };
 
 
@@ -106,6 +108,8 @@ export default function ResumeRecommendations({
   jdHash = null,
   tournamentRan = false,
   tournamentComparisons = 0,
+  judgeAgreementLabel = null,
+  adversarialCritique = null,
 }: ResumeRecommendationsProps) {
   const reduced = useReducedMotion();
   const skipEntrance = shouldSkipEntrance(reduced);
@@ -142,6 +146,9 @@ export default function ResumeRecommendations({
           <p className="meta font-num" data-testid="tournament-cost">
             Close-call tournament: {tournamentComparisons} pairwise comparison
             {tournamentComparisons === 1 ? "" : "s"} (logged to ops traces)
+            {judgeAgreementLabel ? (
+              <span data-testid="judge-agreement"> · {judgeAgreementLabel}</span>
+            ) : null}
           </p>
         ) : null}
         {tournamentOverrode ? (
@@ -153,6 +160,43 @@ export default function ResumeRecommendations({
               Ranked by close-call tournament
             </span>
           </p>
+        ) : null}
+        {adversarialCritique ? (
+          <section
+            className="card head-to-head"
+            data-testid="head-to-head"
+            aria-labelledby="head-to-head-title"
+            tabIndex={0}
+          >
+            <h3 id="head-to-head-title" className="section-title" style={{ marginTop: 0 }}>
+              Head-to-head
+            </h3>
+            <p className="meta" style={{ marginTop: 0 }}>
+              Adversarial advocates for the final top-2 (grounded in alignment evidence only).
+            </p>
+            <div className="head-to-head-columns" role="group" aria-label="Advocate arguments">
+              <article className="head-to-head-col" data-testid="advocate-a">
+                <h4 className="label-caps">{adversarialCritique.side_a_filename}</h4>
+                <p className="meta font-num">{adversarialCritique.side_a_model}</p>
+                <p>{adversarialCritique.side_a_argument}</p>
+              </article>
+              <article className="head-to-head-col" data-testid="advocate-b">
+                <h4 className="label-caps">{adversarialCritique.side_b_filename}</h4>
+                <p className="meta font-num">{adversarialCritique.side_b_model}</p>
+                <p>{adversarialCritique.side_b_argument}</p>
+              </article>
+            </div>
+            <div
+              className="head-to-head-verdict"
+              data-testid="head-to-head-verdict"
+              role="status"
+              aria-live="polite"
+            >
+              <strong>Verdict: {adversarialCritique.verdict_winner_filename}</strong>
+              <span className="meta font-num"> · judge {adversarialCritique.verdict_model}</span>
+              <p style={{ margin: "6px 0 0" }}>{adversarialCritique.verdict_reason}</p>
+            </div>
+          </section>
         ) : null}
         <motion.div
           className="recommendation-list"

@@ -21,6 +21,32 @@ from app.services import drive, jobs, library_store, ranking, resume_ranking
 from app.services.jobs_svc.jd_metadata import extract_job_metadata
 from app.services.jobs_svc.store import cache_pasted_job, resolve_job
 router = APIRouter(prefix="/library", tags=["library"])
+
+def _tournament_response_fields(recommendations):
+    from app.schemas.library import AdversarialCritiqueOut
+    from app.services.resume import ranking as resume_ranking
+    tournament_ran = any(r.tournament and r.tournament.ran for r in recommendations)
+    comparisons = max((r.tournament.comparisons for r in recommendations if r.tournament), default=0)
+    agree = next((r.tournament.judge_agreement for r in recommendations if r.tournament and r.tournament.judge_agreement is not None), None)
+    agree_lbl = next((r.tournament.judge_agreement_label for r in recommendations if r.tournament and r.tournament.judge_agreement_label), None)
+    crit = None
+    tmeta = getattr(resume_ranking.rank_resumes_for_job, "last_tournament", None)
+    adv = getattr(tmeta, "adversarial", None) if tmeta is not None else None
+    if adv is not None and isinstance(getattr(adv, "side_a_resume_id", None), str):
+        crit = AdversarialCritiqueOut(
+            side_a_resume_id=adv.side_a_resume_id, side_a_filename=adv.side_a_filename,
+            side_a_model=adv.side_a_model, side_a_argument=adv.side_a_argument,
+            side_b_resume_id=adv.side_b_resume_id, side_b_filename=adv.side_b_filename,
+            side_b_model=adv.side_b_model, side_b_argument=adv.side_b_argument,
+            verdict_winner_resume_id=adv.verdict_winner_resume_id,
+            verdict_winner_filename=adv.verdict_winner_filename,
+            verdict_model=adv.verdict_model, verdict_reason=adv.verdict_reason,
+            verdict_margin=adv.verdict_margin,
+        )
+    return dict(tournament_ran=tournament_ran, tournament_comparisons=comparisons,
+                tournament_judge_agreement=agree, tournament_judge_agreement_label=agree_lbl,
+                adversarial_critique=crit)
+
 @router.get("/resumes", response_model=LibraryResumeListResponse)
 def list_resumes(db: Session = Depends(get_db)) -> LibraryResumeListResponse:
     resumes = library_store.list_library_resumes(db)
@@ -101,15 +127,9 @@ def recommend_from_jd(
     recommendations = resume_ranking.rank_resumes_for_job(
         job, candidates, db=db, metadata_hints=meta
     )
-    tournament_ran = any(r.tournament and r.tournament.ran for r in recommendations)
-    comparisons = max((r.tournament.comparisons for r in recommendations if r.tournament), default=0)
     return RecommendFromJdResponse(
-        job_id=job.id,
-        job_title=job.title,
-        job_company=job.company,
-        recommendations=recommendations,
-        tournament_ran=tournament_ran,
-        tournament_comparisons=comparisons,
+        job_id=job.id, job_title=job.title, job_company=job.company,
+        recommendations=recommendations, **_tournament_response_fields(recommendations),
     )
 @router.post("/jobs/{job_id}/recommend-resumes", response_model=RecommendResumesResponse)
 @limiter.limit(llm_limit)
@@ -123,4 +143,4 @@ def recommend_resumes(
     if not candidates:
         raise ValidationError("Resume library is empty — upload resumes or sync Drive first")
     recommendations = resume_ranking.rank_resumes_for_job(job, candidates)
-    return RecommendResumesResponse(job_id=job_id, recommendations=recommendations)
+    return RecommendResumesResponse(job_id=job_id, recommendations=recommendations, **_tournament_response_fields(recommendations))

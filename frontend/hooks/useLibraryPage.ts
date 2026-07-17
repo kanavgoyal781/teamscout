@@ -34,6 +34,10 @@ export function useLibraryPage() {
   const [matched, setMatched] = useState(false);
   const [tournamentRan, setTournamentRan] = useState(false);
   const [tournamentComparisons, setTournamentComparisons] = useState(0);
+  const [judgeAgreementLabel, setJudgeAgreementLabel] = useState<string | null>(null);
+  const [adversarialCritique, setAdversarialCritique] = useState<
+    import("../lib/types").AdversarialCritique | null
+  >(null);
 
   const libraryQuery = useQuery({
     queryKey: queryKeys.library,
@@ -134,6 +138,8 @@ export function useLibraryPage() {
       setJdHash(contentHashHex([jdTitle, jdCompany, jdLocation, jdText].join("\n")));
       setTournamentRan(Boolean(response.tournament_ran));
       setTournamentComparisons(response.tournament_comparisons ?? 0);
+      setJudgeAgreementLabel(response.tournament_judge_agreement_label ?? null);
+      setAdversarialCritique(response.adversarial_critique ?? null);
       setMatched(true);
       toast.success(
         response.recommendations.length > 0
@@ -179,6 +185,8 @@ export function useLibraryPage() {
     setMatched(false);
     setTournamentRan(false);
     setTournamentComparisons(0);
+    setJudgeAgreementLabel(null);
+    setAdversarialCritique(null);
     matchMutation.mutate();
   }
 
@@ -207,6 +215,8 @@ export function useLibraryPage() {
     jdHash,
     tournamentRan,
     tournamentComparisons,
+    judgeAgreementLabel,
+    adversarialCritique,
     setDriveUrl,
     setJdText,
     setJdTitle,

@@ -3458,3 +3458,34 @@ html.dark .breakdown-row:nth-child(n+5) .breakdown-fill {
 .panel + .panel {
   margin-top: var(--space-7);
 }
+
+/* M24 head-to-head (hidden entirely when API omits critique) */
+.head-to-head {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+}
+.head-to-head-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.head-to-head-col {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  background: var(--bg);
+}
+.head-to-head-verdict {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--brass);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+@media (max-width: 720px) {
+  .head-to-head-columns {
+    grid-template-columns: 1fr;
+  }
+}

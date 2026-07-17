@@ -247,3 +247,20 @@ Global: `LLM_DAILY_COST_CEILING_USD`, `SUMBLE_DAILY_CREDIT_CEILING`. Per workspa
 
 Engine init sets `PRAGMA busy_timeout=5000` and `journal_mode=WAL` on file databases (memory tests use StaticPool + busy_timeout).
 
+## Multi-model judge panel + adversarial critique (M24)
+
+**Pattern:** panel of diverse judges (PoLL-style) over a single judge for close-call resume tournaments; optional adversarial advocates for the display layer only.
+
+| Flag | Default | Effect |
+|---|---|---|
+| `JUDGE_PANEL_MODELS` | empty | Single-judge path (byte-compatible: same cache key shape, one call per pair) |
+| `PAIRWISE_PANEL_MAX_PAIRS` | 6 | When panel set, judge only the closest coverage-gap pairs first (cost cap) |
+| `ADVERSARIAL_CRITIQUE` | off | When on: top-2 only get grounded `advocate.md` arguments + third-model verdict |
+
+**Why size 3 and top-pairs-only:** a 3-model panel on 6 pairs ≈ 18 pairwise calls — enough diversity for majority/margin without unbounded cost. Unanimous majority → decisive Borda weight; split → slight. Per-judge A/B position is re-randomized; cache keys include the judge model so single-judge rows stay valid.
+
+**Stability metric (flip-rate):** `scripts/eval_resume_pick.py` judge-stability suite re-runs tournament fixtures ×3 per config and records pick-flip rate + accuracy to `evals/history.jsonl` (`suite=judge_stability`). The panel becomes product default **only** if recorded numbers show lower flip-rate without reducing 8/8 accuracy — until then defaults remain single-judge (`configs/experiments/single_judge_baseline.json` vs `judge_panel_3.json`).
+
+**Cost arithmetic (worst case, illustrative):** pairwise_judge max_tokens≈1200, ~800 in + 300 out ≈ 0.0004–0.001 USD/call depending on model table rates. Panel: ≤6 pairs × 3 models ≤ 18 calls ≈ **$0.01–0.02**. Critique when on: 2 advocate + 1 verdict ≈ 3 calls. Well under `LLM_DAILY_COST_CEILING_USD` (default $5) and workspace daily LLM USD.
+
+**Honesty:** advocate outputs fail closed if they cite evidence not present in that resume’s alignment rows. UI Head-to-head card is omitted entirely when the flag is off.

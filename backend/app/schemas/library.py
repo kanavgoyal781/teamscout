@@ -107,6 +107,22 @@ class TournamentRecord(BaseModel):
     contested: bool = False
     overrode_coverage: bool = False
     reasons: list[str] = Field(default_factory=list)
+    judge_agreement: float | None = None
+    judge_agreement_label: str | None = None
+class AdversarialCritiqueOut(BaseModel):
+    side_a_resume_id: str
+    side_a_filename: str
+    side_a_model: str
+    side_a_argument: str
+    side_b_resume_id: str
+    side_b_filename: str
+    side_b_model: str
+    side_b_argument: str
+    verdict_winner_resume_id: str
+    verdict_winner_filename: str
+    verdict_model: str
+    verdict_reason: str
+    verdict_margin: str = "decisive"
 class RankedResumeRecommendation(BaseModel):
     resume_id: str
     filename: str
@@ -128,6 +144,9 @@ class RecommendResumesResponse(BaseModel):
     recommendations: list[RankedResumeRecommendation] = Field(default_factory=list)
     tournament_comparisons: int = 0
     tournament_ran: bool = False
+    tournament_judge_agreement: float | None = None
+    tournament_judge_agreement_label: str | None = None
+    adversarial_critique: AdversarialCritiqueOut | None = None
 class RecommendFromJdRequest(BaseModel):
     job_description: str
     title: str = ""
@@ -141,3 +160,6 @@ class RecommendFromJdResponse(BaseModel):
     recommendations: list[RankedResumeRecommendation] = Field(default_factory=list)
     tournament_comparisons: int = 0
     tournament_ran: bool = False
+    tournament_judge_agreement: float | None = None
+    tournament_judge_agreement_label: str | None = None
+    adversarial_critique: AdversarialCritiqueOut | None = None

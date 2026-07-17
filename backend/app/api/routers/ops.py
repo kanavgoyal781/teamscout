@@ -101,6 +101,7 @@ def _render_html(stats: dict[str, Any]) -> str:
         ["embedding_cache_hit_rate", stats.get("embedding_cache_hit_rate")],
         ["embedding_cache_hits", stats.get("embedding_cache_hits")],
         ["embedding_cache_total", stats.get("embedding_cache_total")],
+        ["m24_panel", f"models={(__import__('app.core.config', fromlist=['settings']).settings.JUDGE_PANEL_MODELS or '(single)')} critique={__import__('app.core.config', fromlist=['settings']).settings.ADVERSARIAL_CRITIQUE} max_pairs={__import__('app.core.config', fromlist=['settings']).settings.PAIRWISE_PANEL_MAX_PAIRS}"],
     ]
     learning = stats.get("learning") or {}
     fb = learning.get("feedback_counts") or {}
