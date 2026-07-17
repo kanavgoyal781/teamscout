@@ -349,16 +349,16 @@ a {
   line-height: 1;
 }
 
-/* Search options: stacked rows — value control + Require|Prefer on one line */
+/* Search options card — value + optional Require|Prefer; checkboxes never full-width */
 .search-filters {
   margin-top: var(--space-4);
-  padding: var(--space-4);
+  padding: 1rem 1.1rem 1.15rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--bg-raised, var(--bg));
 }
 .search-filters > h3 {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 0.85rem;
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--ink);
@@ -366,16 +366,18 @@ a {
 .filter-rows {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.75rem;
 }
+/* One control per row: select/input grows; mode toggle sits end-aligned */
 .filter-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  column-gap: 0.75rem;
-  row-gap: 0.35rem;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  gap: 0.65rem;
+  width: 100%;
 }
 .filter-value {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
@@ -383,14 +385,33 @@ a {
   font-size: 0.8rem;
   font-weight: 500;
   color: var(--ink-muted, var(--text-muted));
-  letter-spacing: 0.01em;
 }
 .filter-value select,
-.filter-value input[type="number"] {
+.filter-value input[type="number"],
+.filter-value input[type="text"] {
+  display: block;
   width: 100%;
-  min-height: 2.25rem;
+  min-height: 2.35rem;
   margin: 0;
   box-sizing: border-box;
+}
+/* Kill global input{width:100%} on checkboxes inside search filters */
+.search-filters input[type="checkbox"] {
+  display: inline-block !important;
+  width: 1rem !important;
+  height: 1rem !important;
+  min-width: 1rem !important;
+  max-width: 1rem !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0.2rem;
+  flex: 0 0 auto !important;
+  align-self: center;
+  accent-color: var(--accent);
+  cursor: pointer;
+  background: transparent;
+  box-shadow: none;
 }
 .mode-seg {
   display: inline-flex;
@@ -398,8 +419,8 @@ a {
   border-radius: var(--radius);
   overflow: hidden;
   flex: 0 0 auto;
-  height: 2.25rem;
-  align-self: end;
+  height: 2.35rem;
+  align-self: flex-end;
 }
 .mode-seg button {
   border: none;
@@ -413,34 +434,44 @@ a {
   box-shadow: none;
   height: 100%;
   line-height: 1;
+  white-space: nowrap;
 }
 .mode-seg button.mode-seg-active {
   background: var(--accent);
   color: var(--accent-text);
 }
-/* Nested under parent control — not free-floating centered checkboxes */
-.filter-subrow {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: -0.15rem 0 0.15rem 0.15rem;
-  padding: 0.35rem 0.5rem 0.35rem 0.65rem;
-  border-left: 2px solid var(--line);
-  font-size: 0.82rem;
-  color: var(--ink);
-}
-.filter-subrow input[type="checkbox"] {
-  margin: 0;
-  flex: 0 0 auto;
-}
-.filter-subrow.checkbox-row {
-  /* reset any legacy checkbox-row centering */
-  justify-content: flex-start;
+/* Checkbox rows: single horizontal line, checkbox left, label right — never centered */
+.filter-check {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 0.55rem;
   width: 100%;
   max-width: 100%;
+  margin: 0;
+  padding: 0.4rem 0.15rem;
+  box-sizing: border-box;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.3;
+  cursor: pointer;
+}
+.filter-check .filter-check-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+}
+/* Subtle nest under Location only */
+.filter-check.filter-check-nested {
+  margin-left: 0.15rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--line);
 }
 .search-summary {
-  margin: var(--space-3) 0 0;
+  margin: 0.9rem 0 0;
   padding: 0.7rem 0.85rem;
   background: var(--accent-soft);
   border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
@@ -450,16 +481,18 @@ a {
   line-height: 1.45;
   font-weight: 500;
 }
-.filter-worldwide {
-  /* superseded by filter-subrow */
-  margin: 0;
-}
 .search-filters-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
   margin-top: var(--space-3);
   align-items: center;
+}
+/* legacy class names kept as no-ops so nothing external breaks */
+.filter-subrow,
+.filter-worldwide,
+.filter-subrow.checkbox-row {
+  /* replaced by .filter-check */
 }
 
 /* Feature-1 empty/partial pool — results state, not a blocking toast */
@@ -567,7 +600,8 @@ button.ghost {
   grid-column: 1 / -1;
 }
 
-input,
+/* Text inputs only — never checkboxes/radios (width:100% blows up filter rows) */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
 textarea,
 select {
   display: block;

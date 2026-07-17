@@ -380,7 +380,7 @@ export default function SearchFilters({
           ) : null}
         </div>
         {p.location_country ? (
-          <label className="filter-subrow checkbox-row filter-worldwide" data-testid="filter-worldwide-row">
+          <label className="filter-check filter-check-nested" data-testid="filter-worldwide-row">
             <input
               type="checkbox"
               checked={Boolean(p.include_worldwide_remote)}
@@ -388,7 +388,7 @@ export default function SearchFilters({
               onChange={(e) => set("include_worldwide_remote", e.target.checked)}
               data-testid="filter-worldwide"
             />
-            Include worldwide remote
+            <span className="filter-check-label">Include worldwide remote</span>
           </label>
         ) : null}
 
@@ -528,7 +528,7 @@ export default function SearchFilters({
           ) : null}
         </div>
 
-        <label className="filter-subrow checkbox-row" data-testid="filter-expand-row">
+        <label className="filter-check" data-testid="filter-expand-row">
           <input
             type="checkbox"
             checked={Boolean(p.use_expand)}
@@ -536,7 +536,7 @@ export default function SearchFilters({
             onChange={(e) => set("use_expand", e.target.checked)}
             data-testid="filter-expand"
           />
-          Expand search queries with AI
+          <span className="filter-check-label">Expand search queries with AI</span>
         </label>
       </div>
 

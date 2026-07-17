@@ -198,4 +198,26 @@ describe("M29 SearchFilters", () => {
     expect(screen.getByTestId("filter-location-mode")).toBeTruthy();
     expect(screen.queryByTestId("filter-seniority-mode")).toBeNull();
   });
+
+  it("expand checkbox uses filter-check markup (label text not orphaned)", () => {
+    wrap(
+      <SearchFilters
+        params={{ ...defaultSearchParams(), use_expand: true }}
+        onChange={vi.fn()}
+      />,
+    );
+    const row = screen.getByTestId("filter-expand-row");
+    expect(row.className).toMatch(/filter-check/);
+    expect(row.querySelector(".filter-check-label")?.textContent).toMatch(
+      /Expand search queries with AI/,
+    );
+    // checkbox is direct child, not full-width block sibling structure
+    const input = screen.getByTestId("filter-expand") as HTMLInputElement;
+    expect(input.type).toBe("checkbox");
+    expect(row.contains(input)).toBe(true);
+    // label text must be continuous in the row (not split across grid columns)
+    expect(row.textContent?.replace(/\s+/g, " ").trim()).toMatch(
+      /Expand search queries with AI/,
+    );
+  });
 });
