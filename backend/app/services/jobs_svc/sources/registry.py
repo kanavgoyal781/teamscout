@@ -7,15 +7,16 @@ from app.schemas.jobs import Job, SourceCounts
 from app.services import observability
 from app.services.jobs_svc.sources.base import FetchCriteria, JobSource, SourceFetchOutcome
 from app.services.jobs_svc.sources.sources import (
-    AdzunaSource, AshbySource, GreenhouseSource, JSearchSource, LeverSource,
-    RemoteOKSource, RemotiveSource,
+    AdzunaSource, ArbeitnowSource, AshbySource, GreenhouseSource, HimalayasSource,
+    JobicySource, JSearchSource, LeverSource, RemoteOKSource, RemotiveSource,
 )
 from app.services.jobs_svc.sources.util import filter_jobs
 logger = get_logger(__name__)
-_N = 4
+_N = 8
 def all_sources() -> list[JobSource]:
     return [JSearchSource(), GreenhouseSource(), LeverSource(), AshbySource(),
-            RemotiveSource(), RemoteOKSource(), AdzunaSource()]
+            RemotiveSource(), RemoteOKSource(), ArbeitnowSource(), JobicySource(),
+            HimalayasSource(), AdzunaSource()]
 def enabled_sources(criteria: FetchCriteria) -> list[JobSource]:
     return [s for s in all_sources() if s.is_enabled_for(criteria)]
 def source_health_status() -> dict[str, str]:
@@ -33,6 +34,12 @@ def source_health_status() -> dict[str, str]:
             en = en and bool(settings.JOBS_SOURCE_REMOTIVE_ENABLED)
         elif src.name == "remoteok":
             en = en and bool(settings.JOBS_SOURCE_REMOTEOK_ENABLED)
+        elif src.name == "arbeitnow":
+            en = en and bool(settings.JOBS_SOURCE_ARBEITNOW_ENABLED)
+        elif src.name == "jobicy":
+            en = en and bool(settings.JOBS_SOURCE_JOBICY_ENABLED)
+        elif src.name == "himalayas":
+            en = en and bool(settings.JOBS_SOURCE_HIMALAYAS_ENABLED)
         out[src.name] = "configured" if en and src.is_configured() else "disabled"
     return out
 def _run_one(src: JobSource, criteria: FetchCriteria, db: Session | None) -> SourceFetchOutcome:

@@ -1,0 +1,25 @@
+{
+  "apiVersion": "2",
+  "jobCount": 1,
+  "jobs": [
+    {
+      "id": 101,
+      "url": "https://jobicy.com/jobs/101-software-engineer",
+      "jobSlug": "software-engineer",
+      "jobTitle": "Software Engineer",
+      "companyName": "JobicyCo",
+      "jobIndustry": [
+        "Software Engineering"
+      ],
+      "jobType": [
+        "Full-Time"
+      ],
+      "jobGeo": "USA",
+      "jobLevel": "Senior",
+      "jobExcerpt": "Build products",
+      "jobDescription": "<p>Software engineer role using Python and React.</p>",
+      "pubDate": "2026-07-01 00:00:00"
+    }
+  ],
+  "success": true
+}

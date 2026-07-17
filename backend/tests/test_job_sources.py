@@ -14,13 +14,17 @@ from app.services import job_dedup, jobs
 from app.services.jobs_svc.sources import FetchCriteria, fetch_from_registry
 from app.services.jobs_svc.sources.sources import (
     AdzunaSource,
+    ArbeitnowSource,
     AshbySource,
     GreenhouseSource,
+    HimalayasSource,
+    JobicySource,
     LeverSource,
     RemoteOKSource,
     RemotiveSource,
     _ashby_remote,
 )
+from app.services.jobs_svc.sources.registry import all_sources
 from app.services.jobs_svc.sources.util import (
     job_matches_criteria,
     load_ats_slugs,
@@ -143,6 +147,53 @@ def test_adzuna_adapter_from_fixture(monkeypatch):
     )
     result = AdzunaSource().fetch(_criteria(), db=None)
     assert len(result) == 1 and result[0].source == "adzuna"
+
+
+def test_arbeitnow_jobicy_himalayas_adapters(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.jobs_svc.sources.sources.httpx.Client",
+        lambda *a, **k: _FakeClient(_load("arbeitnow.json")),
+    )
+    an = ArbeitnowSource().fetch(_criteria(), db=None)
+    assert an and an[0].source == "arbeitnow" and an[0].title == "Python Engineer"
+
+    monkeypatch.setattr(
+        "app.services.jobs_svc.sources.sources.httpx.Client",
+        lambda *a, **k: _FakeClient(_load("jobicy.json")),
+    )
+    jc = JobicySource().fetch(_criteria(), db=None)
+    assert jc and jc[0].source == "jobicy"
+
+    monkeypatch.setattr(
+        "app.services.jobs_svc.sources.sources.httpx.Client",
+        lambda *a, **k: _FakeClient(_load("himalayas.json")),
+    )
+    hi = HimalayasSource().fetch(_criteria(), db=None)
+    assert hi and hi[0].source == "himalayas" and hi[0].source_quality == "feed"
+
+
+def test_registry_lists_ten_sources() -> None:
+    names = {s.name for s in all_sources()}
+    assert {"jsearch", "greenhouse", "lever", "ashby", "remotive", "remoteok",
+            "arbeitnow", "jobicy", "himalayas", "adzuna"} <= names
+
+
+def test_data_scientist_rejects_data_entry_keeps_data_engineer():
+    crit = _criteria(profile=_profile(title="Data Scientist", skills=["Python", "SQL", "ML"]))
+    now = datetime.now(UTC)
+
+    def mk(title: str, desc: str = "Work with datasets and models.") -> Job:
+        return Job(
+            id=title[:40], source="feed", source_job_id=title[:40], source_quality="feed",
+            title=title, company="X", location="Remote", description=desc,
+            apply_url="https://example.com", posted_at=now,
+        )
+
+    assert not job_matches_criteria(mk("Data Entry Clerk"), crit)
+    assert not job_matches_criteria(mk("Data Labeling Specialist"), crit)
+    assert job_matches_criteria(mk("Data Scientist"), crit)
+    assert job_matches_criteria(mk("Data Engineer"), crit)
+    assert job_matches_criteria(mk("Machine Learning Engineer"), crit)
 
 
 def test_registry_isolation_one_source_raises(monkeypatch):

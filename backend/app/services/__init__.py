@@ -7,7 +7,7 @@ _L={
 "drive":"app.services.library.drive","email_reveal":"app.services.team.email_reveal",
 "embeddings":"app.services.inference.embeddings","feedback_store":"app.services.feedback.store",
 "health":"app.services.ops.health","hybrid_rank":"app.services.ranking.hybrid",
-"jd_decompose":"app.services.resume.jd_decompose","job_boards":"app.services.jobs_svc.boards",
+"jd_decompose":"app.services.resume.jd_decompose",
 "job_dedup":"app.services.jobs_svc.dedup","job_facets":"app.services.jobs_svc.facets",
 "job_filters":"app.services.jobs_svc.filters","job_sources":"app.services.jobs_svc.sources",
 "jobs":"app.services.jobs_svc.fetch","jd_metadata":"app.services.jobs_svc.jd_metadata","jobs_store":"app.services.jobs_svc.store",

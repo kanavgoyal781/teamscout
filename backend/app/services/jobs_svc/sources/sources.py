@@ -17,7 +17,7 @@ from app.services.jobs_svc.sources.util import (
 )
 from app.services.jobs_svc.jsearch import fetch_jsearch_raw
 logger = get_logger(__name__)
-_UA, _ATS_N = {"User-Agent": "TeamScout/1.0 (job-source)"}, 4
+_UA, _ATS_N = {"User-Agent": "TeamScout/1.0 (job-source)"}, 6
 def _skills(desc: str, profile: ResumeProfile) -> list[str]:
     from app.services.jobs_svc.fetch import extract_skills_from_description
     return extract_skills_from_description(desc, profile.skills)
@@ -323,3 +323,123 @@ class AdzunaSource:
             ))
         return out
 
+class ArbeitnowSource:
+    name, cost_free, source_quality = "arbeitnow", True, "feed"
+    def is_configured(self) -> bool:
+        return True
+    def is_enabled_for(self, criteria: FetchCriteria) -> bool:
+        return bool(settings.JOBS_EXTRA_SOURCES_ENABLED and settings.JOBS_SOURCE_ARBEITNOW_ENABLED)
+    def fetch(self, criteria: FetchCriteria, db: Session | None = None) -> list[Job]:
+        _ = db
+        out: list[Job] = []
+        url: str | None = "https://www.arbeitnow.com/api/job-board-api"
+        for _page in range(2):
+            if not url: break
+            payload = _http_json(url)
+            if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+                raise ServiceFailingError("arbeitnow", "expected {data: [...]}")
+            for i, item in enumerate(payload["data"]):
+                if not isinstance(item, dict):
+                    _skip("arbeitnow", "-", i, "not_object", item); continue
+                title = str(item.get("title") or "").strip()
+                desc = strip_html(str(item.get("description") or title))
+                apply_url = str(item.get("url") or "").strip()
+                if not title or not apply_url:
+                    _skip("arbeitnow", "-", i, "missing_required", item); continue
+                tags_raw = item.get("tags")
+                tags: list = tags_raw if isinstance(tags_raw, list) else []
+                skills = [str(t).strip() for t in tags if str(t).strip()] or _skills(desc, criteria.profile)
+                is_remote = item.get("remote") is True
+                out.append(_job(
+                    source="arbeitnow", quality="feed", source_job_id=str(item.get("slug") or apply_url),
+                    title=title, company=str(item.get("company_name") or "Unknown").strip(),
+                    location=str(item.get("location") or ("Remote" if is_remote else "Unknown")).strip() or "Unknown",
+                    description=desc, apply_url=apply_url, posted_at=parse_iso(item.get("created_at")),
+                    skills=skills, is_remote=is_remote if isinstance(item.get("remote"), bool) else None,
+                ))
+            links = payload.get("links") if isinstance(payload.get("links"), dict) else {}
+            nxt = str(links.get("next") or "").strip()
+            url = nxt or None
+        return out
+class JobicySource:
+    name, cost_free, source_quality = "jobicy", True, "feed"
+    def is_configured(self) -> bool:
+        return True
+    def is_enabled_for(self, criteria: FetchCriteria) -> bool:
+        return bool(settings.JOBS_EXTRA_SOURCES_ENABLED and settings.JOBS_SOURCE_JOBICY_ENABLED
+                    and criteria.params.remote_mode in {"remote", "any"})
+    def fetch(self, criteria: FetchCriteria, db: Session | None = None) -> list[Job]:
+        _ = db
+        params: dict[str, str] = {"count": "50"}
+        # optional tag from first skill token helps relevance without new APIs
+        skill = next((s.strip() for s in criteria.profile.skills if s and s.strip()), "")
+        if skill: params["tag"] = skill.split()[0]
+        payload = _http_json("https://jobicy.com/api/v2/remote-jobs", params=params)
+        if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
+            raise ServiceFailingError("jobicy", "expected {jobs: [...]}")
+        out: list[Job] = []
+        for i, item in enumerate(payload["jobs"]):
+            if not isinstance(item, dict):
+                _skip("jobicy", "-", i, "not_object", item); continue
+            title = str(item.get("jobTitle") or "").strip()
+            desc = strip_html(str(item.get("jobDescription") or item.get("jobExcerpt") or title))
+            apply_url = str(item.get("url") or "").strip()
+            if not title or not apply_url:
+                _skip("jobicy", "-", i, "missing_required", item); continue
+            ind = item.get("jobIndustry")
+            tags = ind if isinstance(ind, list) else ([ind] if ind else [])
+            skills = [str(t).strip() for t in tags if str(t).strip()] or _skills(desc, criteria.profile)
+            jt = item.get("jobType")
+            employment = None
+            if isinstance(jt, list) and jt: employment = str(jt[0])
+            elif isinstance(jt, str): employment = jt
+            out.append(_job(
+                source="jobicy", quality="feed", source_job_id=str(item.get("id") or item.get("jobSlug") or apply_url),
+                title=title, company=str(item.get("companyName") or "Unknown").strip(),
+                location=str(item.get("jobGeo") or "Remote").strip() or "Remote", description=desc,
+                apply_url=apply_url, posted_at=parse_iso(item.get("pubDate")), skills=skills,
+                is_remote=True, employment=employment,
+            ))
+        return out
+class HimalayasSource:
+    name, cost_free, source_quality = "himalayas", True, "feed"
+    def is_configured(self) -> bool:
+        return True
+    def is_enabled_for(self, criteria: FetchCriteria) -> bool:
+        return bool(settings.JOBS_EXTRA_SOURCES_ENABLED and settings.JOBS_SOURCE_HIMALAYAS_ENABLED
+                    and criteria.params.remote_mode in {"remote", "any"})
+    def fetch(self, criteria: FetchCriteria, db: Session | None = None) -> list[Job]:
+        _ = db
+        payload = _http_json("https://himalayas.app/jobs/api", params={"limit": "50"})
+        if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
+            raise ServiceFailingError("himalayas", "expected {jobs: [...]}")
+        out: list[Job] = []
+        for i, item in enumerate(payload["jobs"]):
+            if not isinstance(item, dict):
+                _skip("himalayas", "-", i, "not_object", item); continue
+            title = str(item.get("title") or "").strip()
+            desc = strip_html(str(item.get("description") or item.get("excerpt") or title))
+            apply_url = str(item.get("applicationLink") or item.get("guid") or "").strip()
+            if not title or not apply_url:
+                _skip("himalayas", "-", i, "missing_required", item); continue
+            cats = item.get("categories")
+            tags: list = cats if isinstance(cats, list) else []
+            skills = [str(t).strip() for t in tags if str(t).strip()][:12] or _skills(desc, criteria.profile)
+            locs = item.get("locationRestrictions")
+            if isinstance(locs, list) and locs:
+                location = ", ".join(str(x) for x in locs[:4])
+            else:
+                location = "Remote"
+            try:
+                sal = float(item["minSalary"]) if item.get("minSalary") is not None else None
+            except (TypeError, ValueError):
+                sal = None
+            out.append(_job(
+                source="himalayas", quality="feed",
+                source_job_id=str(item.get("guid") or apply_url), title=title,
+                company=str(item.get("companyName") or "Unknown").strip(), location=location or "Remote",
+                description=desc, apply_url=apply_url, posted_at=parse_iso(item.get("pubDate")),
+                skills=skills, is_remote=True, employment=str(item.get("employmentType") or "") or None,
+                salary_min=sal,
+            ))
+        return out

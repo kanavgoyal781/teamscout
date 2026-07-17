@@ -115,18 +115,33 @@ def _token_hit(term: str, tokens: set[str]) -> bool:
         return bool(parts) and all(p in tokens for p in parts)
     return t in tokens
 _GENERIC_ROLE = frozenset("engineer engineering developer development programmer".split())
+# "data" alone matches Data Entry — require a companion tech token in the title
+_WEAK_ROLE = frozenset({"data"})
+_DATA_COMPANION = frozenset(
+    "scientist science engineer engineering analyst analytics ml ai platform warehouse architect "
+    "infra infrastructure science scientist".split()
+)
 _TECH_TITLE = frozenset(
     "software swe sde backend frontend front fullstack full stack platform infra infrastructure "
-    "devops sre ml ai data machine learning systems security cloud mobile ios android web python "
-    "java golang rust typescript javascript react distributed reliability".split()
+    "devops sre ml ai machine learning systems security cloud mobile ios android web python "
+    "java golang rust typescript javascript react distributed reliability scientist analytics".split()
+)
+_JUNK_TITLE = re.compile(
+    r"(?i)\b(data\s+entry|data\s+label(?:l)?ing|typist|call\s*center|warehouse\s+associate|"
+    r"package\s+handler|cashier|barista|delivery\s+driver|door\s*dash\s+dasher)\b"
 )
 def _role_or_skill_match(job: Job, criteria: FetchCriteria) -> bool:
     role, skills = criteria.role_tokens(), criteria.skill_terms()
     if not role and not skills:
         return True
     title_toks = _tokens(job.title or "")
-    if any(t not in _GENERIC_ROLE and _token_hit(t, title_toks) for t in role):
-        return True
+    for t in role:
+        if t in _GENERIC_ROLE or t in _WEAK_ROLE:
+            if t == "data" and "data" in title_toks and (title_toks & _DATA_COMPANION):
+                return True
+            continue
+        if _token_hit(t, title_toks):
+            return True
     if (title_toks & _GENERIC_ROLE) and (title_toks & _TECH_TITLE):
         return True
     from app.services.ranking.math_align import phrase_in_text
@@ -143,6 +158,8 @@ def _location_ok(job: Job, criteria: FetchCriteria) -> bool:
     return bool(_tokens(prof) & jtoks) if jtoks else True
 def job_matches_criteria(job: Job, criteria: FetchCriteria) -> bool:
     params = criteria.params
+    if _JUNK_TITLE.search(job.title or ""):
+        return False
     if not _role_or_skill_match(job, criteria):
         return False
     days = DATE_WINDOW_DAYS.get(params.date_window, 30)

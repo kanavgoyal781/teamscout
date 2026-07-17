@@ -1,0 +1,25 @@
+{
+  "data": [
+    {
+      "slug": "python-engineer-berlin-1",
+      "company_name": "Acme GmbH",
+      "title": "Python Engineer",
+      "description": "<p>Build APIs with Python and FastAPI. Remote friendly.</p>",
+      "remote": true,
+      "url": "https://www.arbeitnow.com/view/python-engineer-berlin-1",
+      "tags": [
+        "python",
+        "fastapi"
+      ],
+      "job_types": [
+        "full-time"
+      ],
+      "location": "Berlin, Germany",
+      "created_at": "2026-07-01T12:00:00Z"
+    }
+  ],
+  "links": {
+    "next": null
+  },
+  "meta": {}
+}

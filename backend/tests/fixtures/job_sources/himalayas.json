@@ -1,0 +1,27 @@
+{
+  "offset": 0,
+  "limit": 10,
+  "totalCount": 1,
+  "jobs": [
+    {
+      "title": "Senior Software Engineer",
+      "excerpt": "Build systems",
+      "companyName": "HimaCo",
+      "companySlug": "himaco",
+      "employmentType": "Full Time",
+      "minSalary": 120000,
+      "maxSalary": 180000,
+      "salaryPeriod": "annual",
+      "currency": "USD",
+      "locationRestrictions": [],
+      "categories": [
+        "Software-Engineering",
+        "Python"
+      ],
+      "description": "<p>Senior software engineer. Python, distributed systems.</p>",
+      "applicationLink": "https://himalayas.app/companies/himaco/jobs/senior-software-engineer",
+      "guid": "https://himalayas.app/companies/himaco/jobs/senior-software-engineer",
+      "pubDate": 1719792000
+    }
+  ]
+}
