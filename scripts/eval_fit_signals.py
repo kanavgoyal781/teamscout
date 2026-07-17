@@ -24,7 +24,8 @@ from app.services.ranking.math import (  # noqa: E402
     requirements_met_score,
     skill_jaccard,
 )
-from scripts.fixtures.ranking_fixtures import FIT_SIGNAL_PERSONAS, PERSONAS  # noqa: E402
+from scripts.fixtures.ranking_fixtures import PERSONAS  # noqa: E402
+
 
 
 def _load_thresholds() -> dict:
@@ -167,7 +168,7 @@ def main() -> int:
     req_scores: list[float] = []
     over_scores: list[float] = []
 
-    for persona in FIT_SIGNAL_PERSONAS or PERSONAS:
+    for persona in PERSONAS:
         ranked = rank_by_fit_signals(persona)
         exp_acc = experience_order_accuracy(ranked)
         req_acc = requirements_order_accuracy(persona)

@@ -67,6 +67,8 @@ verify: check-scope
 	( cd backend && python3 -m ruff check . && python3 -m ruff format --check . ); \
 	echo "== verify: mypy app =="; \
 	( cd backend && python3 -m mypy app ); \
+	echo "== verify: scripts import-walk (stale fixture guard) =="; \
+	( cd backend && python3 -m pytest tests/test_scripts_importable.py -q ); \
 	echo "== verify: pytest (backend) =="; \
 	( cd backend && python3 -m pytest -q ); \
 	echo "== verify: pnpm typecheck (ci frontend) =="; \
