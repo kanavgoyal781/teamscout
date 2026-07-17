@@ -32,6 +32,14 @@ async function runFeature1HappyPath(
   });
 
   await page.getByRole("button", { name: /confirm profile/i }).click();
+  // M29: interpretation summary always visible and reflects control state
+  const summary = page.getByTestId("search-summary");
+  await expect(summary).toBeVisible();
+  await expect(summary).toContainText(/Searching:/);
+  await expect(summary).toContainText(/posted this month|Full-time|require/i);
+  // Require|Prefer hidden for Any remote; seniority defaults Any (no Intern sticky)
+  await expect(page.getByTestId("filter-seniority-value")).toHaveValue("any");
+  await expect(page.getByTestId("filter-remote-mode")).toHaveCount(0);
   await page.getByTestId("search-jobs").click();
   await expect(page.getByTestId("job-results")).toBeVisible();
   await expect(page.getByTestId("job-card-0")).toContainText("Staff Backend Engineer");

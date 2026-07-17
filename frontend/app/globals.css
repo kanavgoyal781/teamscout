@@ -349,6 +349,64 @@ a {
   line-height: 1;
 }
 
+/* M29 filter rows: value + optional Require|Prefer segment */
+.filter-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+.filter-value {
+  flex: 1 1 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+.filter-value select,
+.filter-value input {
+  width: 100%;
+}
+.mode-seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.mode-seg button {
+  border: none;
+  background: var(--bg-muted);
+  color: var(--ink-muted);
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  border-radius: 0;
+  box-shadow: none;
+}
+.mode-seg button.mode-seg-active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.search-summary {
+  margin: var(--space-4) 0 0;
+  padding: 10px 12px;
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  color: var(--ink);
+  line-height: 1.4;
+}
+.filter-worldwide {
+  margin: calc(-1 * var(--space-2)) 0 var(--space-1);
+}
+
 /* Feature-1 empty/partial pool — results state, not a blocking toast */
 .pool-warning-strip {
   margin: 0 0 var(--space-4);

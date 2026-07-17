@@ -58,7 +58,6 @@ def is_sparse_evidence(rows: list[dict], *, k: int | None = None, evidence_floor
 def _norm(s: str) -> str:
     return " ".join((s or "").lower().split())
 def _span_in_text(unit: str, rationale: str) -> bool:
-    """Case/whitespace-normalized match; ellipsized ≥8-word quotes OK."""
     u, text = _norm(unit), _norm(rationale)
     if not u or not text: return False
     if len(u) < 8: return u in text
@@ -75,7 +74,6 @@ def _span_in_text(unit: str, rationale: str) -> bool:
     min_span = min(len(u), max(_MIN_CITE_SPAN, int(len(u) * _MIN_CITE_RATIO)))
     return any(u[s : s + min_span] in text for s in range(0, len(u) - min_span + 1, 2))
 def rationale_cites_units(rationale: str, evidence_units: list[str], *, sparse_mode: bool = False) -> bool:
-    """≥1 real unit citation required; quoted invent still fails (citations ⊆ units)."""
     text = (rationale or "").strip()
     if len(text) < (12 if sparse_mode else 20): return False
     cleaned = [u for u in evidence_units if u and u.strip()]
@@ -118,7 +116,6 @@ def filter_llm_coverage(llm_coverage: list[RequirementCoverage], units: list[str
             out.append(row)
     return out
 def build_fallback_justification(rows: list[dict], *, top_n: int = 3) -> str:
-    """Pure template over alignment rows — never LLM-generated."""
     hits = sorted(
         (r for r in rows if r.get("status") == "hit" and r.get("evidence_unit") and str(r.get("evidence_unit")) != "No clear evidence"),
         key=lambda r: float(r.get("evidence_score") or 0), reverse=True,

@@ -225,3 +225,4 @@ class JdMetadataCache(Base):
     prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
     metadata_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+

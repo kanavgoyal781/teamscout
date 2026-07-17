@@ -241,7 +241,6 @@ def align_resume(
                     if skill_match_level(req_text, s) is not None:
                         unit_text = s
                         break
-            # Hard exact/alias: no floor; semantic path only is rescaled
             evidence = float(raw) if is_hard_skill_match(raw) else apply_evidence_floor(raw, floor=evidence_floor)
         else:
             raw = float(semantic)
@@ -335,3 +334,4 @@ def merge_tournament_order(full_ids_by_coverage: list[str], contested_ordered: l
     return [next(t_iter) if rid in contested else rid for rid in full_ids_by_coverage]
 def order_normalized_pair(hash_a: str, hash_b: str) -> tuple[str, str]:
     return (hash_a, hash_b) if hash_a <= hash_b else (hash_b, hash_a)
+

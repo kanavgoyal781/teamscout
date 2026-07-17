@@ -52,7 +52,6 @@ class IngestFileResult(BaseModel):
     filename: str
     status: Literal["cached", "parsed", "failed", "skipped"]
     resume_id: str | None = None
-    # Plain-language reason for failed/skipped (never includes secrets or raw URLs).
     reason: str | None = None
 class DriveSyncRequest(BaseModel):
     folder_url: str
@@ -93,7 +92,6 @@ class AlignmentRow(BaseModel):
     category: str = "skill"
     weight: float = 1.0
     evidence_unit: str | None = None
-    # Post-floor (or hard-match) score 0–1; UI prefers strength bucket over raw %.
     evidence_score: float = 0.0
     strength: Literal["none", "weak", "solid", "strong"] = "none"
     status: Literal["hit", "miss"] = "miss"
@@ -130,7 +128,6 @@ class RankedResumeRecommendation(BaseModel):
     score_breakdown: ScoreBreakdown
     coverage: list[RequirementCoverage] = Field(default_factory=list)
     coverage_score: float = 0.0
-    # Count of must-have requirements with evidence above floor (hit).
     must_haves_hit: int = 0
     must_haves_total: int = 0
     alignment: list[AlignmentRow] = Field(default_factory=list)
@@ -139,7 +136,6 @@ class RankedResumeRecommendation(BaseModel):
     cluster_size: int | None = None
     tournament: TournamentRecord | None = None
     content_hash: str | None = None
-    # ok | limited_evidence | fallback (alignment-derived text after grounding reject)
     justification_status: str = "ok"
 class RecommendResumesResponse(BaseModel):
     job_id: str

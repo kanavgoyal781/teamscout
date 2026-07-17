@@ -99,7 +99,6 @@ def argument_grounded(argument: str, phrases: set[str]) -> bool:
     tokens = set(re.findall(r"[a-z0-9+]{4,}", al))
     ev_tok: set[str] = set()
     for p in phrases: ev_tok.update(re.findall(r"[a-z0-9+]{4,}", p))
-    # Need ≥3 overlapping content tokens with evidence units (stricter than requirement-name leak)
     return len(tokens & ev_tok) >= 3
 def _cache_get(db: Session | None, key: str) -> tuple[str, str] | None:
     if db is None: return None

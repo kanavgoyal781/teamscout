@@ -22,7 +22,6 @@ from app.db.session import SessionLocal
 from app.errors import CostCeilingExceededError
 logger = get_logger(__name__)
 LLM_OPERATIONS = frozenset({"parse_resume", "rerank", "team_extract", "justify", "embed", "cross_encode", "jd_metadata", "jd_decompose", "pairwise_judge", "advocate", "pairwise_tournament"})
-# Per-model USD / 1M tokens (Friendli-class + default). Unknown models fall back to settings defaults.
 _LLM_MODEL_PRICES: dict[str, tuple[float, float]] = {
     "gpt-4o-mini": (0.15, 0.60),
     "MiniMaxAI/MiniMax-M2.5": (0.30, 1.20),
@@ -409,8 +408,8 @@ def ops_stats(db: Session) -> dict[str, Any]:
         "workspace_usage_today": _workspace_usage_today(today),
         "workspace_llm_ceiling_usd": float(settings.WORKSPACE_DAILY_LLM_USD),
         "workspace_sumble_ceiling": int(settings.WORKSPACE_DAILY_SUMBLE_CREDITS),
-        # JSearch quota burn: last search request count + today totals (from jsearch.search traces)
         "jsearch_requests_last_search": next((int(r.input_tokens or 0) for r in recent if r.operation == "jsearch.search"), None),
         "jsearch_requests_today": sum(int(r.input_tokens or 0) for r in today if r.operation == "jsearch.search"),
         "jsearch_searches_today": sum(1 for r in today if r.operation == "jsearch.search"),
     }
+

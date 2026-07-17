@@ -224,7 +224,6 @@ def rank_resumes_for_job(
             description=job.description,
         )
         final_score = (0.55 * cov + 0.25 * (llm_fit / 100.0) + 0.10 * skill + 0.10 * exp) * 100.0
-        # Headline match = weighted final blend (one coherent scale with table/justification).
         match_score = round(final_score, 2)
         must_rows = [r for r in rows if str(r.get("kind") or "must") == "must"]
         must_hit = sum(1 for r in must_rows if r.get("status") == "hit")
@@ -291,7 +290,6 @@ def rank_resumes_for_job(
                 ),
             )
         )
-    # Tournament only reorders cards; match_score stays the weighted final blend
-    # (never fudge rings to hide inverted scores — badge explains tournament order).
     if out_tournament is not None: out_tournament.append(tournament)
     return ranked
+

@@ -50,7 +50,8 @@ class Settings(BaseSettings):
     RRF_K: int = 60
     JOBS_FETCH_TARGET: int = 150
     JOBS_RECENCY_DAYS: int = 14
-    JSEARCH_MAX_REQUESTS_PER_SEARCH: int = 4  # cap expansion-variant HTTP calls per search
+    JSEARCH_MAX_REQUESTS_PER_SEARCH: int = 4
+    LOCATION_MISMATCH_PENALTY: float = 18.0
     RERANK_TOP_N: int = 30
     SEARCH_RESULTS_TOP_N: int = 10
     RECENCY_HALF_LIFE_DAYS: int = 7
@@ -90,7 +91,6 @@ class Settings(BaseSettings):
     WORKSPACE_TTL_DAYS: int = 7
     WORKSPACE_DAILY_LLM_USD: float = 1.0
     WORKSPACE_DAILY_SUMBLE_CREDITS: int = 100
-    # empty=auto (Lax in dev, None+Secure in prod for Vercel→Fly)
     WORKSPACE_COOKIE_SAMESITE: str | None = None
     LLM_MAX_TOKENS_PARSE_RESUME: int = 4096
     LLM_MAX_TOKENS_RERANK: int = 6000
@@ -103,7 +103,6 @@ class Settings(BaseSettings):
     LLM_PRICE_INPUT_PER_1M: float = 0.15
     LLM_PRICE_OUTPUT_PER_1M: float = 0.60
     EMBEDDINGS_PRICE_PER_1M: float = 0.02
-    # M24: empty = single-judge identity; comma-separated Friendli model ids for PoLL panel
     JUDGE_PANEL_MODELS: str = ""
     PAIRWISE_PANEL_MAX_PAIRS: int = 6
     ADVERSARIAL_CRITIQUE: bool = False

@@ -109,4 +109,3 @@ def render_ops_html(stats: dict[str, Any]) -> str:
         f"<h2>Last 100 traces</h2>{_table(tr_h, trace_rows)}</body></html>"
     )
 _render_html = render_ops_html
-

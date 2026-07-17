@@ -68,4 +68,3 @@ def ops_json(
     db: Session = Depends(get_db),
 ) -> JSONResponse:
     return JSONResponse(content=_ops_payload(db))
-

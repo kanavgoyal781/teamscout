@@ -165,7 +165,6 @@ class WorkspaceMiddleware:
         except SQLAlchemyError as exc:
             logger.warning("workspace.ensure_failed", error=str(exc))
         async def send_wrapper(message: dict[str, Any]) -> None:
-            # Always refresh Max-Age so cookie TTL slides with activity
             if message["type"] == "http.response.start":
                 raw_headers = list(message.get("headers") or [])
                 raw_headers = [

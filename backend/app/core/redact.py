@@ -6,18 +6,14 @@ from __future__ import annotations
 import re
 from typing import Any
 from urllib.parse import urlparse
-# Full URLs (capture until whitespace / quotes / angle brackets)
 _URL_RE = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
-# Query or form key material that often carries secrets
 _QUERY_SECRET_RE = re.compile(
     r"(?i)([?&])(key|api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|"
     r"password|authorization|auth|client_secret|private_key)=([^&\s'\"<>]+)"
 )
 _BEARER_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._\-+/=]+")
-# Google API key prefix
 _AIZA_RE = re.compile(r"\bAIza[0-9A-Za-z_\-]{10,}\b")
 _AUTH_HEADER_RE = re.compile(r"(?i)\bauthorization\s*[:=]\s*\S+")
-# Long hex/base64-looking tokens after common secret labels
 _LABELED_SECRET_RE = re.compile(
     r"(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|client_secret|"
     r"private_key|password)\s*[:=]\s*([^\s'\"<>]+)"
@@ -27,7 +23,6 @@ def _scrub_url(match: re.Match[str]) -> str:
     parsed = urlparse(raw)
     if not parsed.scheme or not parsed.netloc:
         return raw
-    # Host + path only — never query (where key= lives)
     return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
 def redact_error(message: str | BaseException | None) -> str:
     """Redact secrets from error/exception strings for API responses and logs."""

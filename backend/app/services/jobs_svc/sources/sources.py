@@ -53,7 +53,6 @@ class JSearchSource:
         base = jsearch_params_from_search(criteria.params)
         if criteria.params.remote_mode == "remote" and criteria.params.remote_mode_pref == "hard":
             base = {**base, "remote_jobs_only": "true"}
-        # JSearchQuotaError propagates to registry as soft source_error (other sources continue).
         raw, _, _ = fetch_jsearch_raw(
             criteria.queries or ["software engineer"], base_params=base, db=db,
         )
@@ -323,3 +322,4 @@ class AdzunaSource:
                 skills=_skills(desc, criteria.profile), salary_min=sal,
             ))
         return out
+

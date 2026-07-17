@@ -209,7 +209,7 @@ def _llm_rerank_listwise(profile: ResumeProfile, jobs: list[Job]) -> dict[str, _
         return _resolve_listwise_aliases(ordered_alias, alias_to_real)
     ordered: list[tuple[str, str]] | None = None
     last_err: Exception | None = None
-    for attempt in range(2):  # first try + exactly one retry on bad permutation
+    for attempt in range(2):
         try:
             ordered = _once()
             break

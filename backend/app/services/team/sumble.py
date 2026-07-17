@@ -15,11 +15,9 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.errors import ServiceFailingError
 from app.services import sumble_client, sumble_jobs
-# Re-export public types/constants for callers: `from app.services import sumble`
 from app.services.team.client import SumbleOrganization, SumblePerson
 EMAIL_REVEAL_COST = sumble_client.EMAIL_REVEAL_COST
 DEFAULT_LIMIT = sumble_client.DEFAULT_LIMIT
-# Job-match path helpers (used by smoke_sumble + tests; orchestration via find_hiring_team)
 search_org_job_posts = sumble_jobs.search_org_job_posts
 find_best_matching_job_post = sumble_jobs.find_best_matching_job_post
 get_related_people_for_job = sumble_jobs.get_related_people_for_job
@@ -45,7 +43,6 @@ def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str
     titles = [t.strip() for t in (likely_hiring_titles or []) if t and t.strip()]
     if not titles:
         return ([f for f in funcs if f], levels, 0)
-    # Try title-lookup for canonical job_function / job_level
     title_credits = 0
     try:
         data = sumble_client.post(
@@ -62,7 +59,6 @@ def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str
                 continue
             jf_obj = r.get("job_function")
             jl_obj = r.get("job_level")
-            # Prefer slug for job_function (DSL uses slugs), fallback to name
             jf = None
             if isinstance(jf_obj, dict):
                 jf = jf_obj.get("slug") or jf_obj.get("name")
@@ -80,8 +76,6 @@ def map_llm_extraction_to_sumble(department: str, likely_hiring_titles: list[str
                 seen_l.add(jl)
                 levels.append(jl)
     except (httpx.HTTPError, ServiceFailingError):
-        # Only transient/network/config errors; parse defects must not be swallowed
-        # Fallback: pass titles through as functions (best effort)
         for t in titles[:5]:
             if t not in funcs:
                 funcs.append(t)
@@ -112,7 +106,6 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
         try:
             host = (urlparse(apply_url).netloc or "").lower().strip()
             if host:
-                # Strip common ATS / job board subdomains and hosts
                 for junk in (
                     "jobs.",
                     "careers.",
@@ -132,7 +125,6 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
                 ):
                     host = host.replace(junk, "")
                 host = host.strip(".")
-                # Take registrable domain-ish
                 parts = [p for p in host.split(".") if p]
                 if len(parts) >= 2:
                     candidate = ".".join(parts[-2:])
@@ -140,7 +132,6 @@ def _derive_domain(company_name: str, apply_url: str | None = None) -> str | Non
                         return candidate
         except (ValueError, TypeError, AttributeError):
             pass
-    # fallback from name
     slug = "".join(c for c in (company_name or "").lower() if c.isalnum())
     if slug:
         return f"{slug}.com"
@@ -177,7 +168,6 @@ def lookup_organization(company_name: str, apply_url: str | None = None) -> tupl
                         credits = int(data.get("credits_used") or 0)
                         return org, credits
         except ServiceFailingError:
-            # transient or no match for this candidate; try next
             continue
     raise ServiceFailingError(
         "Sumble",
@@ -240,7 +230,6 @@ def find_hiring_team(
 ) -> tuple[list[SumblePerson], int, str]:
     lim = getattr(settings, "SUMBLE_SEARCH_LIMIT", sumble_client.DEFAULT_LIMIT)
     total_credits = 0
-    # Preferred: job post match
     if jd_title:
         try:
             matched_id, job_credits = sumble_jobs.find_best_matching_job_post(organization_id, jd_title, company)
@@ -258,7 +247,6 @@ def find_hiring_team(
                     return people, total_credits, "Matched Sumble job post"
         except (httpx.HTTPError, ServiceFailingError) as exc:
             logger.info("sumble.job_related_fallback", reason=str(exc)[:200])
-    # Fallback
     people, search_credits = search_people(
         organization_id=organization_id,
         team_name=team_name,

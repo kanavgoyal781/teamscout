@@ -134,7 +134,6 @@ def list_folder_files(folder_id: str) -> FolderListResult:
                     name = str(item.get("name") or "").strip() or file_id or "unknown"
                     modified_time = str(item.get("modifiedTime") or "").strip()
                     if mime.startswith(_GOOGLE_APPS_PREFIX):
-                        # Native Docs/Sheets/Slides — cannot download as binary without export.
                         skipped_native.append(
                             DriveSkippedFile(
                                 file_id=file_id or name,
@@ -185,7 +184,6 @@ def user_reason_for_download_error(exc: BaseException) -> str:
     """Map a download failure to a plain-language library UI reason (already redacted)."""
     status = None
     if isinstance(exc, ServiceFailingError):
-        # Parse HTTP status from redacted reason if present
         m = re.search(r"HTTP\s+(\d{3})", exc.message or "")
         if m:
             status = int(m.group(1))

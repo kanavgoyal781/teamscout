@@ -63,7 +63,7 @@ export default function ResumeWizard({
   const [skills, setSkills] = useState<string[]>([]);
   const [skillDraft, setSkillDraft] = useState("");
   const [confirmedSnapshot, setConfirmedSnapshot] = useState<ConfirmedSnapshot | null>(null);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const [searchParams, setSearchParams] = useState<SearchParams>(() => defaultSearchParams());
 
   const profileDirty =
     confirmedSnapshot !== null &&
@@ -324,6 +324,8 @@ export default function ResumeWizard({
             params={searchParams}
             onChange={setSearchParams}
             disabled={searchMutation.isPending || searching}
+            profileLocation={location}
+            profileTitle={title}
           />
           <div className="actions" style={{ marginTop: 16 }}>
             <button
@@ -338,7 +340,8 @@ export default function ResumeWizard({
               className="primary"
               onClick={() => searchMutation.mutate()}
               disabled={searchMutation.isPending || searching || !canSearch}
-              data-testid="search-jobs" data-tour="search-jobs"
+              data-testid="search-jobs"
+              data-tour="search-jobs"
             >
               {searchMutation.isPending || searching ? "Searching & ranking…" : "Search jobs"}
             </button>

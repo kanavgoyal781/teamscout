@@ -20,7 +20,6 @@ _CURRENCY_SYMBOLS = {"$": "USD", "£": "GBP", "€": "EUR", "¥": "JPY", "₹": 
 _ISO = re.compile(r"^[A-Z]{3}$")
 _TRAIL_PUNCT = re.compile(r"[\s,;:.\-–—|/]+$")
 _LEAD_PUNCT = re.compile(r"^[\s,;:.\-–—|/]+")
-# Generic salary tokens only — no company/board names
 _NUM = re.compile(
     r"(?P<cur>[$£€¥₹]|USD|GBP|EUR|CAD|AUD|INR)?\s*"
     r"(?P<num>\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*"
@@ -95,7 +94,6 @@ def parse_salary_range(text: str | None) -> tuple[int | None, int | None, str | 
     if re.search(r"\b(up to|upto|maximum|max\.?|capped at)\b", low):
         mx = parse_salary_token(s)
         return None, mx, cur
-    # Shared suffix (e.g. £60-70k): apply k/m to both sides when only right has suffix
     shared_suf = ""
     m_suf = re.search(r"([kKmMbB])\s*$", s.replace(" ", ""))
     if m_suf:
@@ -179,7 +177,6 @@ class JobMetadata(BaseModel):
                 conf[key] = c  # type: ignore[assignment]
             elif getattr(self, key) is not None:
                 conf[key] = "medium"
-        # order min/max
         if self.salary_min is not None and self.salary_max is not None and self.salary_min > self.salary_max:
             self.salary_min, self.salary_max = self.salary_max, self.salary_min
         self.confidence = conf

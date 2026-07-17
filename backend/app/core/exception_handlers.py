@@ -12,7 +12,6 @@ def _request_id(request: Request) -> str | None:
         return str(rid)
     return None
 async def teamscout_error_handler(_request: Request, exc: TeamScoutError) -> JSONResponse:
-    # Defense in depth: redact again even if a caller bypassed TeamScoutError sanitization.
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -29,7 +28,6 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         path=str(request.url.path),
         method=request.method,
         error_type=type(exc).__name__,
-        # Never log raw exception text — may include upstream URLs with keys.
         error=redact_error(exc),
     )
     content = {

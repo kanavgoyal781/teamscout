@@ -333,3 +333,4 @@ def apply_company_soft_cap(
         else:
             rest.append(item_id)
     return head + rest
+

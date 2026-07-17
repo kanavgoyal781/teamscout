@@ -2,6 +2,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime, timedelta
 from app.schemas.jobs import DroppedCounts, Job, SearchParams
+from app.services.jobs_svc.geo import job_geo_match
 from app.services.ranking.math import infer_seniority
 _REMOTE_RE = re.compile(r"\b(remote|work\s+from\s+home|wfh|distributed)\b", re.I)
 _HYBRID_RE = re.compile(r"\bhybrid\b", re.I)
@@ -201,6 +202,15 @@ def apply_hard_filters(
                 if job.salary_min < float(params.min_salary):
                     dropped.hard_salary += 1
                     continue
+        uc = (params.location_country or "").strip().upper() or None
+        if uc and params.location_country_pref == "hard":
+            geo = job_geo_match(
+                user_country=uc, job_location=job.location, job_description=job.description,
+                remote_mode=job.remote_mode, include_worldwide=bool(params.include_worldwide_remote),
+            )
+            if geo == "hq_mismatch":
+                dropped.hard_location += 1
+                continue
         kept.append(job)
     return kept, dropped
 def soft_boost_score(job: Job, params: SearchParams, base_score: float) -> float:
@@ -218,24 +228,23 @@ def soft_boost_score(job: Job, params: SearchParams, base_score: float) -> float
     if params.min_salary is not None and params.min_salary_pref == "soft":
         if not job.salary_unknown and job.salary_min is not None and job.salary_min >= float(params.min_salary):
             score += SOFT_BOOST_POINTS
+    uc = (params.location_country or "").strip().upper() or None
+    if uc and params.location_country_pref == "soft":
+        geo = job_geo_match(
+            user_country=uc, job_location=job.location, job_description=job.description,
+            remote_mode=job.remote_mode, include_worldwide=bool(params.include_worldwide_remote),
+        )
+        if geo in {"match", "worldwide"}: score += SOFT_BOOST_POINTS
+        elif geo == "hq_mismatch":
+            score -= float(getattr(settings, "LOCATION_MISMATCH_PENALTY", 18.0) or 18.0)
     boost = float(getattr(settings, "RANKING_DIRECT_ATS_BOOST", 0.0) or 0.0)
     if boost > 0 and getattr(job, "source_quality", None) == "direct_ats":
         score += boost
-    return min(100.0, round(score, 1))
+    return max(0.0, min(100.0, round(score, 1)))
 def jsearch_params_from_search(params: SearchParams) -> dict[str, str]:
-    date_posted = DATE_WINDOW_TO_JSEARCH.get(params.date_window, "month")
     employment = "FULLTIME,CONTRACTOR,PARTTIME"
-    if params.employment_type_pref == "hard":
-        if params.employment_type == "fulltime":
-            employment = "FULLTIME"
-        elif params.employment_type == "contractor":
-            employment = "CONTRACTOR"
-    out: dict[str, str] = {
-        "page": "1",
-        "num_pages": "3",
-        "date_posted": date_posted,
-        "employment_types": employment,
-    }
-    if params.remote_mode == "remote" and params.remote_mode_pref == "hard":
-        out["remote_jobs_only"] = "true"
+    if params.employment_type_pref == "hard" and params.employment_type == "fulltime": employment = "FULLTIME"
+    elif params.employment_type_pref == "hard" and params.employment_type == "contractor": employment = "CONTRACTOR"
+    out = {"page": "1", "num_pages": "3", "date_posted": DATE_WINDOW_TO_JSEARCH.get(params.date_window, "month"), "employment_types": employment}
+    if params.remote_mode == "remote" and params.remote_mode_pref == "hard": out["remote_jobs_only"] = "true"
     return out

@@ -32,7 +32,6 @@ _STUB_HEAD = re.compile(
     r"(?i)^\s*(?:recommended(?:\s+for\s+you)?|people\s+also\s+viewed|similar\s+jobs|"
     r"other\s+openings|jobs\s+you\s+may\s+like|sponsored|promoted)\b"
 )
-# Pre-flight: reject UI chrome / match widgets before any LLM spend.
 JD_NOT_POSTING_MSG = "This doesn't look like a job description — paste the posting text itself (responsibilities, requirements)."
 _JD_NOISE = re.compile(r"(?i)^(?:\d+%?|v\d+|simplify|keywords?|resume|match|of|and|or|the|a|an)$")
 _JD_STRUCT = re.compile(

@@ -88,6 +88,10 @@ export type SearchParams = {
   min_salary?: number | null;
   min_salary_pref?: PrefMode;
   use_expand?: boolean;
+  /** ISO-ish country code (e.g. US); null/empty = Any */
+  location_country?: string | null;
+  location_country_pref?: PrefMode;
+  include_worldwide_remote?: boolean;
 };
 
 export type FacetBucket = {

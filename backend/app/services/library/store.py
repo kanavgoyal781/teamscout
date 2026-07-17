@@ -103,7 +103,6 @@ def ingest_resume_bytes(
     *,
     source: str = "upload",
 ) -> tuple[LibraryResumeOut, bool]:
-    """Ingest one resume. created=False is a content-hash cache hit (no parse LLM)."""
     if not data: raise ValidationError(f"File is empty: {filename}")
     enforce_upload_size(data)
     file_hash = parser.content_hash(data)
@@ -151,7 +150,6 @@ def _index_status_for_resumes(db: Session, resumes: list[LibraryResumeOut]) -> t
     if missing: return False, f"{missing} resume(s) missing unit index (will re-index at rank)"
     return True, None
 def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str, object]:
-    """Sync a Drive folder. Per-file failures do not abort the whole sync."""
     from app.core.logging import get_logger
     from app.core.redact import redact_error
     from app.errors import ServiceFailingError, TeamScoutError, ValidationError
@@ -163,7 +161,6 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
     failed = 0
     resumes: list[LibraryResumeOut] = []
     file_results: list[IngestFileResult] = []
-    # Native Google Docs/Sheets/etc. — skip up front with a clear reason (no silent ignore).
     for native in listing.skipped_native:
         failed += 1
         file_results.append(
@@ -205,7 +202,6 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
             content_hash = parser.content_hash(data)
             out, created = ingest_resume_bytes(item.name, data, db, source="drive")
         except (ServiceFailingError, ValidationError, TeamScoutError, OSError, ValueError) as exc:
-            # Per-file: continue sync; never abort folder on one 403/parse failure.
             failed += 1
             reason = (
                 drive.user_reason_for_download_error(exc)
@@ -270,7 +266,6 @@ def sync_drive_folder(folder_id: str, folder_url: str, db: Session) -> dict[str,
     units_ok, units_warn = _index_status_for_resumes(db, final)
     return {
         "folder_id": folder_id,
-        # files_seen = PDF/DOCX candidates only (native Google counted in files_failed)
         "files_seen": len(listing.supported_files),
         "files_parsed": parsed,
         "files_skipped": skipped,
@@ -345,3 +340,4 @@ async def ingest_upload_files(files: list[UploadFile], db: Session) -> dict[str,
         "units_index_warning": units_warn,
         "file_results": file_results,
     }
+

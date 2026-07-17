@@ -64,6 +64,9 @@ class SearchParams(BaseModel):
     min_salary: int | None = None
     min_salary_pref: PrefMode = "soft"
     use_expand: bool = True
+    location_country: str | None = None
+    location_country_pref: PrefMode = "hard"
+    include_worldwide_remote: bool = True
 class FacetBucket(BaseModel):
     value: str
     count: int
@@ -87,6 +90,7 @@ class DroppedCounts(BaseModel):
     hard_remote: int = 0
     hard_employment: int = 0
     hard_salary: int = 0
+    hard_location: int = 0
     exact_duplicate: int = 0
     embedding_duplicate: int = 0
     fetch_cap: int = 0
