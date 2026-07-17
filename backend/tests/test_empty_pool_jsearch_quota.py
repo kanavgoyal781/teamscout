@@ -56,7 +56,9 @@ def test_service_failing_no_api_api_duplication() -> None:
 
 
 def test_all_sources_failed_message_names_each() -> None:
-    msg = format_all_sources_failed_message(["jsearch:boom", "remotive:timeout", "jsearch:again"])
+    msg = format_all_sources_failed_message(
+        ["jsearch:boom", "remotive:timeout", "jsearch:again"]
+    )
     assert "jsearch" in msg and "remotive" in msg
     assert "All job sources failed" in msg
 
@@ -96,10 +98,7 @@ def test_merge_fetch_empty_partial_returns_result_not_raise() -> None:
     ):
         with patch("app.services.inference.embeddings.embeddings_endpoint", return_value=None):
             result = _merge_fetch(
-                _profile(),
-                db,
-                queries=["engineer"],
-                params=SearchParams(date_window="day"),
+                _profile(), db, queries=["engineer"], params=SearchParams(date_window="day"),
             )
     assert isinstance(result, JobFetchResult)
     assert result.jobs == []
@@ -127,10 +126,7 @@ def test_merge_fetch_jsearch_quota_with_board_jobs() -> None:
             with patch("app.services.jobs_svc.fetch._cache_jobs", side_effect=lambda _db, jobs: jobs):
                 with patch("app.services.jobs_svc.fetch._assign_stable_ids", side_effect=lambda _db, jobs: jobs):
                     result = _merge_fetch(
-                        _profile(),
-                        db,
-                        queries=["engineer"],
-                        params=SearchParams(date_window="week"),
+                        _profile(), db, queries=["engineer"], params=SearchParams(date_window="week"),
                     )
     assert len(result.jobs) >= 1
     assert result.pool_empty_reason is None
@@ -170,10 +166,7 @@ def test_all_sources_errored_raises_clear_error() -> None:
         with patch("app.services.inference.embeddings.embeddings_endpoint", return_value=None):
             with pytest.raises(ServiceFailingError) as ei:
                 _merge_fetch(
-                    _profile(),
-                    db,
-                    queries=["engineer"],
-                    params=SearchParams(date_window="day"),
+                    _profile(), db, queries=["engineer"], params=SearchParams(date_window="day"),
                 )
     assert "All job sources failed" in ei.value.message
     assert "jsearch" in ei.value.message and "remotive" in ei.value.message
@@ -202,7 +195,6 @@ def test_dedupe_jsearch_queries_caps_and_collapses_near_dups() -> None:
 
 def test_grep_kill_api_api_in_error_module() -> None:
     from pathlib import Path
-
     text = Path("app/errors.py").read_text()
     # Template must not concatenate bare 'API' after service that may already end with API
     assert 'f"{service} API is failing' not in text
@@ -246,7 +238,9 @@ def test_fetch_jsearch_raw_concurrent_cache_with_real_session() -> None:
     mock_client = MagicMock()
     mock_client.__enter__ = MagicMock(return_value=mock_client)
     mock_client.__exit__ = MagicMock(return_value=False)
-    mock_client.get.side_effect = lambda url, headers=None, params=None: make_resp((params or {}).get("query", "x"))
+    mock_client.get.side_effect = lambda url, headers=None, params=None: make_resp(
+        (params or {}).get("query", "x")
+    )
 
     real_session_local = SessionLocal
 

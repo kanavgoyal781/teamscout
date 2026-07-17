@@ -3,7 +3,6 @@
 Catches fixture renames that strand eval scripts (e.g. FIT_SIGNAL_PERSONAS)
 before the slower CI eval job runs.
 """
-
 from __future__ import annotations
 
 import importlib
