@@ -53,13 +53,20 @@ test.describe("M26 craft surfaces", () => {
     });
   });
 
-test("ops craft light + dark screenshots from real _render_html", async ({ page }) => {
-    // Drive shipped ops renderer (not a toy HTML reimplementation)
+test("ops craft light + dark screenshots from real render_ops_html", async ({ page }) => {
+    // Load stdlib-only shipped renderer by path — no FastAPI/deps (frontend CI has none).
+    // Screenshots are capture-only artifacts (no pixel-diff baselines).
     const { execFileSync } = await import("node:child_process");
     const path = await import("node:path");
-    const backend = path.join(__dirname, "../../backend");
+    const renderPath = path.join(__dirname, "../../backend/app/services/ops/html_render.py");
     const py = `
-from app.api.routers.ops import _render_html
+import importlib.util
+from pathlib import Path
+p = Path(${JSON.stringify(renderPath)})
+spec = importlib.util.spec_from_file_location("ops_html_render", p)
+mod = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(mod)
 stats = {
   "latency_by_operation": {"rerank": {"count": 3, "p50_ms": 320.7, "p95_ms": 410.2}},
   "error_rate_by_service": {"llm": {"errors": 1, "total": 10, "error_rate": 0.1}},
@@ -73,12 +80,11 @@ stats = {
   "workspace_usage_today": [{"workspace_id":"w1","llm_cost_usd":0.5,"sumble_credits":2}],
   "learning": {"evals_root":"/evals","feedback_counts":{"thumbs_up":2},"suites":[],"experiments":[]},
   "job_sources": [{"source":"jsearch","calls":5,"p50_ms":90.2,"p95_ms":120.0,"error_rate":0.0}],
+  "m24_panel": "models=(single)",
 }
-print(_render_html(stats))
+print(mod.render_ops_html(stats))
 `
     const html = execFileSync("python3", ["-c", py], {
-      cwd: backend,
-      env: { ...process.env, PYTHONPATH: backend },
       encoding: "utf-8",
       maxBuffer: 2_000_000,
     });
