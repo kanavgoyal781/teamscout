@@ -1,4 +1,4 @@
-"""Country/hiring-region for location filter."""
+"""Country/hiring-region: location=HQ only; description=regions; hq_mismatch needs foreign HQ."""
 from __future__ import annotations
 import re
 _ALIASES = {"us":"US","usa":"US","u.s.":"US","u.s.a.":"US","united states":"US","united states of america":"US","uk":"GB","u.k.":"GB","united kingdom":"GB","great britain":"GB","england":"GB","canada":"CA","ca":"CA","india":"IN","in":"IN","germany":"DE","de":"DE","france":"FR","fr":"FR","netherlands":"NL","nl":"NL","australia":"AU","au":"AU","singapore":"SG","sg":"SG","ireland":"IE","ie":"IE","israel":"IL","il":"IL","brazil":"BR","br":"BR","mexico":"MX","mx":"MX","spain":"ES","es":"ES","italy":"IT","it":"IT","japan":"JP","jp":"JP","south korea":"KR","korea":"KR","kr":"KR","sweden":"SE","switzerland":"CH","poland":"PL","portugal":"PT","gb":"GB"}
@@ -9,10 +9,9 @@ _IN_HINT = re.compile(r"(?i)\b(india|bangalore|bengaluru|hyderabad|gurugram|gurg
 _WW = re.compile(r"(?i)\b(worldwide|global(?:ly)?|anywhere|work\s+from\s+anywhere|wfa)\b")
 _REGIONS = [(re.compile(r"(?i)\b(northern\s+america|north\s+america|americas?|latam|latin\s+america|us\s+time\s*zones?)\b"), frozenset({"US","CA","MX","BR"})), (re.compile(r"(?i)\b(emea|europe(?:an)?|eu\b)\b"), frozenset({"GB","DE","FR","NL","IE","ES","IT","SE","CH","PL","PT"})), (re.compile(r"(?i)\b(apac|asia[-\s]?pacific)\b"), frozenset({"IN","SG","JP","KR","AU"}))]
 _CTRY = re.compile(r"(?i)\b(united\s+states|usa|u\.s\.a\.|u\.s\.|united\s+kingdom|great\s+britain|canada|india|germany|france|netherlands|australia|singapore|ireland|israel|brazil|mexico|spain|italy|japan|south\s+korea|korea|sweden|switzerland|poland|portugal)\b")
-# ISO: multi-list allows IN/IT/DE/CA; bare singles exclude English/Latin 2-letter words
 _ISO_T = r"US|USA|UK|U\.K\.|GB|CA|IN|DE|FR|NL|AU|SG|IE|IL|BR|MX|ES|IT|JP|KR|SE|CH|PL|PT"
 _ISO_LIST = re.compile(rf"\b((?:{_ISO_T})(?:\s*[,/;|&]\s*(?:and\s+)?(?:{_ISO_T}))+)\b")
-_ISO_SAFE = re.compile(r"\b(US|USA|UK|U\.K\.|GB|FR|NL|AU|SG|BR|MX|ES|JP|KR|SE|CH|PL|PT)\b")  # no IN/IT/DE/CA/IL/IE
+_ISO_SAFE = re.compile(r"\b(US|USA|UK|U\.K\.|GB|FR|NL|AU|SG|BR|MX|ES|JP|KR|SE|CH|PL|PT)\b")
 _ISO_TOK = re.compile(rf"(?:{_ISO_T})")
 def _alias(k: str) -> str | None:
     k = k.lower().replace(".", ""); return _ALIASES.get(k) or _ALIASES.get(k.replace(" ", ""))
@@ -21,7 +20,7 @@ def parse_country(text: str | None) -> str | None:
     if not raw: return None
     low = re.sub(r"\s+", " ", raw.lower())
     if low in _ALIASES: return _ALIASES[low]
-    if _US_STATE.search(raw) or _US_HINT.search(low): return "US"  # City, ST before CA/IL/IN/DE country aliases
+    if _US_STATE.search(raw) or _US_HINT.search(low): return "US"
     if _IN_HINT.search(low): return "IN"
     for part in re.split(r"[,/;|]+", low):
         p = part.strip()
@@ -48,15 +47,15 @@ def region_countries(text: str) -> set[str]:
         if c: found.add(c)
     return found
 def job_geo_match(*, user_country: str | None, job_location: str, job_description: str, remote_mode: str | None, include_worldwide: bool = True) -> str:
+    # Decision table: hq_mismatch only when parse_country(location) is foreign HQ.
+    # regions from description only; regions∌user + no HQ → unknown (keep under Require).
     if not user_country: return "skip"
     loc, desc = job_location or "", (job_description or "")[:2500]
-    blob = f"{loc}\n{desc}"
-    if is_worldwide(blob) or is_worldwide(loc): return "worldwide" if include_worldwide else "hq_mismatch"
-    regions = region_countries(blob)
+    if is_worldwide(loc) or is_worldwide(desc): return "worldwide" if include_worldwide else "hq_mismatch"
+    regions = region_countries(desc)
     if "*" in regions: return "worldwide" if include_worldwide else "hq_mismatch"
     if user_country in regions: return "match"
     job_country = parse_country(loc)
-    if regions and user_country not in regions: return "match" if job_country == user_country else "hq_mismatch"
     if job_country == user_country: return "match"
     if job_country and job_country != user_country: return "hq_mismatch"
     return "unknown"
