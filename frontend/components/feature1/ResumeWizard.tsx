@@ -7,7 +7,7 @@ import { toast } from "sonner";
 
 import { confirmResume, createSearch, formatApiError, uploadResume } from "../../lib/api";
 import type { JobFacets, RankedJob, ResumeUploadResponse, SearchParams } from "../../lib/types";
-import SearchFilters, { defaultSearchParams } from "./SearchFilters";
+import SearchFilters, { defaultSearchParams, sanitizeSearchParams } from "./SearchFilters";
 import Stepper from "../ui/Stepper";
 
 type ConfirmedSnapshot = {
@@ -117,6 +117,8 @@ export default function ResumeWizard({
         location: confirmed.profile.location,
         skills: confirmed.profile.skills,
       });
+      // Re-seed filters from profile location; seniority always Any (never sticky Intern).
+      setSearchParams(defaultSearchParams(confirmed.profile.location));
       toast.success("Profile confirmed. Ready to search.");
     },
     onError: (error) => toast.error(formatApiError(error)),
@@ -125,7 +127,8 @@ export default function ResumeWizard({
   const searchMutation = useMutation({
     mutationFn: () => {
       if (!resume) throw new Error("No resume");
-      return createSearch(resume.id, searchParams);
+      // Last-line sanitize so Full-time + Intern never hits the API
+      return createSearch(resume.id, sanitizeSearchParams(searchParams));
     },
     retry: false,
     onMutate: () => {

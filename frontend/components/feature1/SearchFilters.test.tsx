@@ -4,7 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import SearchFilters, {
   buildSearchSummary,
   defaultSearchParams,
+  employmentSeniorityConflict,
   parseCountryFromProfile,
+  sanitizeSearchParams,
 } from "./SearchFilters";
 import type { SearchParams } from "../../lib/types";
 
@@ -81,7 +83,13 @@ describe("M29 SearchFilters", () => {
 
   it("setting seniority to Any hides mode toggle", () => {
     const onChange = vi.fn();
-    const params = { ...defaultSearchParams(), seniority: "intern" as const, seniority_pref: "hard" as const };
+    // employment must not be fulltime or sanitize clears intern
+    const params = {
+      ...defaultSearchParams(),
+      employment_type: "any" as const,
+      seniority: "intern" as const,
+      seniority_pref: "soft" as const,
+    };
     const { rerender } = wrap(<SearchFilters params={params} onChange={onChange} />);
     expect(screen.getByTestId("filter-seniority-mode")).toBeTruthy();
     fireEvent.change(screen.getByTestId("filter-seniority-value"), { target: { value: "any" } });
@@ -96,3 +104,62 @@ describe("M29 SearchFilters", () => {
     expect(screen.queryByTestId("filter-seniority-mode")).toBeNull();
   });
 });
+
+  it("sanitizeSearchParams clears Full-time + Intern conflict", () => {
+    expect(employmentSeniorityConflict({ employment_type: "fulltime", seniority: "intern" })).toBe(true);
+    const cleaned = sanitizeSearchParams({
+      ...defaultSearchParams(),
+      employment_type: "fulltime",
+      employment_type_pref: "hard",
+      seniority: "intern",
+      seniority_pref: "soft",
+    });
+    expect(cleaned.seniority).toBe("any");
+    expect(cleaned.employment_type).toBe("fulltime");
+    expect(buildSearchSummary(cleaned, { title: "Data Scientist" })).not.toMatch(/intern/i);
+  });
+
+  it("selecting Intern clears Full-time employment", () => {
+    const onChange = vi.fn();
+    wrap(
+      <SearchFilters
+        params={{ ...defaultSearchParams(), employment_type: "fulltime", employment_type_pref: "hard", seniority: "any" }}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.change(screen.getByTestId("filter-seniority-value"), { target: { value: "intern" } });
+    const next = onChange.mock.calls.at(-1)[0] as SearchParams;
+    expect(next.seniority).toBe("intern");
+    expect(next.employment_type).toBe("any");
+  });
+
+  it("selecting Full-time clears Intern seniority", () => {
+    const onChange = vi.fn();
+    wrap(
+      <SearchFilters
+        params={{ ...defaultSearchParams(), employment_type: "any", seniority: "intern", seniority_pref: "soft" }}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.change(screen.getByTestId("filter-employment-value"), { target: { value: "fulltime" } });
+    const next = onChange.mock.calls.at(-1)[0] as SearchParams;
+    expect(next.employment_type).toBe("fulltime");
+    expect(next.seniority).toBe("any");
+  });
+
+  it("summary never shows intern with fulltime after sanitize", () => {
+    const s = buildSearchSummary(
+      {
+        employment_type: "fulltime",
+        employment_type_pref: "hard",
+        seniority: "intern",
+        seniority_pref: "soft",
+        location_country: "US",
+        location_country_pref: "hard",
+        date_window: "month",
+      },
+      { title: "Data Scientist" },
+    );
+    expect(s).toMatch(/Full-time \(require\)/);
+    expect(s).not.toMatch(/intern/i);
+  });

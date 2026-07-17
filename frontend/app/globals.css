@@ -3365,6 +3365,16 @@ html.light button.about-weight.is-active {
   background: var(--bg-muted);
 }
 .filter-hint p { margin: 0 0 0.5rem; font-size: 0.875rem; }
+.filter-conflict {
+  margin: 0.25rem 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--text);
+  background: color-mix(in srgb, #f59e0b 12%, var(--bg-muted));
+  border: 1px solid color-mix(in srgb, #f59e0b 40%, var(--line));
+  border-radius: var(--radius);
+}
 /* Portaled to document.body — above dropzones, panels, demo tour (~80–82) */
 .beta-modal-backdrop {
   position: fixed;

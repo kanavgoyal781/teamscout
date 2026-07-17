@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { fetchWorkspace, patchWorkspacePrefs } from "../../lib/api";
-import type { PrefMode, SearchParams } from "../../lib/types";
+import type { PrefMode, SearchParams, SeniorityLevel } from "../../lib/types";
 
 type SearchFiltersProps = {
   params: SearchParams;
@@ -37,6 +37,16 @@ const COUNTRIES: { code: string; label: string }[] = [
   { code: "CH", label: "Switzerland" },
   { code: "JP", label: "Japan" },
   { code: "KR", label: "South Korea" },
+];
+
+const SENIORITY_OPTS: { value: SeniorityLevel; label: string }[] = [
+  { value: "any", label: "Any" },
+  { value: "junior", label: "Junior" },
+  { value: "mid", label: "Mid" },
+  { value: "senior", label: "Senior" },
+  { value: "lead", label: "Lead+" },
+  // Intern last — never adjacent to default "Any" (accidental / sticky first-option bugs)
+  { value: "intern", label: "Intern / internship" },
 ];
 
 /** Client-side mirror of backend geo.parse_country for prefill only. */
@@ -92,16 +102,52 @@ const DEFAULTS: Required<
   include_worldwide_remote: true,
 };
 
+const VALID_SENIORITY = new Set(["any", "intern", "junior", "mid", "senior", "lead"]);
+
+/** Full-time + Intern is a nonsense combo for typical professional searches. */
+export function employmentSeniorityConflict(params: SearchParams): boolean {
+  const emp = params.employment_type || "any";
+  const sen = params.seniority || "any";
+  return emp === "fulltime" && sen === "intern";
+}
+
+/**
+ * Normalize filter state. Clears Full-time + Intern conflicts and invalid seniority.
+ * Never invents a seniority the user did not set — corrupt values → Any.
+ */
+export function sanitizeSearchParams(raw: SearchParams): SearchParams {
+  const next: SearchParams = {
+    ...DEFAULTS,
+    min_salary: null,
+    location_country: null,
+    ...raw,
+  };
+  const sen = (next.seniority || "any").toLowerCase();
+  if (!VALID_SENIORITY.has(sen)) {
+    next.seniority = "any";
+    next.seniority_pref = "soft";
+  } else {
+    next.seniority = sen as SearchParams["seniority"];
+  }
+  // Resolve conflict: Full-time Require/Prefer + Intern → drop Intern (keep employment).
+  // Internships are rare under a Full-time employment filter for DS/SWE profiles.
+  if (employmentSeniorityConflict(next)) {
+    next.seniority = "any";
+    next.seniority_pref = "soft";
+  }
+  if (next.seniority === "any") next.seniority_pref = "soft";
+  return next;
+}
+
 export function defaultSearchParams(profileLocation?: string): SearchParams {
   const country = parseCountryFromProfile(profileLocation);
-  return {
+  return sanitizeSearchParams({
     ...DEFAULTS,
     min_salary: null,
     location_country: country || null,
-    // Seniority must never default to Intern or any level — always Any unless user sets it.
     seniority: "any",
     seniority_pref: "soft",
-  };
+  });
 }
 
 function ModeToggle({
@@ -147,7 +193,7 @@ export function buildSearchSummary(
   params: SearchParams,
   opts?: { title?: string },
 ): string {
-  const p = { ...DEFAULTS, ...params };
+  const p = sanitizeSearchParams(params);
   const bits: string[] = [];
   const title = (opts?.title || "").trim();
   if (title) bits.push(title);
@@ -176,7 +222,7 @@ export function buildSearchSummary(
     week: "posted this week",
     month: "posted this month",
   };
-  bits.push(windowLabel[p.date_window] || "posted this month");
+  bits.push(windowLabel[p.date_window || "month"] || "posted this month");
   return `Searching: ${bits.join(" · ")}`;
 }
 
@@ -187,12 +233,10 @@ export default function SearchFilters({
   profileLocation,
   profileTitle,
 }: SearchFiltersProps) {
-  const p = { ...DEFAULTS, min_salary: null as number | null, location_country: null as string | null, ...params };
-  // Force seniority any if somehow corrupted (never silently Intern)
-  if (!p.seniority || !["any", "intern", "junior", "mid", "senior", "lead"].includes(p.seniority)) {
-    p.seniority = "any";
-  }
+  const p = sanitizeSearchParams(params);
   const qc = useQueryClient();
+  const userTouchedSeniority = useRef(false);
+  const sanitizedOnce = useRef(false);
   const { data: workspace } = useQuery({
     queryKey: ["workspace"],
     queryFn: fetchWorkspace,
@@ -204,30 +248,88 @@ export default function SearchFilters({
   });
   const showHint = workspace && workspace.prefs?.filter_hint_dismissed !== true;
 
-  // Prefill country once from profile when empty
+  // One-shot: push sanitized state up if parent held Full-time + Intern (or corrupt seniority).
+  useEffect(() => {
+    if (sanitizedOnce.current) return;
+    const cleaned = sanitizeSearchParams(params);
+    const dirty =
+      cleaned.seniority !== (params.seniority || "any") ||
+      cleaned.employment_type !== (params.employment_type || DEFAULTS.employment_type) ||
+      employmentSeniorityConflict(params);
+    if (dirty) {
+      sanitizedOnce.current = true;
+      onChange(cleaned);
+    } else {
+      sanitizedOnce.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount / first params only
+  }, []);
+
+  // Prefill country once from profile when empty; never reintroduce seniority.
   useEffect(() => {
     if (params.location_country) return;
     const c = parseCountryFromProfile(profileLocation);
-    if (c) onChange({ ...DEFAULTS, ...params, location_country: c, location_country_pref: "hard" });
+    if (c) {
+      onChange(
+        sanitizeSearchParams({
+          ...params,
+          location_country: c,
+          location_country_pref: "hard",
+          // Explicit: country prefill must not touch seniority
+          seniority: userTouchedSeniority.current ? params.seniority : "any",
+          seniority_pref: "soft",
+        }),
+      );
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when profile location arrives
   }, [profileLocation]);
 
   function set<K extends keyof SearchParams>(key: K, value: SearchParams[K]) {
-    const next = { ...p, [key]: value };
-    // Setting value to Any hides mode — normalize prefs to soft defaults (irrelevant)
+    const next: SearchParams = { ...p, [key]: value };
+    if (key === "seniority") {
+      userTouchedSeniority.current = true;
+      if (value === "any") next.seniority_pref = "soft";
+      // Choosing Intern while Full-time is set → clear employment to Any (user wants internships)
+      if (value === "intern" && next.employment_type === "fulltime") {
+        next.employment_type = "any";
+        next.employment_type_pref = "soft";
+      }
+    }
+    if (key === "employment_type") {
+      if (value === "any") next.employment_type_pref = "soft";
+      // Choosing Full-time while Intern is set → clear Intern (professional full-time search)
+      if (value === "fulltime" && next.seniority === "intern") {
+        next.seniority = "any";
+        next.seniority_pref = "soft";
+      }
+    }
     if (key === "remote_mode" && value === "any") next.remote_mode_pref = "soft";
-    if (key === "employment_type" && value === "any") next.employment_type_pref = "soft";
-    if (key === "seniority" && value === "any") next.seniority_pref = "soft";
     if (key === "min_salary" && (value === null || value === undefined)) next.min_salary_pref = "soft";
     if (key === "location_country" && !value) next.location_country_pref = "hard";
-    onChange(next);
+    onChange(sanitizeSearchParams(next));
   }
 
   const summary = useMemo(
     () => buildSearchSummary(p, { title: profileTitle }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [p.remote_mode, p.remote_mode_pref, p.employment_type, p.employment_type_pref, p.date_window, p.seniority, p.seniority_pref, p.min_salary, p.min_salary_pref, p.location_country, p.location_country_pref, p.include_worldwide_remote, profileTitle],
+    [
+      p.remote_mode,
+      p.remote_mode_pref,
+      p.employment_type,
+      p.employment_type_pref,
+      p.date_window,
+      p.seniority,
+      p.seniority_pref,
+      p.min_salary,
+      p.min_salary_pref,
+      p.location_country,
+      p.location_country_pref,
+      p.include_worldwide_remote,
+      profileTitle,
+    ],
   );
+
+  const showInternHint = p.seniority === "intern";
 
   return (
     <div className="search-filters" data-testid="search-filters">
@@ -256,6 +358,7 @@ export default function SearchFilters({
             <select
               value={p.location_country || ""}
               disabled={disabled}
+              autoComplete="off"
               onChange={(e) => set("location_country", e.target.value || null)}
               aria-label="Location country"
               data-testid="filter-location-country"
@@ -293,8 +396,9 @@ export default function SearchFilters({
           <label className="filter-value">
             Remote
             <select
-              value={p.remote_mode}
+              value={p.remote_mode || "any"}
               disabled={disabled}
+              autoComplete="off"
               onChange={(e) => set("remote_mode", e.target.value as SearchParams["remote_mode"])}
               aria-label="Remote mode"
               data-testid="filter-remote-value"
@@ -305,9 +409,9 @@ export default function SearchFilters({
               <option value="onsite">Onsite</option>
             </select>
           </label>
-          {p.remote_mode !== "any" ? (
+          {p.remote_mode && p.remote_mode !== "any" ? (
             <ModeToggle
-              value={p.remote_mode_pref}
+              value={p.remote_mode_pref || "soft"}
               onChange={(v) => set("remote_mode_pref", v)}
               disabled={disabled}
               testId="filter-remote-mode"
@@ -319,8 +423,9 @@ export default function SearchFilters({
           <label className="filter-value">
             Employment
             <select
-              value={p.employment_type}
+              value={p.employment_type || "any"}
               disabled={disabled}
+              autoComplete="off"
               onChange={(e) =>
                 set("employment_type", e.target.value as SearchParams["employment_type"])
               }
@@ -332,9 +437,9 @@ export default function SearchFilters({
               <option value="contractor">Contractor</option>
             </select>
           </label>
-          {p.employment_type !== "any" ? (
+          {p.employment_type && p.employment_type !== "any" ? (
             <ModeToggle
-              value={p.employment_type_pref}
+              value={p.employment_type_pref || "hard"}
               onChange={(v) => set("employment_type_pref", v)}
               disabled={disabled}
               testId="filter-employment-mode"
@@ -346,8 +451,9 @@ export default function SearchFilters({
           <label className="filter-value">
             Posted within
             <select
-              value={p.date_window}
+              value={p.date_window || "month"}
               disabled={disabled}
+              autoComplete="off"
               onChange={(e) => set("date_window", e.target.value as SearchParams["date_window"])}
               aria-label="Date window"
               data-testid="filter-date-value"
@@ -366,27 +472,34 @@ export default function SearchFilters({
             <select
               value={p.seniority === "any" || !p.seniority ? "any" : p.seniority}
               disabled={disabled}
+              autoComplete="off"
               onChange={(e) => set("seniority", e.target.value as SearchParams["seniority"])}
               aria-label="Seniority"
               data-testid="filter-seniority-value"
             >
-              <option value="any">Any</option>
-              <option value="intern">Intern</option>
-              <option value="junior">Junior</option>
-              <option value="mid">Mid</option>
-              <option value="senior">Senior</option>
-              <option value="lead">Lead+</option>
+              {SENIORITY_OPTS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </label>
           {p.seniority && p.seniority !== "any" ? (
             <ModeToggle
-              value={p.seniority_pref}
+              value={p.seniority_pref || "soft"}
               onChange={(v) => set("seniority_pref", v)}
               disabled={disabled}
               testId="filter-seniority-mode"
             />
           ) : null}
         </div>
+
+        {showInternHint ? (
+          <p className="filter-conflict" data-testid="filter-intern-hint" role="status">
+            Internship search: Employment set to <strong>Any</strong> (Full-time + Intern cannot
+            both apply). Clear Seniority to search professional Full-time roles.
+          </p>
+        ) : null}
 
         <div className="filter-row" data-testid="filter-salary">
           <label className="filter-value">
@@ -396,6 +509,7 @@ export default function SearchFilters({
               min={0}
               step={1000}
               disabled={disabled}
+              autoComplete="off"
               value={p.min_salary ?? ""}
               onChange={(e) =>
                 set("min_salary", e.target.value === "" ? null : Number(e.target.value))
@@ -406,7 +520,7 @@ export default function SearchFilters({
           </label>
           {p.min_salary != null && p.min_salary > 0 ? (
             <ModeToggle
-              value={p.min_salary_pref}
+              value={p.min_salary_pref || "soft"}
               onChange={(v) => set("min_salary_pref", v)}
               disabled={disabled}
               testId="filter-salary-mode"
